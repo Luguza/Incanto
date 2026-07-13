@@ -63,21 +63,24 @@
   }
   .combat-screen.wrong-flash::after { background: rgba(229, 72, 77, 0.35); }
 
-  .banner {
+  svg.scene {
+    flex: 0 0 auto;
+    display: block;
+    width: 100%;
+    aspect-ratio: 160 / 72;
+    max-height: 28vh;
+    background: #17131e;
+  }
+  .hud-under {
     flex: 0 0 auto;
     width: 100%;
     display: flex; align-items: center; justify-content: space-between;
-    padding: calc(8px + env(safe-area-inset-top)) max(3vw, env(safe-area-inset-left)) 8px max(3vw, env(safe-area-inset-right));
+    padding: 8px max(3vw, env(safe-area-inset-left)) 8px max(3vw, env(safe-area-inset-right));
     background: #1b1624;
+    border-top: 1px solid #3a3550;
     border-bottom: 1px solid #3a3550;
   }
-  .combatant { display: flex; align-items: center; gap: 10px; }
-  .combatant .fighter { width: clamp(48px, 14vw, 110px); height: clamp(48px, 14vw, 110px); }
-  .hero-shape { fill: #5ecf8f; stroke: #eae6f5; stroke-width: 3; }
-  .enemy-shape { fill: #7c4dff; stroke: #eae6f5; stroke-width: 3; }
-  .combatant .stats { display: flex; flex-direction: column; gap: 6px; }
-  .enemy-side { flex-direction: row-reverse; }
-  .enemy-side .stats { align-items: flex-end; }
+  .hud-under .stats { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
   .combat-mode-row {
     flex: 0 0 auto;
     display: flex; justify-content: center;
@@ -152,9 +155,35 @@ const CONFIG = {
     wrongFlash: "rgba(229,72,77,0.35)",
     heartFull: "#e5484d",
     heartEmpty: "#3a3540",
-    hero: "#5ecf8f",
-    enemy: "#7c4dff",
     windupFill: "#e5484d",
+    // Pixel-art dungeon scene palettes (char -> fill, "." = transparent)
+    dungeon: {
+      mortar: "#1c1723",
+      brickA: "#2e2739",
+      brickB: "#352d42",
+      floorDark: "#211b2b",
+      slabA: "#2b2436",
+      slabB: "#251f30",
+      torchWood: "#6b4a2e",
+      flameOuter: "#e57e3a",
+      flameInner: "#f2c14e",
+    },
+    mage: {
+      A: "#7c4dff", // hat & shoulders
+      B: "#f2c14e", // hat band / trim
+      S: "#e8b48a", // skin
+      E: "#141018", // eyes
+      R: "#5a3bd6", // robe
+      D: "#42289e", // robe shadow / boots
+      W: "#8a5a33", // staff
+      Y: "#ffe28a", // orb core
+      G: "#f2a83a", // orb glow
+    },
+    skeleton: {
+      W: "#e8e4da", // bone
+      K: "#141018", // eye sockets
+      G: "#a09a8c", // bone shadow
+    },
   },
 };
 
@@ -235,6 +264,121 @@ function shuffleArray(arr) {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
+}
+
+// ---------------------------------------------------------------------------
+// Pixel-art dungeon scene.
+// DECISION: pixel art is drawn as 1x1 SVG rects from character maps (no image
+// assets, keeps the single-file constraint); the scene is static per the
+// no-animations rule. Scene viewBox is 160x72 units, 1 unit = 1 "pixel".
+// ---------------------------------------------------------------------------
+const MAGE_SPRITE = [
+  ".......A........",
+  "......AAA.......",
+  "......AAA.......",
+  ".....AAAAA......",
+  ".....AAAAA......",
+  "....AAAAAAA.....",
+  "...AAAAAAAAA....",
+  "..BBBBBBBBBBB...",
+  ".....SSSSS......",
+  ".....SESES..Y...",
+  ".....SSSSS.GYG..",
+  "......SSS...Y...",
+  ".....RRRRR..W...",
+  "....RRRRRRR.W...",
+  "....RRRRRRR.W...",
+  "...RRRRRRRRWW...",
+  "...RRRRRRRR.W...",
+  "...RRRRRRRR.W...",
+  "..RRRRRRRRR.W...",
+  "..RRRRRRRRR.W...",
+  "..RRRRRRRRR.W...",
+  "..DDDDDDDDD.W...",
+  "...DD...DD..W...",
+  "...DD...DD..W...",
+];
+
+const SKELETON_SPRITE = [
+  ".....WWWWW......",
+  "....WWWWWWW.....",
+  "....WWWWWWW.....",
+  "....KWWKWWW.....",
+  "....WWWWWWW.....",
+  ".....WGWGW......",
+  ".....WWWWW......",
+  "......GGG.......",
+  ".......W........",
+  "....WWWWWWW.....",
+  "...W...W...W....",
+  "...W.WWWWW.W....",
+  "...W.WGWGW.W....",
+  "...W.WWWWW.W....",
+  "...W.WGWGW.W....",
+  "..WW.WWWWW.WW...",
+  ".....WWWWW......",
+  "......GGG.......",
+  ".....WW.WW......",
+  ".....W...W......",
+  ".....W...W......",
+  ".....W...W......",
+  "....WW...WW.....",
+  "................",
+];
+
+function drawSprite(map, palette, ox, oy) {
+  const rects = [];
+  for (let y = 0; y < map.length; y++) {
+    for (let x = 0; x < map[y].length; x++) {
+      const c = map[y][x];
+      if (c !== "." && palette[c]) {
+        rects.push(`<rect x="${ox + x}" y="${oy + y}" width="1" height="1" fill="${palette[c]}"/>`);
+      }
+    }
+  }
+  return rects.join("");
+}
+
+function buildSceneSVG() {
+  const d = CONFIG.colors.dungeon;
+  const parts = [];
+
+  // Brick wall: mortar base, then offset brick courses
+  parts.push(`<rect x="0" y="0" width="160" height="58" fill="${d.mortar}"/>`);
+  for (let row = 0; row * 6 < 58; row++) {
+    const y = row * 6;
+    const offset = row % 2 === 0 ? 0 : -6;
+    for (let col = 0; col * 12 + offset < 160; col++) {
+      const x = col * 12 + offset;
+      const shade = (row + col) % 3 === 0 ? d.brickB : d.brickA;
+      parts.push(`<rect x="${x}" y="${y}" width="11" height="5" fill="${shade}"/>`);
+    }
+  }
+
+  // Floor: dark base with offset slabs
+  parts.push(`<rect x="0" y="58" width="160" height="14" fill="${d.floorDark}"/>`);
+  for (let row = 0; row < 2; row++) {
+    const y = 58 + row * 7;
+    const offset = row % 2 === 0 ? 0 : -8;
+    for (let col = 0; col * 17 + offset < 160; col++) {
+      const x = col * 17 + offset;
+      const shade = (row + col) % 2 === 0 ? d.slabA : d.slabB;
+      parts.push(`<rect x="${x}" y="${y + 1}" width="16" height="6" fill="${shade}"/>`);
+    }
+  }
+
+  // Wall torches (static flame)
+  for (const tx of [48, 108]) {
+    parts.push(`<rect x="${tx}" y="24" width="2" height="5" fill="${d.torchWood}"/>`);
+    parts.push(`<rect x="${tx - 1}" y="21" width="4" height="3" fill="${d.flameOuter}"/>`);
+    parts.push(`<rect x="${tx}" y="19" width="2" height="3" fill="${d.flameInner}"/>`);
+  }
+
+  // Fighters: mage stands on the floor at left, skeleton at right
+  parts.push(drawSprite(MAGE_SPRITE, CONFIG.colors.mage, 18, 36));
+  parts.push(drawSprite(SKELETON_SPRITE, CONFIG.colors.skeleton, 124, 36));
+
+  return `<svg class="scene" viewBox="0 0 160 72" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges">${parts.join("")}</svg>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -489,27 +633,14 @@ function renderCombatFull() {
     )
     .join("");
 
-  // DECISION: hero visual is a simple pentagon shape (spec defines no hero art;
-  // banner layout calls for a visible combatant on the left).
   app.innerHTML = `
     <div class="screen combat-screen" id="combat-root">
-      <div class="banner">
-        <div class="combatant hero-side">
-          <svg class="fighter" viewBox="0 0 120 120">
-            <polygon class="hero-shape" points="60,10 110,48 91,110 29,110 10,48"></polygon>
-          </svg>
-          <div class="stats">
-            <div class="hearts" id="hearts"></div>
-          </div>
-        </div>
-        <div class="combatant enemy-side">
-          <svg class="fighter" viewBox="0 0 120 120">
-            <polygon class="enemy-shape" points="60,10 110,60 60,110 10,60"></polygon>
-          </svg>
-          <div class="stats">
-            <div class="enemy-hp" id="enemy-hp"></div>
-            <div class="windup-track"><div class="windup-fill" id="windup-fill"></div></div>
-          </div>
+      ${buildSceneSVG()}
+      <div class="hud-under">
+        <div class="hearts" id="hearts"></div>
+        <div class="stats">
+          <div class="enemy-hp" id="enemy-hp"></div>
+          <div class="windup-track"><div class="windup-fill" id="windup-fill"></div></div>
         </div>
       </div>
       <div class="combat-mode-row">
