@@ -27,24 +27,32 @@
 
   /* Loadout screen */
   .loadout-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
-  .loadout-screen h1 { font-size: clamp(22px, 6vw, 28px); margin-bottom: 20px; text-align: center; }
+  .loadout-screen h1 {
+    font-size: clamp(22px, 6vw, 28px); margin-bottom: 20px; text-align: center;
+    letter-spacing: 0.5px;
+  }
   .cards { display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; width: min(320px, 85vw); }
   .card {
-    background: #211c2c; border: 1px solid #3a3550; border-radius: 10px;
+    background: linear-gradient(160deg, #262033, #1d1827);
+    border: 1px solid #3a3550; border-radius: 12px;
     padding: 14px 20px; text-align: center;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   }
-  .card .it { font-size: 20px; font-weight: 600; color: #f2c14e; }
-  .card .dash { color: #7a7391; margin: 4px 0; }
+  .card .it { font-size: 20px; font-weight: 600; color: #f2c14e; letter-spacing: 0.4px; }
+  .card .dash { color: rgba(242, 193, 78, 0.45); margin: 4px 0; font-size: 12px; }
   .card .en { font-size: 18px; color: #eae6f5; }
   .fight-btn {
     font-size: 22px; padding: 16px 0; width: min(320px, 85vw);
-    border-radius: 10px; border: none;
-    background: #f2c14e; color: #141018; font-weight: 700; cursor: pointer;
+    border-radius: 12px; border: none;
+    background: linear-gradient(180deg, #ffd571, #f2c14e);
+    color: #141018; font-weight: 700; letter-spacing: 1px; cursor: pointer;
+    box-shadow: 0 0 24px rgba(242, 193, 78, 0.25);
   }
   .fight-btn:active { background: #ffd571; }
   .mode-btn {
-    background: transparent; border: 1px solid #f2c14e; color: #f2c14e;
-    border-radius: 8px; padding: 10px 16px; font-weight: 700;
+    background: rgba(242, 193, 78, 0.07);
+    border: 1px solid rgba(242, 193, 78, 0.65); color: #f2c14e;
+    border-radius: 9px; padding: 10px 16px; font-weight: 700;
     font-size: clamp(13px, 3.5vw, 16px); letter-spacing: 1px; cursor: pointer;
   }
   .mode-btn:active { background: rgba(242, 193, 78, 0.15); }
@@ -87,15 +95,18 @@
     padding: 8px 0;
   }
   .heart { font-size: clamp(15px, 4vw, 24px); margin-right: 1px; }
-  .heart.full { color: #e5484d; }
+  .heart.full { color: #e5484d; text-shadow: 0 0 8px rgba(229, 72, 77, 0.55); }
   .heart.empty { color: #3a3540; }
-  .enemy-hp { font-size: clamp(13px, 3.5vw, 18px); }
+  .enemy-hp { font-size: clamp(13px, 3.5vw, 18px); color: #cfc9de; }
   .windup-track {
     width: clamp(90px, 26vw, 280px); height: 14px;
-    background: #2a2636; border: 1px solid #3a3550; border-radius: 4px;
+    background: #241f2f; border: 1px solid #3a3550; border-radius: 7px;
     overflow: hidden;
   }
-  .windup-fill { height: 100%; width: 0%; background: #e5484d; }
+  .windup-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #a83a49, #e5484d, #f2784e);
+  }
 
   svg.arena {
     flex: 1 1 auto;
@@ -103,20 +114,34 @@
     width: 100%;
     display: block;
   }
-  .rune circle { stroke: #eae6f5; stroke-width: 2; cursor: pointer; transition: fill 80ms linear; }
-  .rune.unmatched circle { fill: #3a3550; }
-  .rune.selected circle { fill: #f2c14e; }
-  .rune.matched circle { fill: #5ecf8f; }
+  .ring { fill: none; stroke: #f2c14e; }
+  .ring.outer { opacity: 0.22; stroke-width: 1.2; stroke-dasharray: 3 9; }
+  .ring.mid { opacity: 0.10; stroke-width: 1; }
+  .slot-mark { fill: #f2c14e; opacity: 0.30; }
+  .hexagram { fill: none; stroke: #f2c14e; opacity: 0.05; stroke-width: 1; }
+  .rune .halo { opacity: 0; fill: #f2c14e; transition: opacity 150ms linear; pointer-events: none; }
+  .rune.selected .halo { opacity: 0.5; }
+  .rune.matched .halo { opacity: 0.25; fill: #5ecf8f; }
+  .rune .body { stroke-width: 2; cursor: pointer; transition: fill 100ms linear; }
+  .rune.unmatched .body { fill: url(#gradUnmatched); stroke: #6f668f; }
+  .rune.selected .body { fill: url(#gradSelected); stroke: #ffe9b0; }
+  .rune.matched .body { fill: url(#gradMatched); stroke: #8fe7b4; }
   .rune text {
-    fill: #f5f2ff; font-size: 16px; text-anchor: middle; dominant-baseline: central;
+    fill: #efeaff; font-size: 16px; letter-spacing: 0.3px;
+    text-anchor: middle; dominant-baseline: central;
     pointer-events: none;
   }
-  .chord { stroke: #f2c14e; stroke-width: 3; }
+  .rune.selected text, .rune.matched text { fill: #161222; font-weight: 600; }
+  .chord-glow { stroke: #f2c14e; stroke-width: 9; stroke-linecap: round; opacity: 0.22; }
+  .chord { stroke: #ffd571; stroke-width: 3.5; stroke-linecap: round; }
   .chord.flash { stroke: #ffffff; stroke-width: 6; }
+  .chord-glow.flash { stroke: #ffffff; opacity: 0.6; }
 
   /* End screens */
   .end-screen { cursor: pointer; padding: 16px; text-align: center; }
-  .end-screen h1 { font-size: clamp(32px, 9vw, 44px); margin-bottom: 12px; }
+  .end-screen h1 { font-size: clamp(32px, 9vw, 44px); margin-bottom: 12px; letter-spacing: 1px; }
+  .end-screen h1.victory { color: #f2c14e; text-shadow: 0 0 28px rgba(242, 193, 78, 0.45); }
+  .end-screen h1.defeat { color: #e5484d; text-shadow: 0 0 28px rgba(229, 72, 77, 0.4); }
   .end-screen p { font-size: clamp(15px, 4.5vw, 18px); color: #cfc9de; margin: 4px 0; }
   .end-screen .hint { margin-top: 24px; color: #8a8398; }
 </style>
@@ -592,7 +617,7 @@ function renderLoadoutFull() {
       (p) => `
     <div class="card">
       <div class="it">${p.it}</div>
-      <div class="dash">&mdash;</div>
+      <div class="dash">&#10022;</div>
       <div class="en">${p.en}</div>
     </div>`
     )
@@ -619,19 +644,67 @@ function heartsHtml() {
 }
 
 function renderCombatFull() {
+  const { x: cx, y: cy } = CONFIG.circleCenter;
+  const slots = layoutCircle(CONFIG.runeCount);
+
+  // Arcane decoration: dashed outer ring with diamond slot markers, a faint
+  // mid ring, and a barely-visible hexagram joining alternating slots.
+  const ringR = CONFIG.circleRadius + 18;
+  const marks = slots
+    .map((s) => {
+      const angle = Math.atan2(s.y - cy, s.x - cx);
+      const mx = cx + ringR * Math.cos(angle);
+      const my = cy + ringR * Math.sin(angle);
+      return `<rect class="slot-mark" x="${mx - 3}" y="${my - 3}" width="6" height="6" transform="rotate(45 ${mx} ${my})"/>`;
+    })
+    .join("");
+  const hexagram =
+    `<polygon class="hexagram" points="${[0, 2, 4].map((i) => `${slots[i].x},${slots[i].y}`).join(" ")}"/>` +
+    `<polygon class="hexagram" points="${[1, 3, 5].map((i) => `${slots[i].x},${slots[i].y}`).join(" ")}"/>`;
+
   const chordsHtml = state.chords
-    .map((c) => `<line x1="${c.x1}" y1="${c.y1}" x2="${c.x2}" y2="${c.y2}" class="chord" />`)
+    .map(
+      (c) =>
+        `<line x1="${c.x1}" y1="${c.y1}" x2="${c.x2}" y2="${c.y2}" class="chord-glow" />` +
+        `<line x1="${c.x1}" y1="${c.y1}" x2="${c.x2}" y2="${c.y2}" class="chord" />`
+    )
     .join("");
 
   const runesHtml = state.runes
     .map(
       (r) => `
     <g class="rune ${r.matchState}" onclick="handleRuneClick(${r.id})">
-      <circle cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius}"></circle>
+      <circle class="halo" cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius + 7}" filter="url(#glow)"></circle>
+      <circle class="body" cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius}"></circle>
       <text x="${r.x}" y="${r.y}">${r.word}</text>
     </g>`
     )
     .join("");
+
+  const arenaDefs = `
+    <defs>
+      <radialGradient id="gradUnmatched" cx="35%" cy="30%" r="80%">
+        <stop offset="0%" stop-color="#4a4463"/><stop offset="100%" stop-color="#2e2841"/>
+      </radialGradient>
+      <radialGradient id="gradSelected" cx="35%" cy="30%" r="80%">
+        <stop offset="0%" stop-color="#ffe08a"/><stop offset="100%" stop-color="#e0a93c"/>
+      </radialGradient>
+      <radialGradient id="gradMatched" cx="35%" cy="30%" r="80%">
+        <stop offset="0%" stop-color="#7fe3a8"/><stop offset="100%" stop-color="#41ad72"/>
+      </radialGradient>
+      <radialGradient id="bgGlow">
+        <stop offset="0%" stop-color="rgba(124,77,255,0.16)"/>
+        <stop offset="100%" stop-color="rgba(124,77,255,0)"/>
+      </radialGradient>
+      <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="6"/>
+      </filter>
+    </defs>
+    <circle cx="${cx}" cy="${cy}" r="${CONFIG.circleRadius + 60}" fill="url(#bgGlow)"/>
+    <circle class="ring outer" cx="${cx}" cy="${cy}" r="${ringR}"/>
+    <circle class="ring mid" cx="${cx}" cy="${cy}" r="${CONFIG.circleRadius - 10}"/>
+    ${marks}
+    ${hexagram}`;
 
   app.innerHTML = `
     <div class="screen combat-screen" id="combat-root">
@@ -647,6 +720,7 @@ function renderCombatFull() {
         <button class="mode-btn" id="mode-label" onclick="cycleMode()"></button>
       </div>
       <svg class="arena" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
+        ${arenaDefs}
         ${chordsHtml}
         ${runesHtml}
       </svg>
@@ -667,7 +741,7 @@ function patchCombatContinuous(now) {
   if (fillEl) fillEl.style.width = (windupPct * 100).toFixed(2) + "%";
 
   const shapeFlashActive = now < state.shapeFlashUntil;
-  document.querySelectorAll(".chord").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
+  document.querySelectorAll(".chord, .chord-glow").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
 }
 
 let endScreenShownAt = 0;
@@ -677,7 +751,7 @@ function renderEndFull(title) {
   endScreenShownAt = performance.now();
   app.innerHTML = `
     <div class="screen end-screen" onclick="restartFromTap()">
-      <h1>${title}</h1>
+      <h1 class="${state.screen}">${title}</h1>
       <p>Time: ${elapsed}s &mdash; Wrong matches: ${state.wrongMatchCount}</p>
       <p id="end-mode"></p>
       <p class="hint">Tap anywhere to restart</p>
