@@ -10,7 +10,7 @@
 <title>Rune Circle Combat — Prototype</title>
 <style>
   :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0; padding: 0; height: 100%;
     background: #141018;
@@ -18,26 +18,37 @@
     color: #f5f2ff;
     overflow: hidden;
     user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior: none;
+    touch-action: manipulation;
   }
-  #app { width: 100%; height: 100vh; display: flex; align-items: center; justify-content: center; }
+  #app { width: 100%; height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center; }
   .screen { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
 
   /* Loadout screen */
-  .loadout-screen h1 { font-size: 28px; margin-bottom: 24px; }
-  .cards { display: flex; gap: 20px; margin-bottom: 32px; }
+  .loadout-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
+  .loadout-screen h1 { font-size: clamp(22px, 6vw, 28px); margin-bottom: 20px; text-align: center; }
+  .cards { display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; width: min(320px, 85vw); }
   .card {
     background: #211c2c; border: 1px solid #3a3550; border-radius: 10px;
-    padding: 18px 22px; min-width: 150px; text-align: center;
+    padding: 14px 20px; text-align: center;
   }
   .card .it { font-size: 20px; font-weight: 600; color: #f2c14e; }
-  .card .dash { color: #7a7391; margin: 6px 0; }
+  .card .dash { color: #7a7391; margin: 4px 0; }
   .card .en { font-size: 18px; color: #eae6f5; }
   .fight-btn {
-    font-size: 20px; padding: 12px 36px; border-radius: 8px; border: none;
+    font-size: 22px; padding: 16px 0; width: min(320px, 85vw);
+    border-radius: 10px; border: none;
     background: #f2c14e; color: #141018; font-weight: 700; cursor: pointer;
   }
-  .fight-btn:hover { background: #ffd571; }
-  .mode-hint { margin-top: 18px; color: #8a8398; font-size: 14px; }
+  .fight-btn:active { background: #ffd571; }
+  .mode-btn {
+    background: transparent; border: 1px solid #f2c14e; color: #f2c14e;
+    border-radius: 8px; padding: 10px 16px; font-weight: 700;
+    font-size: clamp(13px, 3.5vw, 16px); letter-spacing: 1px; cursor: pointer;
+  }
+  .mode-btn:active { background: rgba(242, 193, 78, 0.15); }
+  .loadout-screen .mode-btn { margin-top: 20px; }
 
   /* Combat screen — banner (fight) on top, rune circle filling the rest */
   .combat-screen {
@@ -56,28 +67,28 @@
     flex: 0 0 auto;
     width: 100%;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 4vw;
+    padding: calc(8px + env(safe-area-inset-top)) max(3vw, env(safe-area-inset-left)) 8px max(3vw, env(safe-area-inset-right));
     background: #1b1624;
     border-bottom: 1px solid #3a3550;
-    min-height: 120px;
   }
-  .combatant { display: flex; align-items: center; gap: 16px; }
-  .combatant .fighter { width: clamp(60px, 9vw, 110px); height: clamp(60px, 9vw, 110px); }
+  .combatant { display: flex; align-items: center; gap: 10px; }
+  .combatant .fighter { width: clamp(48px, 14vw, 110px); height: clamp(48px, 14vw, 110px); }
   .hero-shape { fill: #5ecf8f; stroke: #eae6f5; stroke-width: 3; }
   .enemy-shape { fill: #7c4dff; stroke: #eae6f5; stroke-width: 3; }
   .combatant .stats { display: flex; flex-direction: column; gap: 6px; }
   .enemy-side { flex-direction: row-reverse; }
   .enemy-side .stats { align-items: flex-end; }
-  .mode-label {
-    font-weight: 700; letter-spacing: 1px; color: #f2c14e;
-    font-size: clamp(14px, 1.8vw, 20px); text-align: center;
+  .combat-mode-row {
+    flex: 0 0 auto;
+    display: flex; justify-content: center;
+    padding: 8px 0;
   }
-  .heart { font-size: clamp(16px, 2.2vw, 24px); margin-right: 2px; }
+  .heart { font-size: clamp(15px, 4vw, 24px); margin-right: 1px; }
   .heart.full { color: #e5484d; }
   .heart.empty { color: #3a3540; }
-  .enemy-hp { font-size: clamp(13px, 1.6vw, 18px); }
+  .enemy-hp { font-size: clamp(13px, 3.5vw, 18px); }
   .windup-track {
-    width: clamp(120px, 20vw, 280px); height: 14px;
+    width: clamp(90px, 26vw, 280px); height: 14px;
     background: #2a2636; border: 1px solid #3a3550; border-radius: 4px;
     overflow: hidden;
   }
@@ -94,16 +105,17 @@
   .rune.selected circle { fill: #f2c14e; }
   .rune.matched circle { fill: #5ecf8f; }
   .rune text {
-    fill: #f5f2ff; font-size: 15px; text-anchor: middle; dominant-baseline: central;
+    fill: #f5f2ff; font-size: 16px; text-anchor: middle; dominant-baseline: central;
     pointer-events: none;
   }
   .chord { stroke: #f2c14e; stroke-width: 3; }
   .chord.flash { stroke: #ffffff; stroke-width: 6; }
 
   /* End screens */
-  .end-screen h1 { font-size: 40px; margin-bottom: 12px; }
-  .end-screen p { font-size: 18px; color: #cfc9de; margin: 4px 0; }
-  .end-screen .hint { margin-top: 20px; color: #8a8398; }
+  .end-screen { cursor: pointer; padding: 16px; text-align: center; }
+  .end-screen h1 { font-size: clamp(32px, 9vw, 44px); margin-bottom: 12px; }
+  .end-screen p { font-size: clamp(15px, 4.5vw, 18px); color: #cfc9de; margin: 4px 0; }
+  .end-screen .hint { margin-top: 24px; color: #8a8398; }
 </style>
 </head>
 <body>
@@ -129,7 +141,7 @@ const CONFIG = {
   shapeFlashDurationMs: 500,
   circleCenter: { x: 300, y: 300 },
   circleRadius: 215,
-  runeRadius: 44,
+  runeRadius: 48,
   colors: {
     background: "#141018",
     runeUnmatched: "#3a3550",
@@ -447,13 +459,13 @@ function renderLoadoutFull() {
       <h1>Your runes for this fight</h1>
       <div class="cards">${cards}</div>
       <button class="fight-btn" onclick="beginCombat()">Fight</button>
-      <div class="mode-hint" id="loadout-mode-hint"></div>
+      <button class="mode-btn" id="loadout-mode-hint" onclick="cycleMode()"></button>
     </div>`;
 }
 
 function patchLoadoutMode() {
   const el = document.getElementById("loadout-mode-hint");
-  if (el) el.textContent = `Mode: ${MODE_LABELS[state.mode]} (press M to change)`;
+  if (el) el.textContent = `MODE: ${MODE_LABELS[state.mode]} — tap to change`;
 }
 
 function heartsHtml() {
@@ -490,7 +502,6 @@ function renderCombatFull() {
             <div class="hearts" id="hearts"></div>
           </div>
         </div>
-        <div class="mode-label" id="mode-label"></div>
         <div class="combatant enemy-side">
           <svg class="fighter" viewBox="0 0 120 120">
             <polygon class="enemy-shape" points="60,10 110,60 60,110 10,60"></polygon>
@@ -500,6 +511,9 @@ function renderCombatFull() {
             <div class="windup-track"><div class="windup-fill" id="windup-fill"></div></div>
           </div>
         </div>
+      </div>
+      <div class="combat-mode-row">
+        <button class="mode-btn" id="mode-label" onclick="cycleMode()"></button>
       </div>
       <svg class="arena" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
         ${chordsHtml}
@@ -514,7 +528,7 @@ function patchCombatContinuous(now) {
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
   document.getElementById("hearts").innerHTML = heartsHtml();
-  document.getElementById("mode-label").textContent = `MODE: ${MODE_LABELS[state.mode]}`;
+  document.getElementById("mode-label").textContent = `MODE: ${MODE_LABELS[state.mode]} — tap to change`;
   document.getElementById("enemy-hp").textContent = `Enemy HP: ${state.enemyHP} / ${CONFIG.enemyHP}`;
 
   const windupPct = Math.max(0, Math.min(1, state.windup));
@@ -525,15 +539,25 @@ function patchCombatContinuous(now) {
   document.querySelectorAll(".chord").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
 }
 
+let endScreenShownAt = 0;
+
 function renderEndFull(title) {
   const elapsed = ((performance.now() - state.realFightStartMs) / 1000).toFixed(1);
+  endScreenShownAt = performance.now();
   app.innerHTML = `
-    <div class="screen end-screen">
+    <div class="screen end-screen" onclick="restartFromTap()">
       <h1>${title}</h1>
       <p>Time: ${elapsed}s &mdash; Wrong matches: ${state.wrongMatchCount}</p>
       <p id="end-mode"></p>
-      <p class="hint">Press R to restart</p>
+      <p class="hint">Tap anywhere to restart</p>
     </div>`;
+}
+
+function restartFromTap() {
+  // DECISION: ignore taps in the first 400ms of the end screen so a tap
+  // aimed at a rune during the final match doesn't instantly restart.
+  if (performance.now() - endScreenShownAt < 400) return;
+  restart();
 }
 
 function patchEndMode() {
