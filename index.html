@@ -34,37 +34,66 @@
   .fight-btn:hover { background: #ffd571; }
   .mode-hint { margin-top: 18px; color: #8a8398; font-size: 14px; }
 
-  /* Combat screen */
-  .combat-screen { position: relative; }
+  /* Combat screen — banner (fight) on top, rune circle filling the rest */
+  .combat-screen {
+    position: relative;
+    display: flex; flex-direction: column;
+    justify-content: flex-start;
+    width: 100%; height: 100%;
+  }
   .combat-screen::after {
     content: ""; position: absolute; inset: 0; pointer-events: none;
     background: rgba(229, 72, 77, 0); transition: none;
   }
   .combat-screen.wrong-flash::after { background: rgba(229, 72, 77, 0.35); }
-  .hud {
-    position: absolute; top: 16px; left: 24px; right: 24px;
+
+  .banner {
+    flex: 0 0 auto;
+    width: 100%;
     display: flex; align-items: center; justify-content: space-between;
-    font-size: 16px; z-index: 2;
+    padding: 12px 4vw;
+    background: #1b1624;
+    border-bottom: 1px solid #3a3550;
+    min-height: 120px;
   }
-  .hud .mode-label { font-weight: 700; letter-spacing: 1px; color: #f2c14e; font-size: 18px; }
-  .heart { font-size: 22px; margin-right: 2px; }
+  .combatant { display: flex; align-items: center; gap: 16px; }
+  .combatant .fighter { width: clamp(60px, 9vw, 110px); height: clamp(60px, 9vw, 110px); }
+  .hero-shape { fill: #5ecf8f; stroke: #eae6f5; stroke-width: 3; }
+  .enemy-shape { fill: #7c4dff; stroke: #eae6f5; stroke-width: 3; }
+  .combatant .stats { display: flex; flex-direction: column; gap: 6px; }
+  .enemy-side { flex-direction: row-reverse; }
+  .enemy-side .stats { align-items: flex-end; }
+  .mode-label {
+    font-weight: 700; letter-spacing: 1px; color: #f2c14e;
+    font-size: clamp(14px, 1.8vw, 20px); text-align: center;
+  }
+  .heart { font-size: clamp(16px, 2.2vw, 24px); margin-right: 2px; }
   .heart.full { color: #e5484d; }
   .heart.empty { color: #3a3540; }
+  .enemy-hp { font-size: clamp(13px, 1.6vw, 18px); }
+  .windup-track {
+    width: clamp(120px, 20vw, 280px); height: 14px;
+    background: #2a2636; border: 1px solid #3a3550; border-radius: 4px;
+    overflow: hidden;
+  }
+  .windup-fill { height: 100%; width: 0%; background: #e5484d; }
 
-  svg.arena { width: 900px; height: 600px; max-width: 95vw; max-height: 80vh; }
+  svg.arena {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    display: block;
+  }
   .rune circle { stroke: #eae6f5; stroke-width: 2; cursor: pointer; transition: fill 80ms linear; }
   .rune.unmatched circle { fill: #3a3550; }
   .rune.selected circle { fill: #f2c14e; }
   .rune.matched circle { fill: #5ecf8f; }
   .rune text {
-    fill: #f5f2ff; font-size: 12px; text-anchor: middle; dominant-baseline: central;
+    fill: #f5f2ff; font-size: 15px; text-anchor: middle; dominant-baseline: central;
     pointer-events: none;
   }
   .chord { stroke: #f2c14e; stroke-width: 3; }
   .chord.flash { stroke: #ffffff; stroke-width: 6; }
-  .enemy polygon { fill: #7c4dff; stroke: #eae6f5; stroke-width: 2; }
-  .windup-bg { fill: #2a2636; stroke: #3a3550; stroke-width: 1; }
-  .windup-fill { fill: #e5484d; }
 
   /* End screens */
   .end-screen h1 { font-size: 40px; margin-bottom: 12px; }
@@ -93,9 +122,9 @@ const CONFIG = {
   staggerOnCast: true,
   wrongFlashDurationMs: 200,
   shapeFlashDurationMs: 500,
-  circleCenter: { x: 280, y: 320 },
-  circleRadius: 190,
-  runeRadius: 34,
+  circleCenter: { x: 300, y: 300 },
+  circleRadius: 215,
+  runeRadius: 44,
   colors: {
     background: "#141018",
     runeUnmatched: "#3a3550",
@@ -106,6 +135,7 @@ const CONFIG = {
     wrongFlash: "rgba(229,72,77,0.35)",
     heartFull: "#e5484d",
     heartEmpty: "#3a3540",
+    hero: "#5ecf8f",
     enemy: "#7c4dff",
     windupFill: "#e5484d",
   },
@@ -442,23 +472,33 @@ function renderCombatFull() {
     )
     .join("");
 
+  // DECISION: hero visual is a simple pentagon shape (spec defines no hero art;
+  // banner layout calls for a visible combatant on the left).
   app.innerHTML = `
     <div class="screen combat-screen" id="combat-root">
-      <div class="hud">
-        <div class="hearts" id="hearts"></div>
+      <div class="banner">
+        <div class="combatant hero-side">
+          <svg class="fighter" viewBox="0 0 120 120">
+            <polygon class="hero-shape" points="60,10 110,48 91,110 29,110 10,48"></polygon>
+          </svg>
+          <div class="stats">
+            <div class="hearts" id="hearts"></div>
+          </div>
+        </div>
         <div class="mode-label" id="mode-label"></div>
-        <div class="enemy-hp" id="enemy-hp"></div>
+        <div class="combatant enemy-side">
+          <svg class="fighter" viewBox="0 0 120 120">
+            <polygon class="enemy-shape" points="60,10 110,60 60,110 10,60"></polygon>
+          </svg>
+          <div class="stats">
+            <div class="enemy-hp" id="enemy-hp"></div>
+            <div class="windup-track"><div class="windup-fill" id="windup-fill"></div></div>
+          </div>
+        </div>
       </div>
-      <svg class="arena" viewBox="0 0 900 600">
+      <svg class="arena" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
         ${chordsHtml}
         ${runesHtml}
-        <g class="enemy">
-          <polygon points="680,120 740,180 680,240 620,180"></polygon>
-        </g>
-        <g class="windup">
-          <rect class="windup-bg" x="580" y="260" width="200" height="20"></rect>
-          <rect class="windup-fill" id="windup-fill" x="580" y="260" width="0" height="20"></rect>
-        </g>
       </svg>
     </div>`;
 }
@@ -474,7 +514,7 @@ function patchCombatContinuous(now) {
 
   const windupPct = Math.max(0, Math.min(1, state.windup));
   const fillEl = document.getElementById("windup-fill");
-  if (fillEl) fillEl.setAttribute("width", String(200 * windupPct));
+  if (fillEl) fillEl.style.width = (windupPct * 100).toFixed(2) + "%";
 
   const shapeFlashActive = now < state.shapeFlashUntil;
   document.querySelectorAll(".chord").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
