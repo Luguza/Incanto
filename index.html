@@ -107,6 +107,22 @@
     height: 100%; width: 0%;
     background: linear-gradient(90deg, #a83a49, #e5484d, #f2784e);
   }
+  .windup-track.warp-slow .windup-fill { background: linear-gradient(90deg, #3d6fb8, #4d9fff); }
+  .windup-track.warp-freeze .windup-fill { background: #4d9fff; }
+
+  /* Time-warp feedback while a rune is selected */
+  .time-veil {
+    position: absolute; inset: 0; pointer-events: none; z-index: 1;
+    opacity: 0; transition: opacity 120ms linear;
+  }
+  .time-veil.slowmo { opacity: 1; background: radial-gradient(ellipse at center, rgba(77, 159, 255, 0.05), rgba(77, 159, 255, 0.16)); }
+  .time-veil.freeze { opacity: 1; background: radial-gradient(ellipse at center, rgba(77, 159, 255, 0.10), rgba(77, 159, 255, 0.26)); }
+  .time-chip {
+    font-size: clamp(11px, 3vw, 13px); font-weight: 700; letter-spacing: 0.5px;
+    visibility: hidden; min-height: 1.2em;
+  }
+  .time-chip.rt { visibility: visible; color: #e5484d; }
+  .time-chip.warped { visibility: visible; color: #8fc2ff; }
 
   svg.arena {
     flex: 1 1 auto;
@@ -713,9 +729,11 @@ function renderCombatFull() {
         <div class="hearts" id="hearts"></div>
         <div class="stats">
           <div class="enemy-hp" id="enemy-hp"></div>
-          <div class="windup-track"><div class="windup-fill" id="windup-fill"></div></div>
+          <div class="windup-track" id="windup-track"><div class="windup-fill" id="windup-fill"></div></div>
+          <div class="time-chip" id="time-chip"></div>
         </div>
       </div>
+      <div class="time-veil" id="time-veil"></div>
       <div class="combat-mode-row">
         <button class="mode-btn" id="mode-label" onclick="cycleMode()"></button>
       </div>
@@ -739,6 +757,32 @@ function patchCombatContinuous(now) {
   const windupPct = Math.max(0, Math.min(1, state.windup));
   const fillEl = document.getElementById("windup-fill");
   if (fillEl) fillEl.style.width = (windupPct * 100).toFixed(2) + "%";
+
+  // Time-warp feedback: while a rune is selected, show what time is doing.
+  const selected = state.selectedRuneId !== null;
+  const veil = document.getElementById("time-veil");
+  const chip = document.getElementById("time-chip");
+  const track = document.getElementById("windup-track");
+  let veilClass = "time-veil";
+  let chipClass = "time-chip";
+  let chipText = "";
+  let trackClass = "windup-track";
+  if (selected) {
+    if (state.mode === "SLOW_MO") {
+      veilClass += " slowmo"; chipClass += " warped"; trackClass += " warp-slow";
+      chipText = `TIME ×${CONFIG.slowMoFactor}`;
+    } else if (state.mode === "FREEZE") {
+      veilClass += " freeze"; chipClass += " warped"; trackClass += " warp-freeze";
+      chipText = "TIME FROZEN";
+    } else {
+      chipClass += " rt";
+      chipText = "TIME ×1 — STILL WINDING UP!";
+    }
+  }
+  veil.className = veilClass;
+  chip.className = chipClass;
+  chip.textContent = chipText;
+  track.className = trackClass;
 
   const shapeFlashActive = now < state.shapeFlashUntil;
   document.querySelectorAll(".chord, .chord-glow").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
