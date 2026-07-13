@@ -71,12 +71,14 @@
   }
   .combat-screen.wrong-flash::after { background: rgba(229, 72, 77, 0.35); }
 
-  svg.scene {
+  canvas.scene {
     flex: 0 0 auto;
     display: block;
     width: 100%;
-    aspect-ratio: 160 / 72;
+    aspect-ratio: 240 / 108;
     max-height: 28vh;
+    object-fit: cover;
+    image-rendering: pixelated;
     background: #17131e;
   }
   .hud-under {
@@ -202,40 +204,61 @@ const CONFIG = {
     windupFill: "#e5484d",
     // Pixel-art dungeon scene palettes (char -> fill, "." = transparent)
     dungeon: {
-      mortar: "#1c1723",
-      brickA: "#2e2739",
-      brickB: "#352d42",
-      floorDark: "#211b2b",
+      mortar: "#191420",
+      brickShades: ["#2e2739", "#352d42", "#2a2335", "#332b40"],
+      brickCrack: "#211a2b",
+      moss: "#3d5240",
+      mossDark: "#31422f",
+      floorDark: "#1e1828",
       slabA: "#2b2436",
       slabB: "#251f30",
+      slabEdge: "#3c3350",
+      torchMetal: "#4e4863",
       torchWood: "#6b4a2e",
-      flameOuter: "#e57e3a",
-      flameInner: "#f2c14e",
+      flame: ["#a8432c", "#e5673a", "#f2a83a", "#ffe28a", "#fff7d9"],
+      glowRGB: "242, 168, 58",
+      glowAlpha: 0.18,
+      vignette: "rgba(10, 7, 15, 0.45)",
     },
     mage: {
-      A: "#7c4dff", // hat & shoulders
-      B: "#f2c14e", // hat band / trim
-      S: "#e8b48a", // skin
-      E: "#141018", // eyes
-      R: "#5a3bd6", // robe
-      D: "#42289e", // robe shadow / boots
-      W: "#8a5a33", // staff
-      Y: "#ffe28a", // orb core
-      G: "#f2a83a", // orb glow
+      o: "#231647", // outline
+      A: "#7c4dff", // hat/robe mid
+      a: "#5a35c8", // hat/robe shade
+      h: "#9d78ff", // highlight
+      B: "#f2c14e", // gold trim
+      b: "#b8862c", // gold shade
+      S: "#ecc39a", // skin
+      s: "#c99a72", // skin shade
+      E: "#231647", // eyes
+      W: "#e5e0f0", // beard
+      w: "#b0a8c8", // beard shade
+      R: "#6742e0", // robe mid
+      r: "#4c2fae", // robe shade
+      D: "#38217e", // robe dark / boots
+      T: "#8a5a33", // staff wood
+      t: "#5f3c20", // staff wood dark
+      Y: "#fff1b0", // orb core
+      y: "#f2a83a", // orb rim
     },
     skeleton: {
-      W: "#e8e4da", // bone
-      K: "#141018", // eye sockets
-      G: "#a09a8c", // bone shadow
+      o: "#26232e", // outline
+      W: "#e8e4da", // bone light
+      G: "#b8b2a4", // bone mid
+      g: "#8a8478", // bone dark
+      K: "#141018", // socket
+      R: "#e5484d", // eye glow
     },
     skeletonHit: {
-      W: "#fff3d0", K: "#fff3d0", G: "#ffd98a", // white-hot flash silhouette
+      o: "#ffd98a", W: "#fff7dc", G: "#ffefc0", g: "#ffd98a", K: "#fff7dc", R: "#ffffff",
     },
     fireball: {
       C: "#fff7d9", // core
-      Y: "#f2c14e", // inner
+      Y: "#ffe28a", // inner
+      y: "#f2a83a", // mid
       O: "#e5673a", // outer
       T: "#a8432c", // trail
+      glowRGB: "242, 168, 58",
+      glowAlpha: 0.3,
     },
   },
 };
@@ -322,136 +345,283 @@ function shuffleArray(arr) {
 
 // ---------------------------------------------------------------------------
 // Pixel-art dungeon scene.
-// DECISION: pixel art is drawn as 1x1 SVG rects from character maps (no image
-// assets, keeps the single-file constraint); the scene is static per the
-// no-animations rule. Scene viewBox is 160x72 units, 1 unit = 1 "pixel".
+// DECISION: pixel art is authored as character maps but rendered to a <canvas>
+// at a fixed 240x108 native resolution and upscaled with
+// image-rendering: pixelated. The static scene (dungeon + fighters) is drawn
+// once to an offscreen canvas; each frame just blits it and overlays dynamic
+// effects (fireball, hit flash). No image assets; single-file constraint holds.
 // ---------------------------------------------------------------------------
+const SCENE_W = 240;
+const SCENE_H = 108;
+const FLOOR_Y = 84;
+const MAGE_POS = { x: 30, y: FLOOR_Y - 32 };
+const SKEL_POS = { x: 186, y: FLOOR_Y - 31 };
+const STAFF_TIP = { x: MAGE_POS.x + 20, y: MAGE_POS.y + 14 }; // the staff orb
+const SKEL_CHEST = { x: SKEL_POS.x + 10, y: SKEL_POS.y + 14 };
+
 const MAGE_SPRITE = [
-  ".......A........",
-  "......AAA.......",
-  "......AAA.......",
-  ".....AAAAA......",
-  ".....AAAAA......",
-  "....AAAAAAA.....",
-  "...AAAAAAAAA....",
-  "..BBBBBBBBBBB...",
-  ".....SSSSS......",
-  ".....SESES..Y...",
-  ".....SSSSS.GYG..",
-  "......SSS...Y...",
-  ".....RRRRR..W...",
-  "....RRRRRRR.W...",
-  "....RRRRRRR.W...",
-  "...RRRRRRRRWW...",
-  "...RRRRRRRR.W...",
-  "...RRRRRRRR.W...",
-  "..RRRRRRRRR.W...",
-  "..RRRRRRRRR.W...",
-  "..RRRRRRRRR.W...",
-  "..DDDDDDDDD.W...",
-  "...DD...DD..W...",
-  "...DD...DD..W...",
+  "..............o.........",
+  ".............oho........",
+  ".............ohao.......",
+  "............ohAao.......",
+  "............ohAaao......",
+  "...........ohAAaao......",
+  "...........ohAAaaao.....",
+  "..........ohAAAaaao.....",
+  "..........ohAAAaaaao....",
+  ".........ohAAAAaaaao....",
+  "......oohhAAAAAaaaoo....",
+  ".....oBBBBBBBBBBBBBBo...",
+  "......oobSSSSSsoo.o.....",
+  "........oSESSSEso..yYy..",
+  "........oSSSSSsso..YYY..",
+  ".......oWSSssssWo..yYy..",
+  ".......oWWWWWWWwo...oto.",
+  "......oRWWWWWWwo....oto.",
+  ".....ohRRoWWWwo.....oTo.",
+  "....ohRRRRowwo......oTo.",
+  "....ohRRRRRRo.......oTo.",
+  "...ohRRRRRRRRo......oTo.",
+  "...ohRRRRRRRRRoo...oTTo.",
+  "...oRRRRRRRRRRRSso.oTo..",
+  "..ohRRRRRRRRRRRoSsoTo...",
+  "..ohRRRRRRRRRRRooSTo....",
+  "..oRRRRRRRRRRRRo.oTo....",
+  "..orRRRRRRRRRRro.oTo....",
+  ".oBBBBBBBBBBBBBBooTo....",
+  ".obbbbbbbbbbbbbbo.oTo...",
+  ".orrrrrrrrrrrrrro.oTo...",
+  ".oDDDDDDDDDDDDDDo.oTo...",
+  "..oDDoo....ooDDo..oTo...",
+  "..oooo......oooo..ooo...",
 ];
 
 const SKELETON_SPRITE = [
-  ".....WWWWW......",
-  "....WWWWWWW.....",
-  "....WWWWWWW.....",
-  "....KWWKWWW.....",
-  "....WWWWWWW.....",
-  ".....WGWGW......",
-  ".....WWWWW......",
-  "......GGG.......",
-  ".......W........",
-  "....WWWWWWW.....",
-  "...W...W...W....",
-  "...W.WWWWW.W....",
-  "...W.WGWGW.W....",
-  "...W.WWWWW.W....",
-  "...W.WGWGW.W....",
-  "..WW.WWWWW.WW...",
-  ".....WWWWW......",
-  "......GGG.......",
-  ".....WW.WW......",
-  ".....W...W......",
-  ".....W...W......",
-  ".....W...W......",
-  "....WW...WW.....",
-  "................",
+  "......ooooo.........",
+  ".....oWWWWWo........",
+  "....oWWWWWWWo.......",
+  "....oWWWWWWWGo......",
+  "....oKKoWWoKKo......",
+  "....oKRoWWoKRo......",
+  "....oWWWWWWWWo......",
+  ".....oWgWgWGo.......",
+  ".....ogWgWgWo.......",
+  "......oWWWWo........",
+  ".......oGGo.........",
+  "....ooWWWWWWoo......",
+  "...oWGoWWWWoGWo.....",
+  "...oWo.oGGo.oWo.....",
+  "...oWo.WWWW.oWo.....",
+  "...oGoWWggWWoGo.....",
+  "...oWo.WWWW.oWo.....",
+  "...oWoWWggWWoWo.....",
+  "...ogo.WWWW.ogo.....",
+  "..oWWo..GG..oWWo....",
+  "..oWo..oWWo..oWo....",
+  "......oWWWWo........",
+  ".....oWWooWWo.......",
+  ".....oWo..oWo.......",
+  ".....oGo..oGo.......",
+  ".....oWo..oWo.......",
+  ".....oWo..oWo.......",
+  ".....ogo..ogo.......",
+  ".....oWo..oWo.......",
+  "....oWWo..oWWo......",
+  "...oWWWo..oWWWo.....",
+  "...ooooo..ooooo.....",
 ];
 
-function drawSprite(map, palette, ox, oy) {
-  const rects = [];
+const FIREBALL_SPRITE = [
+  "....OOO...",
+  "..TOYYYO..",
+  "TTOYYCCYO.",
+  ".TOyYCCYO.",
+  "..TOYYYOO.",
+  "....OOO...",
+];
+
+function drawSpritePx(ctx, map, palette, ox, oy) {
   for (let y = 0; y < map.length; y++) {
     for (let x = 0; x < map[y].length; x++) {
       const c = map[y][x];
       if (c !== "." && palette[c]) {
-        rects.push(`<rect x="${ox + x}" y="${oy + y}" width="1" height="1" fill="${palette[c]}"/>`);
+        ctx.fillStyle = palette[c];
+        ctx.fillRect(ox + x, oy + y, 1, 1);
       }
     }
   }
-  return rects.join("");
 }
 
-function buildSceneSVG() {
+// Deterministic per-brick hash so detail placement is stable across rebuilds
+function brickHash(a, b) {
+  let h = (a * 73856093) ^ (b * 19349663);
+  h = (h ^ (h >> 13)) * 1274126177;
+  return Math.abs(h ^ (h >> 16));
+}
+
+// Pixel-granular radial glow with linear falloff, blended additively so it
+// brightens the wall instead of muddying it
+function drawGlow(ctx, cx, cy, radius, rgb, maxAlpha) {
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (let py = -radius; py <= radius; py++) {
+    for (let px = -radius; px <= radius; px++) {
+      const dist = Math.sqrt(px * px + py * py);
+      if (dist > radius) continue;
+      const a = maxAlpha * (1 - dist / radius);
+      if (a < 0.015) continue;
+      ctx.fillStyle = `rgba(${rgb}, ${a.toFixed(3)})`;
+      ctx.fillRect(cx + px, cy + py, 1, 1);
+    }
+  }
+  ctx.restore();
+}
+
+let sceneStaticCanvas = null;
+
+function buildStaticScene() {
   const d = CONFIG.colors.dungeon;
-  const parts = [];
+  const cv = document.createElement("canvas");
+  cv.width = SCENE_W;
+  cv.height = SCENE_H;
+  const ctx = cv.getContext("2d");
 
-  // Brick wall: mortar base, then offset brick courses
-  parts.push(`<rect x="0" y="0" width="160" height="58" fill="${d.mortar}"/>`);
-  for (let row = 0; row * 6 < 58; row++) {
-    const y = row * 6;
-    const offset = row % 2 === 0 ? 0 : -6;
-    for (let col = 0; col * 12 + offset < 160; col++) {
-      const x = col * 12 + offset;
-      const shade = (row + col) % 3 === 0 ? d.brickB : d.brickA;
-      parts.push(`<rect x="${x}" y="${y}" width="11" height="5" fill="${shade}"/>`);
+  // Wall: mortar base + brick courses with deterministic shade variation
+  ctx.fillStyle = d.mortar;
+  ctx.fillRect(0, 0, SCENE_W, FLOOR_Y);
+  const BW = 14, BH = 7;
+  for (let row = 0; row * BH < FLOOR_Y; row++) {
+    const y = row * BH;
+    const offset = row % 2 === 0 ? 0 : -Math.floor(BW / 2);
+    for (let col = 0; col * BW + offset < SCENE_W; col++) {
+      const x = col * BW + offset;
+      const h = brickHash(row, col);
+      ctx.fillStyle = d.brickShades[h % d.brickShades.length];
+      ctx.fillRect(x, y, BW - 1, BH - 1);
+      // top-edge highlight for depth
+      ctx.fillStyle = "rgba(255,255,255,0.03)";
+      ctx.fillRect(x, y, BW - 1, 1);
+      // occasional crack
+      if (h % 7 === 0) {
+        ctx.fillStyle = d.brickCrack;
+        const cx = x + 2 + (h % (BW - 5));
+        ctx.fillRect(cx, y + 1, 1, 2);
+        ctx.fillRect(cx + 1, y + 3, 1, 2);
+      }
+      // moss creeps up the lower wall
+      if (y > FLOOR_Y - 28 && h % 5 === 0) {
+        ctx.fillStyle = h % 2 === 0 ? d.moss : d.mossDark;
+        ctx.fillRect(x + (h % (BW - 3)), y + BH - 2, 2, 1);
+        ctx.fillRect(x + (h % (BW - 4)), y + BH - 3, 1, 1);
+      }
     }
   }
 
-  // Floor: dark base with offset slabs
-  parts.push(`<rect x="0" y="58" width="160" height="14" fill="${d.floorDark}"/>`);
-  for (let row = 0; row < 2; row++) {
-    const y = 58 + row * 7;
-    const offset = row % 2 === 0 ? 0 : -8;
-    for (let col = 0; col * 17 + offset < 160; col++) {
-      const x = col * 17 + offset;
-      const shade = (row + col) % 2 === 0 ? d.slabA : d.slabB;
-      parts.push(`<rect x="${x}" y="${y + 1}" width="16" height="6" fill="${shade}"/>`);
+  // Floor: dark base, slab rows with edge highlights (subtle perspective:
+  // nearer slabs are taller)
+  ctx.fillStyle = d.floorDark;
+  ctx.fillRect(0, FLOOR_Y, SCENE_W, SCENE_H - FLOOR_Y);
+  ctx.fillStyle = d.slabEdge;
+  ctx.fillRect(0, FLOOR_Y, SCENE_W, 1);
+  let y = FLOOR_Y + 1;
+  let slabH = 7;
+  let rowIdx = 0;
+  while (y < SCENE_H) {
+    const offset = rowIdx % 2 === 0 ? 0 : -11;
+    const slabW = 24;
+    for (let col = 0; col * slabW + offset < SCENE_W; col++) {
+      const x = col * slabW + offset;
+      const h = brickHash(rowIdx + 100, col);
+      ctx.fillStyle = h % 2 === 0 ? d.slabA : d.slabB;
+      ctx.fillRect(x, y, slabW - 1, slabH - 1);
+      ctx.fillStyle = "rgba(255,255,255,0.04)";
+      ctx.fillRect(x, y, slabW - 1, 1);
     }
+    y += slabH;
+    slabH += 3;
+    rowIdx++;
   }
 
-  // Wall torches (static flame)
-  for (const tx of [48, 108]) {
-    parts.push(`<rect x="${tx}" y="24" width="2" height="5" fill="${d.torchWood}"/>`);
-    parts.push(`<rect x="${tx - 1}" y="21" width="4" height="3" fill="${d.flameOuter}"/>`);
-    parts.push(`<rect x="${tx}" y="19" width="2" height="3" fill="${d.flameInner}"/>`);
+  // Torches with layered flames and a warm glow halo
+  for (const tx of [68, 162]) {
+    const ty = 34;
+    const fl = d.flame;
+    drawGlow(ctx, tx, ty - 2, 17, d.glowRGB, d.glowAlpha);
+    // metal sconce + wood
+    ctx.fillStyle = d.torchMetal;
+    ctx.fillRect(tx - 1, ty + 6, 4, 2);
+    ctx.fillStyle = d.torchWood;
+    ctx.fillRect(tx, ty + 2, 2, 6);
+    // flame: layered teardrop
+    ctx.fillStyle = fl[1];
+    ctx.fillRect(tx - 1, ty - 4, 4, 5);
+    ctx.fillRect(tx, ty - 6, 2, 2);
+    ctx.fillStyle = fl[2];
+    ctx.fillRect(tx, ty - 4, 2, 4);
+    ctx.fillRect(tx, ty - 5, 1, 1);
+    ctx.fillStyle = fl[3];
+    ctx.fillRect(tx, ty - 2, 2, 2);
+    ctx.fillStyle = fl[4];
+    ctx.fillRect(tx, ty - 1, 1, 1);
   }
 
-  // Fighters: mage stands on the floor at left, skeleton at right
-  parts.push(drawSprite(MAGE_SPRITE, CONFIG.colors.mage, 18, 36));
-  parts.push(drawSprite(SKELETON_SPRITE, CONFIG.colors.skeleton, 124, 36));
+  // Fighters
+  drawSpritePx(ctx, MAGE_SPRITE, CONFIG.colors.mage, MAGE_POS.x, MAGE_POS.y);
+  drawSpritePx(ctx, SKELETON_SPRITE, CONFIG.colors.skeleton, SKEL_POS.x, SKEL_POS.y);
 
-  // Cast effects, hidden until a triangle completes: a fireball that flies
-  // from the mage's staff to the skeleton, and a white-hot hit silhouette.
+  // Soft shadows under the fighters
+  ctx.fillStyle = "rgba(10, 7, 15, 0.5)";
+  ctx.fillRect(MAGE_POS.x + 2, FLOOR_Y + 1, 20, 2);
+  ctx.fillRect(SKEL_POS.x + 3, FLOOR_Y + 1, 14, 2);
+
+  // Vignette: darken top of the wall and bottom of the floor
+  ctx.fillStyle = d.vignette;
+  ctx.fillRect(0, 0, SCENE_W, 5);
+  ctx.fillRect(0, 0, SCENE_W, 2);
+  ctx.fillRect(0, SCENE_H - 4, SCENE_W, 4);
+
+  return cv;
+}
+
+function renderScene(now) {
+  const cv = document.getElementById("scene");
+  if (!cv) return;
+  const ctx = cv.getContext("2d");
+  if (!sceneStaticCanvas) sceneStaticCanvas = buildStaticScene();
+  ctx.drawImage(sceneStaticCanvas, 0, 0);
+
+  // Fireball cast: staff -> skeleton on wall-clock time (presentation only,
+  // FREEZE doesn't stop it), then a white-hot hit flash with a burst ring.
+  if (!state.fireballAt) return;
+  const t = now - state.fireballAt;
+  const flight = CONFIG.fireballFlightMs;
   const f = CONFIG.colors.fireball;
-  parts.push(
-    `<g id="fireball" opacity="0">` +
-      `<rect x="-6" y="0" width="2" height="1" fill="${f.T}"/>` +
-      `<rect x="-4" y="-1" width="1" height="1" fill="${f.T}"/>` +
-      `<rect x="-4" y="1" width="1" height="1" fill="${f.T}"/>` +
-      `<rect x="-3" y="0" width="1" height="1" fill="${f.O}"/>` +
-      `<rect x="-2" y="-1" width="3" height="3" fill="${f.O}"/>` +
-      `<rect x="-1" y="-2" width="1" height="1" fill="${f.O}"/>` +
-      `<rect x="-1" y="2" width="1" height="1" fill="${f.O}"/>` +
-      `<rect x="-1" y="-1" width="2" height="2" fill="${f.Y}"/>` +
-      `<rect x="0" y="-1" width="1" height="1" fill="${f.C}"/>` +
-      `<rect x="-1" y="0" width="1" height="1" fill="${f.C}"/>` +
-    `</g>`
-  );
-  parts.push(`<g id="skel-hit" opacity="0">${drawSprite(SKELETON_SPRITE, CONFIG.colors.skeletonHit, 124, 36)}</g>`);
-
-  return `<svg class="scene" viewBox="0 0 160 72" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges">${parts.join("")}</svg>`;
+  if (t <= flight) {
+    const p = t / flight;
+    const x = STAFF_TIP.x + (SKEL_CHEST.x - STAFF_TIP.x) * p;
+    const y = STAFF_TIP.y + (SKEL_CHEST.y - STAFF_TIP.y) * p - Math.sin(p * Math.PI) * 12;
+    drawGlow(ctx, Math.round(x), Math.round(y), 9, f.glowRGB, f.glowAlpha);
+    drawSpritePx(ctx, FIREBALL_SPRITE, f, Math.round(x) - 5, Math.round(y) - 3);
+  } else if (t <= flight + CONFIG.fireballImpactMs) {
+    const q = (t - flight) / CONFIG.fireballImpactMs;
+    if (Math.floor((t - flight) / 70) % 2 === 0) {
+      drawSpritePx(ctx, SKELETON_SPRITE, CONFIG.colors.skeletonHit, SKEL_POS.x, SKEL_POS.y);
+    }
+    // expanding burst ring
+    const r = Math.round(3 + q * 12);
+    ctx.fillStyle = f.y;
+    ctx.fillRect(SKEL_CHEST.x - r, SKEL_CHEST.y, 2, 1);
+    ctx.fillRect(SKEL_CHEST.x + r, SKEL_CHEST.y, 2, 1);
+    ctx.fillRect(SKEL_CHEST.x, SKEL_CHEST.y - r, 1, 2);
+    ctx.fillRect(SKEL_CHEST.x, SKEL_CHEST.y + r, 1, 2);
+    ctx.fillStyle = f.O;
+    ctx.fillRect(SKEL_CHEST.x - r + 2, SKEL_CHEST.y - r + 2, 1, 1);
+    ctx.fillRect(SKEL_CHEST.x + r - 2, SKEL_CHEST.y - r + 2, 1, 1);
+    ctx.fillRect(SKEL_CHEST.x - r + 2, SKEL_CHEST.y + r - 2, 1, 1);
+    ctx.fillRect(SKEL_CHEST.x + r - 2, SKEL_CHEST.y + r - 2, 1, 1);
+  } else {
+    state.fireballAt = 0;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -757,7 +927,7 @@ function renderCombatFull() {
 
   app.innerHTML = `
     <div class="screen combat-screen" id="combat-root">
-      ${buildSceneSVG()}
+      <canvas class="scene" id="scene" width="${SCENE_W}" height="${SCENE_H}"></canvas>
       <div class="hud-under">
         <div class="hearts" id="hearts"></div>
         <div class="stats">
@@ -823,34 +993,7 @@ function patchCombatContinuous(now) {
   chip.textContent = chipText;
   track.className = trackClass;
 
-  // Fireball cast animation: staff -> skeleton, then a white-hot hit flash.
-  // Runs on wall-clock time; it's presentation, not gameplay, so FREEZE
-  // doesn't stop it.
-  const fb = document.getElementById("fireball");
-  const skelHit = document.getElementById("skel-hit");
-  if (fb && skelHit) {
-    if (state.fireballAt) {
-      const t = now - state.fireballAt;
-      const flight = CONFIG.fireballFlightMs;
-      if (t <= flight) {
-        const p = t / flight;
-        const x = 33 + (126 - 33) * p;
-        const y = 46 - Math.sin(p * Math.PI) * 9;
-        fb.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
-        fb.setAttribute("opacity", "1");
-        skelHit.setAttribute("opacity", "0");
-      } else if (t <= flight + CONFIG.fireballImpactMs) {
-        fb.setAttribute("opacity", "0");
-        skelHit.setAttribute("opacity", Math.floor((t - flight) / 70) % 2 === 0 ? "1" : "0.4");
-      } else {
-        skelHit.setAttribute("opacity", "0");
-        state.fireballAt = 0;
-      }
-    } else {
-      fb.setAttribute("opacity", "0");
-      skelHit.setAttribute("opacity", "0");
-    }
-  }
+  renderScene(now);
 
   const shapeFlashActive = now < state.shapeFlashUntil;
   document.querySelectorAll(".chord, .chord-glow").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
