@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rune Circle Combat — Prototype</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #141018;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #f5f2ff;
+    overflow: hidden;
+    user-select: none;
+  }
+  #app { width: 100%; height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .screen { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+
+  /* Loadout screen */
+  .loadout-screen h1 { font-size: 28px; margin-bottom: 24px; }
+  .cards { display: flex; gap: 20px; margin-bottom: 32px; }
+  .card {
+    background: #211c2c; border: 1px solid #3a3550; border-radius: 10px;
+    padding: 18px 22px; min-width: 150px; text-align: center;
+  }
+  .card .it { font-size: 20px; font-weight: 600; color: #f2c14e; }
+  .card .dash { color: #7a7391; margin: 6px 0; }
+  .card .en { font-size: 18px; color: #eae6f5; }
+  .fight-btn {
+    font-size: 20px; padding: 12px 36px; border-radius: 8px; border: none;
+    background: #f2c14e; color: #141018; font-weight: 700; cursor: pointer;
+  }
+  .fight-btn:hover { background: #ffd571; }
+  .mode-hint { margin-top: 18px; color: #8a8398; font-size: 14px; }
+
+  /* Combat screen */
+  .combat-screen { position: relative; }
+  .combat-screen::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: rgba(229, 72, 77, 0); transition: none;
+  }
+  .combat-screen.wrong-flash::after { background: rgba(229, 72, 77, 0.35); }
+  .hud {
+    position: absolute; top: 16px; left: 24px; right: 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 16px; z-index: 2;
+  }
+  .hud .mode-label { font-weight: 700; letter-spacing: 1px; color: #f2c14e; font-size: 18px; }
+  .heart { font-size: 22px; margin-right: 2px; }
+  .heart.full { color: #e5484d; }
+  .heart.empty { color: #3a3540; }
+
+  svg.arena { width: 900px; height: 600px; max-width: 95vw; max-height: 80vh; }
+  .rune circle { stroke: #eae6f5; stroke-width: 2; cursor: pointer; transition: fill 80ms linear; }
+  .rune.unmatched circle { fill: #3a3550; }
+  .rune.selected circle { fill: #f2c14e; }
+  .rune.matched circle { fill: #5ecf8f; }
+  .rune text {
+    fill: #f5f2ff; font-size: 12px; text-anchor: middle; dominant-baseline: central;
+    pointer-events: none;
+  }
+  .chord { stroke: #f2c14e; stroke-width: 3; }
+  .chord.flash { stroke: #ffffff; stroke-width: 6; }
+  .enemy polygon { fill: #7c4dff; stroke: #eae6f5; stroke-width: 2; }
+  .windup-bg { fill: #2a2636; stroke: #3a3550; stroke-width: 1; }
+  .windup-fill { fill: #e5484d; }
+
+  /* End screens */
+  .end-screen h1 { font-size: 40px; margin-bottom: 12px; }
+  .end-screen p { font-size: 18px; color: #cfc9de; margin: 4px 0; }
+  .end-screen .hint { margin-top: 20px; color: #8a8398; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// CONFIG — every gameplay number, flag, and color lives here.
+// ---------------------------------------------------------------------------
+const CONFIG = {
+  windupDurationMs: 8000,
+  slowMoFactor: 0.3,
+  playerHearts: 5,
+  enemyHP: 3,
+  heartLossPerWrongMatch: 1,
+  heartLossPerFullWindup: 1,
+  enemyDamagePerCast: 1,
+  runeCount: 6,
+  pairsPerLoadout: 3,
+  staggerOnCast: true,
+  wrongFlashDurationMs: 200,
+  shapeFlashDurationMs: 500,
+  circleCenter: { x: 280, y: 320 },
+  circleRadius: 190,
+  runeRadius: 34,
+  colors: {
+    background: "#141018",
+    runeUnmatched: "#3a3550",
+    runeSelected: "#f2c14e",
+    runeMatched: "#5ecf8f",
+    chord: "#f2c14e",
+    chordFlash: "#ffffff",
+    wrongFlash: "rgba(229,72,77,0.35)",
+    heartFull: "#e5484d",
+    heartEmpty: "#3a3540",
+    enemy: "#7c4dff",
+    windupFill: "#e5484d",
+  },
+};
+
+const MODE_ORDER = ["REAL_TIME", "SLOW_MO", "FREEZE"];
+const MODE_LABELS = { REAL_TIME: "REAL-TIME", SLOW_MO: "SLOW-MO", FREEZE: "FREEZE" };
+
+// ---------------------------------------------------------------------------
+// Word pool — 12 A1 Italian-English pairs, drawn in order and cycled.
+// ---------------------------------------------------------------------------
+const WORD_POOL = [
+  { it: "la casa", en: "house" },
+  { it: "il gatto", en: "cat" },
+  { it: "il cane", en: "dog" },
+  { it: "il pane", en: "bread" },
+  { it: "la mela", en: "apple" },
+  { it: "l'acqua", en: "water" },
+  { it: "il libro", en: "book" },
+  { it: "la sedia", en: "chair" },
+  { it: "il tavolo", en: "table" },
+  { it: "la porta", en: "door" },
+  { it: "la finestra", en: "window" },
+  { it: "il sole", en: "sun" },
+];
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let state = null;
+
+function freshState() {
+  return {
+    screen: "loadout",      // loadout | combat | victory | defeat
+    mode: "REAL_TIME",
+    runes: [],               // {id, pairId, lang, word, x, y, matchState}
+    selectedRuneId: null,
+    chords: [],              // {x1,y1,x2,y2,pairId}
+    currentPairs: [],
+    hearts: CONFIG.playerHearts,
+    enemyHP: CONFIG.enemyHP,
+    windup: 0,
+    poolIndex: 0,
+    wrongMatchCount: 0,
+    clockMs: 0,               // internal clock warped by mode+selection, drives windup + instrumentation
+    realFightStartMs: 0,      // wall-clock time, used only for the end-screen summary
+    pairAvailableAtClockMs: {},
+    wrongFlashUntil: 0,
+    shapeFlashUntil: 0,
+    pendingRefill: false,
+    _structuralDirty: false, // set true whenever runes/chords/screen need a full DOM rebuild
+  };
+}
+
+function newGame() {
+  const preservedMode = state ? state.mode : "REAL_TIME"; // DECISION: mode is a tester tool, preserved across restart
+  state = freshState();
+  state.mode = preservedMode;
+  state.loadoutPairs = drawLoadout();
+}
+
+// ---------------------------------------------------------------------------
+// Geometry
+// ---------------------------------------------------------------------------
+function layoutCircle(n) {
+  // DECISION: angle slots are fixed (stable layout); only word-to-slot assignment is shuffled.
+  const { x: cx, y: cy } = CONFIG.circleCenter;
+  const r = CONFIG.circleRadius;
+  const positions = [];
+  for (let i = 0; i < n; i++) {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    positions.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+  }
+  return positions;
+}
+
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ---------------------------------------------------------------------------
+// Word pool / circle population
+// ---------------------------------------------------------------------------
+function drawLoadout() {
+  const pairs = [];
+  for (let i = 0; i < CONFIG.pairsPerLoadout; i++) {
+    const idx = (state.poolIndex + i) % WORD_POOL.length;
+    pairs.push({ id: idx, it: WORD_POOL[idx].it, en: WORD_POOL[idx].en });
+  }
+  state.poolIndex = (state.poolIndex + CONFIG.pairsPerLoadout) % WORD_POOL.length;
+  return pairs;
+}
+
+function populateCircle(pairs) {
+  const slots = layoutCircle(CONFIG.runeCount);
+  const contents = [];
+  pairs.forEach((p) => {
+    contents.push({ pairId: p.id, lang: "it", word: p.it });
+    contents.push({ pairId: p.id, lang: "en", word: p.en });
+  });
+  shuffleArray(contents);
+
+  state.runes = contents.map((c, i) => ({
+    id: i,
+    pairId: c.pairId,
+    lang: c.lang,
+    word: c.word,
+    x: slots[i].x,
+    y: slots[i].y,
+    matchState: "unmatched",
+  }));
+  state.chords = [];
+  state.selectedRuneId = null;
+  state.currentPairs = pairs;
+  pairs.forEach((p) => {
+    state.pairAvailableAtClockMs[p.id] = state.clockMs;
+  });
+  state._structuralDirty = true;
+}
+
+function beginCombat() {
+  state.screen = "combat";
+  state.realFightStartMs = performance.now();
+  populateCircle(state.loadoutPairs);
+}
+
+// ---------------------------------------------------------------------------
+// Combat logic
+// ---------------------------------------------------------------------------
+function handleRuneClick(id) {
+  if (state.screen !== "combat") return;
+  const rune = state.runes.find((r) => r.id === id);
+  if (!rune) return;
+  if (rune.matchState === "matched") return; // DECISION: clicking a matched rune is a no-op
+
+  if (state.selectedRuneId === id) {
+    rune.matchState = "unmatched";
+    state.selectedRuneId = null;
+    state._structuralDirty = true;
+    return;
+  }
+
+  if (state.selectedRuneId === null) {
+    rune.matchState = "selected";
+    state.selectedRuneId = id;
+    state._structuralDirty = true;
+    return;
+  }
+
+  const first = state.runes.find((r) => r.id === state.selectedRuneId);
+  const correct = first.pairId === rune.pairId;
+  const now = performance.now();
+  const availableAt = state.pairAvailableAtClockMs[first.pairId] ?? state.clockMs;
+  const secondsAvailable = ((state.clockMs - availableAt) / 1000).toFixed(1);
+  logAttempt(correct, first, rune, secondsAvailable);
+  state._structuralDirty = true;
+
+  if (correct) {
+    first.matchState = "matched";
+    rune.matchState = "matched";
+    state.chords.push({ x1: first.x, y1: first.y, x2: rune.x, y2: rune.y, pairId: rune.pairId });
+    state.selectedRuneId = null;
+    if (state.chords.length >= CONFIG.pairsPerLoadout) {
+      onShapeComplete(now);
+    }
+  } else {
+    state.wrongMatchCount++;
+    first.matchState = "unmatched";
+    state.selectedRuneId = null;
+    state.wrongFlashUntil = now + CONFIG.wrongFlashDurationMs;
+    hitPlayer(CONFIG.heartLossPerWrongMatch);
+  }
+}
+
+function onShapeComplete(now) {
+  // NOTE: per the design's actual geometry, the 3 completed chords are three
+  // straight lines connecting distinct rune positions on the circle — not a
+  // literal triangle polygon. That trio of chords lighting up together *is*
+  // the "shape"; no extra geometry is constructed.
+  state.shapeFlashUntil = now + CONFIG.shapeFlashDurationMs;
+  hitEnemy(CONFIG.enemyDamagePerCast);
+  if (state.screen !== "combat") return; // victory may have just triggered
+  if (CONFIG.staggerOnCast) state.windup = 0;
+  state.pendingRefill = true;
+}
+
+function hitPlayer(n) {
+  state.hearts = Math.max(0, state.hearts - n);
+  if (state.hearts <= 0 && state.screen === "combat") state.screen = "defeat";
+}
+
+function hitEnemy(n) {
+  state.enemyHP = Math.max(0, state.enemyHP - n);
+  if (state.enemyHP <= 0 && state.screen === "combat") state.screen = "victory";
+}
+
+function logAttempt(correct, first, second, secondsAvailable) {
+  console.log(
+    `[${new Date().toISOString()}] mode=${state.mode} pair="${first.word} / ${second.word}" ` +
+    `result=${correct ? "correct" : "wrong"} availableFor=${secondsAvailable}s`
+  );
+}
+
+function cycleMode() {
+  const idx = (MODE_ORDER.indexOf(state.mode) + 1) % MODE_ORDER.length;
+  state.mode = MODE_ORDER[idx];
+}
+
+function restart() {
+  newGame();
+  beginCombat(); // DECISION: restart re-enters combat directly, skipping the one-time loadout screen
+}
+
+// ---------------------------------------------------------------------------
+// Game loop — the only place mode/selection-dependent timing branches exist.
+// ---------------------------------------------------------------------------
+function getEffectiveDt(rawDt) {
+  if (state.selectedRuneId === null) return rawDt; // idle time always runs at full speed, in all 3 modes
+  switch (state.mode) {
+    case "REAL_TIME": return rawDt;
+    case "SLOW_MO": return rawDt * CONFIG.slowMoFactor;
+    case "FREEZE": return 0;
+    default: return rawDt;
+  }
+}
+
+let lastRafNow = null;
+function rafLoop(now) {
+  if (lastRafNow === null) lastRafNow = now;
+  const rawDt = now - lastRafNow;
+  lastRafNow = now;
+
+  if (state.screen === "combat") {
+    const effectiveDt = getEffectiveDt(rawDt);
+    state.clockMs += effectiveDt;
+    state.windup += effectiveDt / CONFIG.windupDurationMs;
+    if (state.windup >= 1) {
+      state.windup = 0;
+      hitPlayer(CONFIG.heartLossPerFullWindup);
+    }
+    if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {
+      state.pendingRefill = false;
+      populateCircle(drawLoadout());
+    }
+  }
+
+  render(now);
+  requestAnimationFrame(rafLoop);
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+// DECISION: the DOM is only rebuilt on actual state changes (screen switch,
+// rune/chord structure change). Continuous per-frame animation (windup bar,
+// flash timers, HUD text) is patched directly on existing nodes instead of
+// replacing the whole tree every rAF tick — rebuilding ~60x/sec would tear
+// down interactive elements (e.g. the Fight button) out from under real
+// clicks, since a click can land in the gap between two rebuilds.
+const app = document.getElementById("app");
+let builtScreen = null;
+
+function render(now) {
+  if (state.screen === "loadout") {
+    if (builtScreen !== "loadout") {
+      renderLoadoutFull();
+      builtScreen = "loadout";
+    }
+    patchLoadoutMode();
+  } else if (state.screen === "combat") {
+    if (builtScreen !== "combat" || state._structuralDirty) {
+      renderCombatFull();
+      builtScreen = "combat";
+      state._structuralDirty = false;
+    }
+    patchCombatContinuous(now);
+  } else {
+    if (builtScreen !== state.screen) {
+      renderEndFull(state.screen === "victory" ? "Victory!" : "Defeat");
+      builtScreen = state.screen;
+    }
+    patchEndMode();
+  }
+}
+
+function renderLoadoutFull() {
+  const cards = state.loadoutPairs
+    .map(
+      (p) => `
+    <div class="card">
+      <div class="it">${p.it}</div>
+      <div class="dash">&mdash;</div>
+      <div class="en">${p.en}</div>
+    </div>`
+    )
+    .join("");
+
+  app.innerHTML = `
+    <div class="screen loadout-screen">
+      <h1>Your runes for this fight</h1>
+      <div class="cards">${cards}</div>
+      <button class="fight-btn" onclick="beginCombat()">Fight</button>
+      <div class="mode-hint" id="loadout-mode-hint"></div>
+    </div>`;
+}
+
+function patchLoadoutMode() {
+  const el = document.getElementById("loadout-mode-hint");
+  if (el) el.textContent = `Mode: ${MODE_LABELS[state.mode]} (press M to change)`;
+}
+
+function heartsHtml() {
+  return Array.from({ length: CONFIG.playerHearts })
+    .map((_, i) => `<span class="heart ${i < state.hearts ? "full" : "empty"}">&#9829;</span>`)
+    .join("");
+}
+
+function renderCombatFull() {
+  const chordsHtml = state.chords
+    .map((c) => `<line x1="${c.x1}" y1="${c.y1}" x2="${c.x2}" y2="${c.y2}" class="chord" />`)
+    .join("");
+
+  const runesHtml = state.runes
+    .map(
+      (r) => `
+    <g class="rune ${r.matchState}" onclick="handleRuneClick(${r.id})">
+      <circle cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius}"></circle>
+      <text x="${r.x}" y="${r.y}">${r.word}</text>
+    </g>`
+    )
+    .join("");
+
+  app.innerHTML = `
+    <div class="screen combat-screen" id="combat-root">
+      <div class="hud">
+        <div class="hearts" id="hearts"></div>
+        <div class="mode-label" id="mode-label"></div>
+        <div class="enemy-hp" id="enemy-hp"></div>
+      </div>
+      <svg class="arena" viewBox="0 0 900 600">
+        ${chordsHtml}
+        ${runesHtml}
+        <g class="enemy">
+          <polygon points="680,120 740,180 680,240 620,180"></polygon>
+        </g>
+        <g class="windup">
+          <rect class="windup-bg" x="580" y="260" width="200" height="20"></rect>
+          <rect class="windup-fill" id="windup-fill" x="580" y="260" width="0" height="20"></rect>
+        </g>
+      </svg>
+    </div>`;
+}
+
+function patchCombatContinuous(now) {
+  const root = document.getElementById("combat-root");
+  if (!root) return;
+
+  root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
+  document.getElementById("hearts").innerHTML = heartsHtml();
+  document.getElementById("mode-label").textContent = `MODE: ${MODE_LABELS[state.mode]}`;
+  document.getElementById("enemy-hp").textContent = `Enemy HP: ${state.enemyHP} / ${CONFIG.enemyHP}`;
+
+  const windupPct = Math.max(0, Math.min(1, state.windup));
+  const fillEl = document.getElementById("windup-fill");
+  if (fillEl) fillEl.setAttribute("width", String(200 * windupPct));
+
+  const shapeFlashActive = now < state.shapeFlashUntil;
+  document.querySelectorAll(".chord").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
+}
+
+function renderEndFull(title) {
+  const elapsed = ((performance.now() - state.realFightStartMs) / 1000).toFixed(1);
+  app.innerHTML = `
+    <div class="screen end-screen">
+      <h1>${title}</h1>
+      <p>Time: ${elapsed}s &mdash; Wrong matches: ${state.wrongMatchCount}</p>
+      <p id="end-mode"></p>
+      <p class="hint">Press R to restart</p>
+    </div>`;
+}
+
+function patchEndMode() {
+  const el = document.getElementById("end-mode");
+  if (el) el.textContent = `Mode: ${MODE_LABELS[state.mode]}`;
+}
+
+// ---------------------------------------------------------------------------
+// Input
+// ---------------------------------------------------------------------------
+window.addEventListener("keydown", (e) => {
+  if (e.key === "m" || e.key === "M") {
+    cycleMode();
+  } else if (e.key === "r" || e.key === "R") {
+    if (state.screen === "victory" || state.screen === "defeat") restart();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Bootstrap
+// ---------------------------------------------------------------------------
+newGame();
+requestAnimationFrame(rafLoop);
+</script>
+</body>
+</html>
