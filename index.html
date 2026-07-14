@@ -203,54 +203,12 @@ const CONFIG = {
     heartFull: "#e5484d",
     heartEmpty: "#3a3540",
     windupFill: "#e5484d",
-    // Pixel-art dungeon scene palettes (char -> fill, "." = transparent)
+    // Dungeon scene effect colors (sprites come from assets/dungeon_tiles.png)
     dungeon: {
-      mortar: "#191420",
-      brickShades: ["#2e2739", "#352d42", "#2a2335", "#332b40"],
-      brickCrack: "#211a2b",
-      moss: "#3d5240",
-      mossDark: "#31422f",
-      floorDark: "#1e1828",
-      slabA: "#2b2436",
-      slabB: "#251f30",
-      slabEdge: "#3c3350",
-      torchMetal: "#4e4863",
-      torchWood: "#6b4a2e",
-      flame: ["#a8432c", "#e5673a", "#f2a83a", "#ffe28a", "#fff7d9"],
+      background: "#17131e",
       glowRGB: "242, 168, 58",
-      glowAlpha: 0.18,
+      glowAlpha: 0.2,
       vignette: "rgba(10, 7, 15, 0.45)",
-    },
-    mage: {
-      o: "#231647", // outline
-      A: "#7c4dff", // hat/robe mid
-      a: "#5a35c8", // hat/robe shade
-      h: "#9d78ff", // highlight
-      B: "#f2c14e", // gold trim
-      b: "#b8862c", // gold shade
-      S: "#ecc39a", // skin
-      s: "#c99a72", // skin shade
-      E: "#231647", // eyes
-      W: "#e5e0f0", // beard
-      w: "#b0a8c8", // beard shade
-      R: "#6742e0", // robe mid
-      r: "#4c2fae", // robe shade
-      D: "#38217e", // robe dark / boots
-      T: "#8a5a33", // staff wood
-      t: "#5f3c20", // staff wood dark
-      Y: "#fff1b0", // orb core
-      y: "#f2a83a", // orb rim
-    },
-    skeleton: {
-      o: "#26232e", // outline
-      W: "#e8e4da", // bone light
-      G: "#b8b2a4", // bone mid
-      g: "#8a8478", // bone dark
-      K: "#141018", // socket
-      R: "#e5484d", // eye glow
-    },
-    skeletonHit: {
-      o: "#ffd98a", W: "#fff7dc", G: "#ffefc0", g: "#ffd98a", K: "#fff7dc", R: "#ffffff",
     },
     fireball: {
       C: "#fff7d9", // core
@@ -346,99 +304,42 @@ function shuffleArray(arr) {
 
 // ---------------------------------------------------------------------------
 // Pixel-art dungeon scene.
-// DECISION: pixel art is authored as character maps, prerendered to offscreen
-// canvases, and composited each frame onto a <canvas> whose backing store is
-// sized for INTEGER device-pixel scaling (a fractional scale makes art pixels
-// render at uneven widths — the "warped" look). The dungeon background is
-// cached; per-frame we blit it and draw the animated bits: fighter idle bobs,
-// torch flame flicker, orb pulse, skeleton eye glints, and the fireball.
+// DECISION: scene art comes from a professional CC0 sprite sheet
+// (assets/dungeon_tiles.png — "16x16 DungeonTileset II" by 0x72, coordinates
+// in assets/tiles_list.txt). Frames are prerendered to offscreen canvases and
+// composited each frame onto a <canvas> whose backing store is sized for
+// INTEGER device-pixel scaling (a fractional scale makes art pixels render at
+// uneven widths — the "warped" look). Idle/fountain animations play from the
+// sheet's own frames; the fireball and glows remain procedural.
 // ---------------------------------------------------------------------------
-const SCENE_H = 108;
-const FLOOR_Y = 88;
+const SCENE_H = 80;   // native art pixels: 3 wall tile rows + 2 floor rows
+const FLOOR_Y = 48;
+const TILE = 16;
 
-const MAGE_SPRITE = [
-  ".............o..............",
-  "............oho.............",
-  "............ohao............",
-  "...........ohAao............",
-  "...........ohAaao...........",
-  "..........ohAAaao...........",
-  "..........ohAAaaao..........",
-  ".........ohAAAaaao..........",
-  ".........ohAAAaaaao.........",
-  "........ohAAAAaaaao...oyyo..",
-  "........ohAAAAaaaaao.oyYYyo.",
-  ".......ohAAAAAaaaaao.yYCCYy.",
-  "......oohhhhAAaaaaoo.oyYYyo.",
-  ".....oBBBBBBBBBBBBBBo.oyyo..",
-  "......oooooooooooooo..oTo...",
-  ".........oSSSSSSo.....oTo...",
-  "........oSSSSSSSSo....oTo...",
-  "........oSESSSSESo....oTo...",
-  "........oSSSsSSSSo....oTo...",
-  ".......oWWosssoWWo....oTo...",
-  ".......oWWWWWWWWWWo...oTo...",
-  "......ohRWWWWWWWWRro..oTo...",
-  "......ohRRWWWWWWRRro..oTo...",
-  ".....ohRRRoWWWWoRRro..oTo...",
-  ".....ohRRRRoWWoRRRroSSoTo...",
-  ".....ohRRRRRoWoRRRroSSoTo...",
-  "....ohRRRRRRRRRRRRro..oTo...",
-  "....ohRRRRRRRRRRRRro..oTo...",
-  "....ohRRRRRRRRRRRRrro.oTo...",
-  "....ohRRRRRRRRRRRRrro.oTo...",
-  "...ohRRRRRRRRRRRRRrro.oTo...",
-  "...ohRRRRRRRRRRRRRrro.oTo...",
-  "...ohRRRRRRRRRRRRRRrrooTo...",
-  "...ohRRRRRRRRRRRRRRrrooTo...",
-  "..ohRRRRRRRRRRRRRRRrrooTo...",
-  "..ohRRRRRRRRRRRRRRRrrooTo...",
-  "..ohRRRRRRRRRRRRRRRrrooTo...",
-  "..oBBBBBBBBBBBBBBBBBBooTo...",
-  "..obbbbbbbbbbbbbbbbbbooTo...",
-  "..oDDDDDDDDDDDDDDDDDDooTo...",
-  "...oDDoo........ooDDo.oTo...",
-  "....ooo..........ooo..ooo...",
-];
-
-const SKELETON_SPRITE = [
-  "......oooooooo..........",
-  ".....oWWWWWWWWo.........",
-  "....oWWWWWWWWWWo........",
-  "....oWWWWWWWWWWo........",
-  "...oWWWWWWWWWWWGo.......",
-  "...oKKoWWWoKKoWGo.......",
-  "...oKRoWWWoKRoWGo.......",
-  "...oWWWWWWWWWWWGo.......",
-  "....oWgWgWgWgWGo........",
-  ".....oWWWWWWWWo.........",
-  "......oooooooo..........",
-  "..........oGGo..........",
-  "......ooWWWWWWWWoo......",
-  ".....oWWoWWWWWWoWWo.....",
-  "....oWWo.oWWWWo.oWWo....",
-  "....oWo.oWWWWWWo.oWo....",
-  "....oWo.....GG...oWo....",
-  "....oWo.oWWWWWWo.oWo....",
-  "....oGo.....GG...oGo....",
-  "....oWo..oWWWWo..oWo....",
-  "....oWo.....GG...oWo....",
-  "....ogo...oWWo...ogo....",
-  ".....oWo..oGGo..oWo.....",
-  ".....oWWo.oWWo.oWWo.....",
-  "......ooo.WWWW.ooo......",
-  ".........oWWWWo.........",
-  ".........oWooWo.........",
-  ".........oWo.oWo........",
-  ".........oGo.oGo........",
-  ".........oWo.oWo........",
-  ".........oWo.oWo........",
-  ".........ogo.ogo........",
-  ".........oWo.oWo........",
-  "........oWWo.oWWo.......",
-  ".......oWWWo.oWWWo......",
-  ".......ooooo.ooooo......",
-];
+// Frame rects in assets/dungeon_tiles.png (from tiles_list.txt)
+const SHEET = {
+  wallTopMid: { x: 32, y: 0, w: 16, h: 16 },
+  wallMid: { x: 32, y: 16, w: 16, h: 16 },
+  wallColumnTop: { x: 96, y: 80, w: 16, h: 16 },
+  wallColumnMid: { x: 96, y: 96, w: 16, h: 16 },
+  wallColumnBase: { x: 96, y: 112, w: 16, h: 16 },
+  fountainTop: { x: 64, y: 0, w: 16, h: 16 },
+  fountainMidRed: { x: 64, y: 16, w: 16, h: 16, f: 3 },
+  fountainBasinRed: { x: 64, y: 32, w: 16, h: 16, f: 3 },
+  bannerRed: { x: 16, y: 32, w: 16, h: 16 },
+  bannerGreen: { x: 16, y: 48, w: 16, h: 16 },
+  floors: [
+    { x: 16, y: 64, w: 16, h: 16 },
+    { x: 32, y: 64, w: 16, h: 16 },
+    { x: 48, y: 64, w: 16, h: 16 },
+    { x: 16, y: 80, w: 16, h: 16 },
+    { x: 32, y: 96, w: 16, h: 16 },
+  ],
+  skull: { x: 288, y: 320, w: 16, h: 16 },
+  crate: { x: 288, y: 298, w: 16, h: 22 },
+  wizardIdle: { x: 128, y: 170, w: 16, h: 22, f: 4 },
+  skeletIdle: { x: 368, y: 80, w: 16, h: 16, f: 4 },
+};
 
 const FIREBALL_SPRITE = [
   "....OOO...",
@@ -447,46 +348,6 @@ const FIREBALL_SPRITE = [
   ".TOyYCCYO.",
   "..TOYYYOO.",
   "....OOO...",
-];
-
-// 3-frame torch flame flicker
-const FLAME_FRAMES = [
-  [
-    "...b...",
-    "..bcb..",
-    "..bcb..",
-    ".bccdb.",
-    ".bcddb.",
-    ".bcddb.",
-    "bccdedb",
-    "bcdeedb",
-    ".bcdcb.",
-    "..bcb..",
-  ],
-  [
-    "..b....",
-    "..bcb..",
-    ".bccb..",
-    ".bcdcb.",
-    ".bcddb.",
-    "bccdddb",
-    "bcddedb",
-    "bcdeecb",
-    ".bcdcb.",
-    "..bcb..",
-  ],
-  [
-    "....b..",
-    "..bcb..",
-    "..bccb.",
-    ".bcdcb.",
-    ".bcddb.",
-    ".bcddb.",
-    "bcdeddb",
-    "bcdeedb",
-    ".bcdcb.",
-    "..bcb..",
-  ],
 ];
 
 function drawSpritePx(ctx, map, palette, ox, oy) {
@@ -501,13 +362,9 @@ function drawSpritePx(ctx, map, palette, ox, oy) {
   }
 }
 
-function spriteToCanvas(map, palette, name) {
-  const w = map[0].length;
-  for (const row of map) {
-    if (row.length !== w) console.error(`sprite ${name}: uneven row lengths (${row.length} vs ${w})`);
-  }
+function spriteToCanvas(map, palette) {
   const cv = document.createElement("canvas");
-  cv.width = w;
+  cv.width = map[0].length;
   cv.height = map.length;
   drawSpritePx(cv.getContext("2d"), map, palette, 0, 0);
   return cv;
@@ -533,33 +390,56 @@ function glowToCanvas(radius, rgb, maxAlpha) {
   return cv;
 }
 
-// Deterministic per-brick hash so detail placement is stable across rebuilds
-function brickHash(a, b) {
+// Deterministic hash so tile variation is stable across rebuilds
+function tileHash(a, b) {
   let h = (a * 73856093) ^ (b * 19349663);
   h = (h ^ (h >> 13)) * 1274126177;
   return Math.abs(h ^ (h >> 16));
 }
 
+// Cut one frame of a sheet entry to its own canvas; optionally flip or
+// recolor to a flat silhouette (for the hit flash).
+function cutFrame(img, rect, frame, { flip = false, silhouette = null } = {}) {
+  const cv = document.createElement("canvas");
+  cv.width = rect.w;
+  cv.height = rect.h;
+  const ctx = cv.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  if (flip) {
+    ctx.translate(rect.w, 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.drawImage(img, rect.x + frame * rect.w, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+  if (silhouette) {
+    ctx.globalCompositeOperation = "source-in";
+    ctx.fillStyle = silhouette;
+    ctx.fillRect(flip ? -rect.w : 0, 0, rect.w * 2, rect.h);
+  }
+  return cv;
+}
+
+const tilesetImg = new Image();
+tilesetImg.src = "assets/dungeon_tiles.png";
+tilesetImg.onload = () => {
+  scene = null; // force rebuild now that frames can be cut
+};
+
 let ASSETS = null;
 
 function buildAssets() {
-  const d = CONFIG.colors.dungeon;
   const f = CONFIG.colors.fireball;
-  const flamePal = { b: d.flame[1], c: d.flame[2], d: d.flame[3], e: d.flame[4] };
-  const skelEyes = [];
-  SKELETON_SPRITE.forEach((row, y) => {
-    for (let x = 0; x < row.length; x++) if (row[x] === "R") skelEyes.push([x, y]);
-  });
+  const d = CONFIG.colors.dungeon;
+  const frames = (rect, opts) =>
+    Array.from({ length: rect.f || 1 }, (_, i) => cutFrame(tilesetImg, rect, i, opts));
   ASSETS = {
-    mage: spriteToCanvas(MAGE_SPRITE, CONFIG.colors.mage, "mage"),
-    skel: spriteToCanvas(SKELETON_SPRITE, CONFIG.colors.skeleton, "skeleton"),
-    skelHit: spriteToCanvas(SKELETON_SPRITE, CONFIG.colors.skeletonHit, "skeletonHit"),
-    fireball: spriteToCanvas(FIREBALL_SPRITE, f, "fireball"),
-    flames: FLAME_FRAMES.map((m, i) => spriteToCanvas(m, flamePal, `flame${i}`)),
-    glowTorch: glowToCanvas(16, d.glowRGB, d.glowAlpha),
-    glowOrb: glowToCanvas(8, f.glowRGB, 0.35),
+    wizard: frames(SHEET.wizardIdle),
+    skelet: frames(SHEET.skeletIdle, { flip: true }),
+    skeletHit: frames(SHEET.skeletIdle, { flip: true, silhouette: "#fff3d0" }),
+    fountainMid: frames(SHEET.fountainMidRed),
+    fountainBasin: frames(SHEET.fountainBasinRed),
+    fireball: spriteToCanvas(FIREBALL_SPRITE, f),
+    glowFountain: glowToCanvas(15, d.glowRGB, d.glowAlpha),
     glowFireball: glowToCanvas(9, f.glowRGB, f.glowAlpha),
-    skelEyes,
   };
 }
 
@@ -567,34 +447,40 @@ function buildAssets() {
 let scene = null;
 
 function setupScene(cv) {
+  if (!tilesetImg.complete || !tilesetImg.naturalWidth) return false;
   if (!ASSETS) buildAssets();
   const dpr = window.devicePixelRatio || 1;
   const cssW = (cv.parentElement && cv.parentElement.clientWidth) || window.innerWidth || 360;
   const maxCssH = (window.innerHeight || 800) * 0.28;
   // Integer device-pixel scale: every art pixel renders at exactly `px`
   // device pixels, eliminating uneven pixel widths.
-  let px = Math.round((cssW * dpr) / 240);
+  let px = Math.round((cssW * dpr) / 200);
   const maxPxByH = Math.floor((maxCssH * dpr) / SCENE_H);
-  px = Math.max(1, Math.min(px || 1, maxPxByH || 1, 8));
+  px = Math.max(1, Math.min(px || 1, maxPxByH || 1, 10));
   const artW = Math.ceil((cssW * dpr) / px);
   cv.width = artW;
   cv.height = SCENE_H;
   cv.style.width = `${(artW * px) / dpr}px`;
   cv.style.height = `${(SCENE_H * px) / dpr}px`;
 
-  const margin = Math.max(8, Math.round(artW * 0.07));
-  const mage = { x: margin, y: FLOOR_Y - MAGE_SPRITE.length + 2 };
-  const skel = { x: artW - margin - SKELETON_SPRITE[0].length, y: FLOOR_Y - SKELETON_SPRITE.length + 2 };
+  const margin = Math.max(10, Math.round(artW * 0.08));
+  const wiz = SHEET.wizardIdle;
+  const skl = SHEET.skeletIdle;
+  const feetY = FLOOR_Y + 18;
+  const wizard = { x: margin, y: feetY - wiz.h };
+  const skelet = { x: artW - margin - skl.w, y: feetY - skl.h };
   scene = {
     cv,
     artW,
-    mage,
-    skel,
-    torches: [Math.round(artW * 0.3), Math.round(artW * 0.7)],
-    staffTip: { x: mage.x + 23, y: mage.y + 11 },
-    skelChest: { x: skel.x + 12, y: skel.y + 17 },
-    bg: buildBg(artW),
+    wizard,
+    skelet,
+    fountains: [Math.round(artW * 0.32 / TILE) * TILE, Math.round(artW * 0.68 / TILE) * TILE],
+    staffTip: { x: wizard.x + wiz.w - 2, y: wizard.y + 10 },
+    skelChest: { x: skelet.x + skl.w / 2, y: skelet.y + 9 },
+    bg: null,
   };
+  scene.bg = buildBg(artW);
+  return true;
 }
 
 function buildBg(artW) {
@@ -603,80 +489,59 @@ function buildBg(artW) {
   cv.width = artW;
   cv.height = SCENE_H;
   const ctx = cv.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  const blit = (rect, dx, dy) =>
+    ctx.drawImage(tilesetImg, rect.x, rect.y, rect.w, rect.h, dx, dy, rect.w, rect.h);
 
-  // Wall: mortar base + brick courses with deterministic shade variation
-  ctx.fillStyle = d.mortar;
-  ctx.fillRect(0, 0, artW, FLOOR_Y);
-  const BW = 14, BH = 7;
-  for (let row = 0; row * BH < FLOOR_Y; row++) {
-    const y = row * BH;
-    const offset = row % 2 === 0 ? 0 : -Math.floor(BW / 2);
-    for (let col = 0; col * BW + offset < artW; col++) {
-      const x = col * BW + offset;
-      const h = brickHash(row, col);
-      ctx.fillStyle = d.brickShades[h % d.brickShades.length];
-      ctx.fillRect(x, y, BW - 1, BH - 1);
-      ctx.fillStyle = "rgba(255,255,255,0.03)";
-      ctx.fillRect(x, y, BW - 1, 1);
-      if (h % 7 === 0) {
-        ctx.fillStyle = d.brickCrack;
-        const cx = x + 2 + (h % (BW - 5));
-        ctx.fillRect(cx, y + 1, 1, 2);
-        ctx.fillRect(cx + 1, y + 3, 1, 2);
-      }
-      if (y > FLOOR_Y - 28 && h % 5 === 0) {
-        ctx.fillStyle = h % 2 === 0 ? d.moss : d.mossDark;
-        ctx.fillRect(x + (h % (BW - 3)), y + BH - 2, 2, 1);
-        ctx.fillRect(x + (h % (BW - 4)), y + BH - 3, 1, 1);
-      }
+  ctx.fillStyle = d.background;
+  ctx.fillRect(0, 0, artW, SCENE_H);
+
+  const cols = Math.ceil(artW / TILE);
+
+  // Wall: one top-edge row, two mid rows
+  for (let c = 0; c < cols; c++) {
+    blit(SHEET.wallTopMid, c * TILE, 0);
+    blit(SHEET.wallMid, c * TILE, TILE);
+    blit(SHEET.wallMid, c * TILE, TILE * 2);
+  }
+
+  // Decor: columns near the edges, banners between fountains and fighters
+  for (const cx of [TILE, (cols - 2) * TILE]) {
+    blit(SHEET.wallColumnTop, cx, 0);
+    blit(SHEET.wallColumnMid, cx, TILE);
+    blit(SHEET.wallColumnBase, cx, TILE * 2);
+  }
+  blit(SHEET.bannerRed, Math.round(artW * 0.46 / TILE) * TILE, TILE);
+  blit(SHEET.bannerGreen, Math.round(artW * 0.54 / TILE) * TILE, TILE);
+
+  // Fountain tops (mid/basin are animated per frame)
+  for (const fx of scene.fountains) {
+    blit(SHEET.fountainTop, fx, 0);
+  }
+
+  // Floor: mostly floor_1 with stable variation
+  for (let r = 0; r * TILE + FLOOR_Y < SCENE_H; r++) {
+    for (let c = 0; c < cols; c++) {
+      const h = tileHash(r, c);
+      const tile = h % 4 === 0 ? SHEET.floors[1 + (h % (SHEET.floors.length - 1))] : SHEET.floors[0];
+      blit(tile, c * TILE, FLOOR_Y + r * TILE);
     }
   }
 
-  // Floor: slab rows with subtle perspective (nearer slabs are taller)
-  ctx.fillStyle = d.floorDark;
-  ctx.fillRect(0, FLOOR_Y, artW, SCENE_H - FLOOR_Y);
-  ctx.fillStyle = d.slabEdge;
-  ctx.fillRect(0, FLOOR_Y, artW, 1);
-  let y = FLOOR_Y + 1;
-  let slabH = 6;
-  let rowIdx = 0;
-  while (y < SCENE_H) {
-    const offset = rowIdx % 2 === 0 ? 0 : -11;
-    const slabW = 24;
-    for (let col = 0; col * slabW + offset < artW; col++) {
-      const x = col * slabW + offset;
-      const h = brickHash(rowIdx + 100, col);
-      ctx.fillStyle = h % 2 === 0 ? d.slabA : d.slabB;
-      ctx.fillRect(x, y, slabW - 1, slabH - 1);
-      ctx.fillStyle = "rgba(255,255,255,0.04)";
-      ctx.fillRect(x, y, slabW - 1, 1);
-    }
-    y += slabH;
-    slabH += 3;
-    rowIdx++;
-  }
+  // Props on the floor line: a skull near the skeleton, a crate by the wall
+  const feetY = FLOOR_Y + 18;
+  blit(SHEET.skull, scene.skelet.x - 16, feetY - 12);
+  blit(SHEET.crate, scene.wizard.x + 22, feetY - SHEET.crate.h - 2);
 
-  // Torch sconces (static; flames are animated per frame)
-  for (const tx of [Math.round(artW * 0.3), Math.round(artW * 0.7)]) {
-    const ty = 36;
-    ctx.fillStyle = d.torchMetal;
-    ctx.fillRect(tx - 2, ty + 6, 5, 2);
-    ctx.fillRect(tx - 1, ty + 8, 3, 1);
-    ctx.fillStyle = d.torchWood;
-    ctx.fillRect(tx - 1, ty + 1, 3, 6);
-  }
-
-  // Ground shadows under the fighters (soft, so they don't read as plinths)
-  const margin = Math.max(8, Math.round(artW * 0.07));
-  ctx.fillStyle = "rgba(10, 7, 15, 0.28)";
-  ctx.fillRect(margin + 3, FLOOR_Y + 1, MAGE_SPRITE[0].length - 8, 2);
-  ctx.fillRect(artW - margin - SKELETON_SPRITE[0].length + 5, FLOOR_Y + 1, SKELETON_SPRITE[0].length - 10, 2);
+  // Soft ground shadows under the fighters
+  ctx.fillStyle = "rgba(10, 7, 15, 0.30)";
+  ctx.fillRect(scene.wizard.x + 1, feetY - 1, SHEET.wizardIdle.w - 2, 2);
+  ctx.fillRect(scene.skelet.x + 1, feetY - 1, SHEET.skeletIdle.w - 2, 2);
 
   // Vignette top and bottom
   ctx.fillStyle = d.vignette;
-  ctx.fillRect(0, 0, artW, 5);
-  ctx.fillRect(0, 0, artW, 2);
-  ctx.fillRect(0, SCENE_H - 4, artW, 4);
+  ctx.fillRect(0, 0, artW, 3);
+  ctx.fillRect(0, SCENE_H - 3, artW, 3);
 
   return cv;
 }
@@ -684,56 +549,42 @@ function buildBg(artW) {
 function renderScene(now) {
   const cv = document.getElementById("scene");
   if (!cv) return;
-  if (!scene || scene.cv !== cv) setupScene(cv);
+  if (!scene || scene.cv !== cv) {
+    if (!setupScene(cv)) return; // sheet still loading
+  }
   const ctx = cv.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
   ctx.drawImage(scene.bg, 0, 0);
 
-  // Torch flames: 3-frame flicker + wobbling additive glow
-  scene.torches.forEach((tx, i) => {
-    const ty = 36;
-    const fi = (Math.floor(now / 130) + i * 2) % ASSETS.flames.length;
+  // Lava fountains: 3-frame animation + wobbling additive glow
+  scene.fountains.forEach((fx, i) => {
+    const fi = (Math.floor(now / 160) + i) % ASSETS.fountainMid.length;
+    ctx.drawImage(ASSETS.fountainMid[fi], fx, TILE);
+    ctx.drawImage(ASSETS.fountainBasin[fi], fx, TILE * 2);
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.75 + 0.25 * Math.sin(now / 95 + i * 2.1);
-    ctx.drawImage(ASSETS.glowTorch, tx - 15, ty - 18);
+    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 110 + i * 2.1);
+    ctx.drawImage(ASSETS.glowFountain, fx + 8 - 15, TILE + 10 - 15);
     ctx.restore();
-    ctx.drawImage(ASSETS.flames[fi], tx - 3, ty - 8);
   });
 
-  // Idle bobs: fighters breathe out of phase
-  const bobM = Math.round(Math.sin(now / 620) * 1.2);
-  const bobS = Math.round(Math.sin(now / 620 + 2.6) * 1.2);
-  ctx.drawImage(ASSETS.mage, scene.mage.x, scene.mage.y + bobM);
+  // Fighters: the sheet's own 4-frame idle animations, out of phase
+  const wf = Math.floor(now / 160) % ASSETS.wizard.length;
+  const sf = Math.floor(now / 160 + 2) % ASSETS.skelet.length;
+  ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
+  ctx.drawImage(ASSETS.skelet[sf], scene.skelet.x, scene.skelet.y);
 
-  // Staff orb pulse
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha = 0.55 + 0.45 * Math.sin(now / 480);
-  ctx.drawImage(ASSETS.glowOrb, scene.staffTip.x - 8 , scene.staffTip.y - 8 + bobM);
-  ctx.restore();
-
-  ctx.drawImage(ASSETS.skel, scene.skel.x, scene.skel.y + bobS);
-
-  // Skeleton eye glints pulse
-  ctx.save();
-  ctx.globalAlpha = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(now / 430));
-  ctx.fillStyle = CONFIG.colors.skeleton.R;
-  for (const [ex, ey] of ASSETS.skelEyes) {
-    ctx.fillRect(scene.skel.x + ex, scene.skel.y + ey + bobS, 1, 1);
-  }
-  ctx.restore();
-
-  // Fireball cast: staff orb -> skeleton on wall-clock time (presentation
-  // only, FREEZE doesn't stop it), then a hit flash with a burst ring.
+  // Fireball cast: wizard -> skeleton on wall-clock time (presentation only,
+  // FREEZE doesn't stop it), then a hit flash with a burst ring.
   if (!state.fireballAt) return;
   const t = now - state.fireballAt;
   const flight = CONFIG.fireballFlightMs;
   const f = CONFIG.colors.fireball;
-  const chest = { x: scene.skelChest.x, y: scene.skelChest.y + bobS };
+  const chest = scene.skelChest;
   if (t <= flight) {
     const p = t / flight;
     const x = Math.round(scene.staffTip.x + (chest.x - scene.staffTip.x) * p);
-    const y = Math.round(scene.staffTip.y + (chest.y - scene.staffTip.y) * p - Math.sin(p * Math.PI) * 14);
+    const y = Math.round(scene.staffTip.y + (chest.y - scene.staffTip.y) * p - Math.sin(p * Math.PI) * 10);
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.drawImage(ASSETS.glowFireball, x - 9, y - 9);
@@ -742,23 +593,24 @@ function renderScene(now) {
   } else if (t <= flight + CONFIG.fireballImpactMs) {
     const q = (t - flight) / CONFIG.fireballImpactMs;
     if (Math.floor((t - flight) / 70) % 2 === 0) {
-      ctx.drawImage(ASSETS.skelHit, scene.skel.x, scene.skel.y + bobS);
+      ctx.drawImage(ASSETS.skeletHit[sf], scene.skelet.x, scene.skelet.y);
     }
-    const r = Math.round(3 + q * 12);
+    const r = Math.round(2 + q * 10);
     ctx.fillStyle = f.y;
     ctx.fillRect(chest.x - r, chest.y, 2, 1);
     ctx.fillRect(chest.x + r, chest.y, 2, 1);
     ctx.fillRect(chest.x, chest.y - r, 1, 2);
     ctx.fillRect(chest.x, chest.y + r, 1, 2);
     ctx.fillStyle = f.O;
-    ctx.fillRect(chest.x - r + 2, chest.y - r + 2, 1, 1);
-    ctx.fillRect(chest.x + r - 2, chest.y - r + 2, 1, 1);
-    ctx.fillRect(chest.x - r + 2, chest.y + r - 2, 1, 1);
-    ctx.fillRect(chest.x + r - 2, chest.y + r - 2, 1, 1);
+    ctx.fillRect(chest.x - r + 1, chest.y - r + 1, 1, 1);
+    ctx.fillRect(chest.x + r - 1, chest.y - r + 1, 1, 1);
+    ctx.fillRect(chest.x - r + 1, chest.y + r - 1, 1, 1);
+    ctx.fillRect(chest.x + r - 1, chest.y + r - 1, 1, 1);
   } else {
     state.fireballAt = 0;
   }
 }
+
 // ---------------------------------------------------------------------------
 // Word pool / circle population
 // ---------------------------------------------------------------------------
