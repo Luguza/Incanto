@@ -134,11 +134,20 @@
     width: 100%;
     display: block;
   }
-  .ring { fill: none; stroke: #f2c14e; }
-  .ring.outer { opacity: 0.22; stroke-width: 1.2; stroke-dasharray: 3 9; }
-  .ring.mid { opacity: 0.10; stroke-width: 1; }
-  .slot-mark { fill: #f2c14e; opacity: 0.30; }
-  .hexagram { fill: none; stroke: #f2c14e; opacity: 0.05; stroke-width: 1; }
+  /* The arcane wheel: outer band with runic script that the word-circles
+     sit on, glow layers, rotating inner script ring, and ember sparks */
+  .band-ring { fill: none; stroke: #4de3e0; stroke-width: 2; opacity: 0.55; }
+  .band-glow { fill: none; stroke: #4de3e0; }
+  .band-fine { fill: none; stroke: #4de3e0; stroke-width: 1; opacity: 0.3; stroke-dasharray: 1 5; }
+  .glyph {
+    fill: none; stroke: #7ff0ed; stroke-width: 1.7; opacity: 0.6;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .band-tick { stroke: #4de3e0; stroke-width: 1.5; opacity: 0.5; }
+  .inner-band circle { fill: none; stroke: #4de3e0; stroke-width: 1; }
+  .inner-band .glyph { stroke-width: 1.4; }
+  .spark { fill: url(#sparkGrad); }
+  .hexagram { fill: none; stroke: #4de3e0; opacity: 0.09; stroke-width: 1; }
   .rune .halo { opacity: 0; fill: #f2c14e; transition: opacity 150ms linear; pointer-events: none; }
   .rune.selected .halo { opacity: 0.5; }
   .rune.matched .halo { opacity: 0.25; fill: #5ecf8f; }
@@ -729,15 +738,21 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   }
   ctx.restore();
 
-  // pulsing elliptical ring so the construct reads as a magic circle
+  // pulsing elliptical rings — the inner circle plus a fainter outer band
+  // edge, hinting at the full wheel below
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const ringA = 0.2 + 0.08 * Math.sin(now / 900) + bright * 0.3;
-  ctx.fillStyle = `rgba(${c.glowRGB}, ${Math.max(0, ringA).toFixed(3)})`;
   const steps = 44;
-  for (let i = 0; i < steps; i++) {
-    const a = (i * 2 * Math.PI) / steps;
-    ctx.fillRect(Math.round(cx + rx * scale * Math.cos(a)), Math.round(cy + ry * scale * Math.sin(a)), 1, 1);
+  for (const [mult, aMult] of [[1, 1], [1.3, 0.45]]) {
+    ctx.fillStyle = `rgba(${c.glowRGB}, ${Math.max(0, ringA * aMult).toFixed(3)})`;
+    for (let i = 0; i < steps; i++) {
+      const a = (i * 2 * Math.PI) / steps;
+      ctx.fillRect(
+        Math.round(cx + rx * scale * mult * Math.cos(a)),
+        Math.round(cy + ry * scale * mult * Math.sin(a)), 1, 1
+      );
+    }
   }
   ctx.restore();
 
@@ -1021,21 +1036,81 @@ function heartsHtml() {
     .join("");
 }
 
+// Small runic-looking polyline glyphs, procedurally placed so no font
+// support is required. Templates are in local coords (y up = outward).
+const GLYPH_TEMPLATES = [
+  [[0, -5], [0, 5]],
+  [[-3, 5], [0, -5], [3, 5]],
+  [[-3, -5], [-3, 5], [3, 5]],
+  [[-3, 5], [-3, -5], [3, -5], [3, 5]],
+  [[-3, -5], [3, 5], [3, -5]],
+  [[0, -5], [0, 5], [3, 0], [-3, 0]],
+  [[-3, 0], [0, -5], [3, 0], [0, 5], [-3, 0]],
+  [[3, -5], [-3, -1], [3, 3], [0, 5]],
+];
+
+function glyphAt(cx, cy, r, angleDeg, size, seed, cls) {
+  const t = GLYPH_TEMPLATES[tileHash(seed, 31) % GLYPH_TEMPLATES.length];
+  const gx = cx + r * Math.cos((angleDeg * Math.PI) / 180);
+  const gy = cy + r * Math.sin((angleDeg * Math.PI) / 180);
+  const pts = t.map(([x, y]) => `${(x * size / 5).toFixed(1)},${(y * size / 5).toFixed(1)}`).join(" ");
+  return `<polyline class="${cls}" points="${pts}" transform="translate(${gx.toFixed(1)} ${gy.toFixed(1)}) rotate(${(angleDeg + 90).toFixed(1)})"/>`;
+}
+
 function renderCombatFull() {
   const { x: cx, y: cy } = CONFIG.circleCenter;
   const slots = layoutCircle(CONFIG.runeCount);
 
-  // Arcane decoration: dashed outer ring with diamond slot markers, a faint
-  // mid ring, and a barely-visible hexagram joining alternating slots.
-  const ringR = CONFIG.circleRadius + 18;
-  const marks = slots
-    .map((s) => {
-      const angle = Math.atan2(s.y - cy, s.x - cx);
-      const mx = cx + ringR * Math.cos(angle);
-      const my = cy + ringR * Math.sin(angle);
-      return `<rect class="slot-mark" x="${mx - 3}" y="${my - 3}" width="6" height="6" transform="rotate(45 ${mx} ${my})"/>`;
-    })
-    .join("");
+  // The arcane wheel. Outer band: two glowing rings the word-circles sit on,
+  // filled with runic script and tick marks in the gaps between runes.
+  const bandInner = CONFIG.circleRadius - 52;   // 163
+  const bandOuter = CONFIG.circleRadius + 52;   // 267
+  const band = [];
+  for (const r of [bandInner, bandOuter]) {
+    band.push(`<circle class="band-glow" cx="${cx}" cy="${cy}" r="${r}" stroke-width="26" opacity="0.10" filter="url(#wideGlow)"/>`);
+    band.push(`<circle class="band-glow" cx="${cx}" cy="${cy}" r="${r}" stroke-width="6" opacity="0.30" filter="url(#softGlow)"/>`);
+    band.push(`<circle class="band-ring" cx="${cx}" cy="${cy}" r="${r}"/>`);
+  }
+  band.push(`<circle class="band-fine" cx="${cx}" cy="${cy}" r="${bandInner + 9}"/>`);
+  band.push(`<circle class="band-fine" cx="${cx}" cy="${cy}" r="${bandOuter - 9}"/>`);
+  // runic script along the rune radius, in the six gaps between word-circles
+  let glyphSeed = 0;
+  for (let i = 0; i < CONFIG.runeCount; i++) {
+    const slotDeg = -90 + i * 60;
+    for (const off of [-21, -13, 13, 21]) {
+      band.push(glyphAt(cx, cy, CONFIG.circleRadius, slotDeg + 30 + off / 2 + 0, 9, glyphSeed++, "glyph"));
+    }
+    // double radial ticks at the gap center, near each band edge
+    const midDeg = slotDeg + 30;
+    const mc = Math.cos((midDeg * Math.PI) / 180), ms = Math.sin((midDeg * Math.PI) / 180);
+    for (const [r1, r2] of [[bandInner + 3, bandInner + 15], [bandOuter - 15, bandOuter - 3]]) {
+      band.push(`<line class="band-tick" x1="${(cx + mc * r1).toFixed(1)}" y1="${(cy + ms * r1).toFixed(1)}" x2="${(cx + mc * r2).toFixed(1)}" y2="${(cy + ms * r2).toFixed(1)}"/>`);
+    }
+  }
+  const bandHtml = `<g id="band-group">${band.join("")}</g>`;
+
+  // Rotating inner script ring beneath the chords
+  const inner = [];
+  inner.push(`<circle cx="${cx}" cy="${cy}" r="112" opacity="0.5"/>`);
+  inner.push(`<circle cx="${cx}" cy="${cy}" r="88" opacity="0.5"/>`);
+  for (let i = 0; i < 24; i++) {
+    inner.push(glyphAt(cx, cy, 100, i * 15, 7, 100 + i, "glyph"));
+  }
+  const innerHtml = `<g class="inner-band" id="inner-band" opacity="0.30">${inner.join("")}</g>`;
+
+  // Ember sparks scattered around the band, twinkling per frame
+  const sparks = [];
+  for (let i = 0; i < 60; i++) {
+    const h = tileHash(i, 997);
+    const a = (h % 3600) / 10;
+    const r = bandInner - 6 + (tileHash(i, 499) % (bandOuter - bandInner + 12));
+    const sx = cx + r * Math.cos((a * Math.PI) / 180);
+    const sy = cy + r * Math.sin((a * Math.PI) / 180);
+    const sr = 1.5 + (h % 3);
+    sparks.push(`<circle class="spark" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${sr}" data-phase="${((h % 628) / 100).toFixed(2)}" style="opacity:0"/>`);
+  }
+  const sparksHtml = sparks.join("");
+
   const hexagram =
     `<polygon class="hexagram" points="${[0, 2, 4].map((i) => `${slots[i].x},${slots[i].y}`).join(" ")}"/>` +
     `<polygon class="hexagram" points="${[1, 3, 5].map((i) => `${slots[i].x},${slots[i].y}`).join(" ")}"/>`;
@@ -1114,14 +1189,25 @@ function renderCombatFull() {
         <stop offset="60%" stop-color="rgba(77,227,224,0.06)"/>
         <stop offset="100%" stop-color="rgba(77,227,224,0)"/>
       </radialGradient>
+      <radialGradient id="sparkGrad">
+        <stop offset="0%" stop-color="rgba(234,255,254,0.95)"/>
+        <stop offset="35%" stop-color="rgba(77,227,224,0.6)"/>
+        <stop offset="100%" stop-color="rgba(77,227,224,0)"/>
+      </radialGradient>
       <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
         <feGaussianBlur stdDeviation="6"/>
       </filter>
+      <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="2.5"/>
+      </filter>
+      <filter id="wideGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="9"/>
+      </filter>
     </defs>
     <circle id="bg-glow" cx="${cx}" cy="${cy}" r="${CONFIG.circleRadius + 60}" fill="url(#bgGlow)"/>
-    <circle class="ring outer" cx="${cx}" cy="${cy}" r="${ringR}"/>
-    <circle class="ring mid" cx="${cx}" cy="${cy}" r="${CONFIG.circleRadius - 10}"/>
-    ${marks}
+    ${bandHtml}
+    ${innerHtml}
+    ${sparksHtml}
     ${hexagram}
     ${filigreeHtml}`;
 
@@ -1198,9 +1284,27 @@ function patchCombatContinuous(now) {
   const shapeFlashActive = now < state.shapeFlashUntil;
   document.querySelectorAll(".chord, .chord-glow").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
 
-  // Background hum: the cyan glow behind the circle breathes slowly
+  // Background hum: the cyan glow behind the circle breathes slowly, and the
+  // band's glow layers breathe with it
+  const hum = 0.72 + 0.28 * Math.sin(now / 900);
   const bgGlowEl = document.getElementById("bg-glow");
-  if (bgGlowEl) bgGlowEl.style.opacity = (0.72 + 0.28 * Math.sin(now / 900)).toFixed(3);
+  if (bgGlowEl) bgGlowEl.style.opacity = hum.toFixed(3);
+  const bandGroup = document.getElementById("band-group");
+  if (bandGroup) bandGroup.style.opacity = (0.82 + 0.18 * Math.sin(now / 900)).toFixed(3);
+
+  // Inner script ring rotates slowly; ember sparks twinkle at their own phase
+  const innerBand = document.getElementById("inner-band");
+  if (innerBand) {
+    innerBand.setAttribute(
+      "transform",
+      `rotate(${((now / 260) % 360).toFixed(2)} ${CONFIG.circleCenter.x} ${CONFIG.circleCenter.y})`
+    );
+  }
+  document.querySelectorAll(".spark").forEach((el) => {
+    const p = parseFloat(el.dataset.phase);
+    const tw = Math.max(0, Math.sin(now / 420 + p * 2.4));
+    el.style.opacity = (tw * tw * 0.95).toFixed(3);
+  });
 
   // Filigree: lit groups follow their matched chord (burst first, then hold);
   // unlit groups shimmer with the background pulse
