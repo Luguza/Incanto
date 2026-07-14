@@ -71,15 +71,16 @@
   }
   .combat-screen.wrong-flash::after { background: rgba(229, 72, 77, 0.35); }
 
-  canvas.scene {
+  .scene-wrap {
     flex: 0 0 auto;
-    display: block;
     width: 100%;
-    aspect-ratio: 240 / 108;
-    max-height: 28vh;
-    object-fit: cover;
-    image-rendering: pixelated;
+    overflow: hidden;
     background: #17131e;
+    line-height: 0;
+  }
+  canvas.scene {
+    display: block;
+    image-rendering: pixelated;
   }
   .hud-under {
     flex: 0 0 auto;
@@ -345,90 +346,98 @@ function shuffleArray(arr) {
 
 // ---------------------------------------------------------------------------
 // Pixel-art dungeon scene.
-// DECISION: pixel art is authored as character maps but rendered to a <canvas>
-// at a fixed 240x108 native resolution and upscaled with
-// image-rendering: pixelated. The static scene (dungeon + fighters) is drawn
-// once to an offscreen canvas; each frame just blits it and overlays dynamic
-// effects (fireball, hit flash). No image assets; single-file constraint holds.
+// DECISION: pixel art is authored as character maps, prerendered to offscreen
+// canvases, and composited each frame onto a <canvas> whose backing store is
+// sized for INTEGER device-pixel scaling (a fractional scale makes art pixels
+// render at uneven widths — the "warped" look). The dungeon background is
+// cached; per-frame we blit it and draw the animated bits: fighter idle bobs,
+// torch flame flicker, orb pulse, skeleton eye glints, and the fireball.
 // ---------------------------------------------------------------------------
-const SCENE_W = 240;
 const SCENE_H = 108;
-const FLOOR_Y = 84;
-const MAGE_POS = { x: 30, y: FLOOR_Y - 32 };
-const SKEL_POS = { x: 186, y: FLOOR_Y - 31 };
-const STAFF_TIP = { x: MAGE_POS.x + 20, y: MAGE_POS.y + 14 }; // the staff orb
-const SKEL_CHEST = { x: SKEL_POS.x + 10, y: SKEL_POS.y + 14 };
+const FLOOR_Y = 88;
 
 const MAGE_SPRITE = [
-  "..............o.........",
-  ".............oho........",
-  ".............ohao.......",
-  "............ohAao.......",
-  "............ohAaao......",
-  "...........ohAAaao......",
-  "...........ohAAaaao.....",
-  "..........ohAAAaaao.....",
-  "..........ohAAAaaaao....",
-  ".........ohAAAAaaaao....",
-  "......oohhAAAAAaaaoo....",
-  ".....oBBBBBBBBBBBBBBo...",
-  "......oobSSSSSsoo.o.....",
-  "........oSESSSEso..yYy..",
-  "........oSSSSSsso..YYY..",
-  ".......oWSSssssWo..yYy..",
-  ".......oWWWWWWWwo...oto.",
-  "......oRWWWWWWwo....oto.",
-  ".....ohRRoWWWwo.....oTo.",
-  "....ohRRRRowwo......oTo.",
-  "....ohRRRRRRo.......oTo.",
-  "...ohRRRRRRRRo......oTo.",
-  "...ohRRRRRRRRRoo...oTTo.",
-  "...oRRRRRRRRRRRSso.oTo..",
-  "..ohRRRRRRRRRRRoSsoTo...",
-  "..ohRRRRRRRRRRRooSTo....",
-  "..oRRRRRRRRRRRRo.oTo....",
-  "..orRRRRRRRRRRro.oTo....",
-  ".oBBBBBBBBBBBBBBooTo....",
-  ".obbbbbbbbbbbbbbo.oTo...",
-  ".orrrrrrrrrrrrrro.oTo...",
-  ".oDDDDDDDDDDDDDDo.oTo...",
-  "..oDDoo....ooDDo..oTo...",
-  "..oooo......oooo..ooo...",
+  ".............o..............",
+  "............oho.............",
+  "............ohao............",
+  "...........ohAao............",
+  "...........ohAaao...........",
+  "..........ohAAaao...........",
+  "..........ohAAaaao..........",
+  ".........ohAAAaaao..........",
+  ".........ohAAAaaaao.........",
+  "........ohAAAAaaaao...oyyo..",
+  "........ohAAAAaaaaao.oyYYyo.",
+  ".......ohAAAAAaaaaao.yYCCYy.",
+  "......oohhhhAAaaaaoo.oyYYyo.",
+  ".....oBBBBBBBBBBBBBBo.oyyo..",
+  "......oooooooooooooo..oTo...",
+  ".........oSSSSSSo.....oTo...",
+  "........oSSSSSSSSo....oTo...",
+  "........oSESSSSESo....oTo...",
+  "........oSSSsSSSSo....oTo...",
+  ".......oWWosssoWWo....oTo...",
+  ".......oWWWWWWWWWWo...oTo...",
+  "......ohRWWWWWWWWRro..oTo...",
+  "......ohRRWWWWWWRRro..oTo...",
+  ".....ohRRRoWWWWoRRro..oTo...",
+  ".....ohRRRRoWWoRRRroSSoTo...",
+  ".....ohRRRRRoWoRRRroSSoTo...",
+  "....ohRRRRRRRRRRRRro..oTo...",
+  "....ohRRRRRRRRRRRRro..oTo...",
+  "....ohRRRRRRRRRRRRrro.oTo...",
+  "....ohRRRRRRRRRRRRrro.oTo...",
+  "...ohRRRRRRRRRRRRRrro.oTo...",
+  "...ohRRRRRRRRRRRRRrro.oTo...",
+  "...ohRRRRRRRRRRRRRRrrooTo...",
+  "...ohRRRRRRRRRRRRRRrrooTo...",
+  "..ohRRRRRRRRRRRRRRRrrooTo...",
+  "..ohRRRRRRRRRRRRRRRrrooTo...",
+  "..ohRRRRRRRRRRRRRRRrrooTo...",
+  "..oBBBBBBBBBBBBBBBBBBooTo...",
+  "..obbbbbbbbbbbbbbbbbbooTo...",
+  "..oDDDDDDDDDDDDDDDDDDooTo...",
+  "...oDDoo........ooDDo.oTo...",
+  "....ooo..........ooo..ooo...",
 ];
 
 const SKELETON_SPRITE = [
-  "......ooooo.........",
-  ".....oWWWWWo........",
-  "....oWWWWWWWo.......",
-  "....oWWWWWWWGo......",
-  "....oKKoWWoKKo......",
-  "....oKRoWWoKRo......",
-  "....oWWWWWWWWo......",
-  ".....oWgWgWGo.......",
-  ".....ogWgWgWo.......",
-  "......oWWWWo........",
-  ".......oGGo.........",
-  "....ooWWWWWWoo......",
-  "...oWGoWWWWoGWo.....",
-  "...oWo.oGGo.oWo.....",
-  "...oWo.WWWW.oWo.....",
-  "...oGoWWggWWoGo.....",
-  "...oWo.WWWW.oWo.....",
-  "...oWoWWggWWoWo.....",
-  "...ogo.WWWW.ogo.....",
-  "..oWWo..GG..oWWo....",
-  "..oWo..oWWo..oWo....",
-  "......oWWWWo........",
-  ".....oWWooWWo.......",
-  ".....oWo..oWo.......",
-  ".....oGo..oGo.......",
-  ".....oWo..oWo.......",
-  ".....oWo..oWo.......",
-  ".....ogo..ogo.......",
-  ".....oWo..oWo.......",
-  "....oWWo..oWWo......",
-  "...oWWWo..oWWWo.....",
-  "...ooooo..ooooo.....",
+  "......oooooooo..........",
+  ".....oWWWWWWWWo.........",
+  "....oWWWWWWWWWWo........",
+  "....oWWWWWWWWWWo........",
+  "...oWWWWWWWWWWWGo.......",
+  "...oKKoWWWoKKoWGo.......",
+  "...oKRoWWWoKRoWGo.......",
+  "...oWWWWWWWWWWWGo.......",
+  "....oWgWgWgWgWGo........",
+  ".....oWWWWWWWWo.........",
+  "......oooooooo..........",
+  "..........oGGo..........",
+  "......ooWWWWWWWWoo......",
+  ".....oWWoWWWWWWoWWo.....",
+  "....oWWo.oWWWWo.oWWo....",
+  "....oWo.oWWWWWWo.oWo....",
+  "....oWo.....GG...oWo....",
+  "....oWo.oWWWWWWo.oWo....",
+  "....oGo.....GG...oGo....",
+  "....oWo..oWWWWo..oWo....",
+  "....oWo.....GG...oWo....",
+  "....ogo...oWWo...ogo....",
+  ".....oWo..oGGo..oWo.....",
+  ".....oWWo.oWWo.oWWo.....",
+  "......ooo.WWWW.ooo......",
+  ".........oWWWWo.........",
+  ".........oWooWo.........",
+  ".........oWo.oWo........",
+  ".........oGo.oGo........",
+  ".........oWo.oWo........",
+  ".........oWo.oWo........",
+  ".........ogo.ogo........",
+  ".........oWo.oWo........",
+  "........oWWo.oWWo.......",
+  ".......oWWWo.oWWWo......",
+  ".......ooooo.ooooo......",
 ];
 
 const FIREBALL_SPRITE = [
@@ -438,6 +447,46 @@ const FIREBALL_SPRITE = [
   ".TOyYCCYO.",
   "..TOYYYOO.",
   "....OOO...",
+];
+
+// 3-frame torch flame flicker
+const FLAME_FRAMES = [
+  [
+    "...b...",
+    "..bcb..",
+    "..bcb..",
+    ".bccdb.",
+    ".bcddb.",
+    ".bcddb.",
+    "bccdedb",
+    "bcdeedb",
+    ".bcdcb.",
+    "..bcb..",
+  ],
+  [
+    "..b....",
+    "..bcb..",
+    ".bccb..",
+    ".bcdcb.",
+    ".bcddb.",
+    "bccdddb",
+    "bcddedb",
+    "bcdeecb",
+    ".bcdcb.",
+    "..bcb..",
+  ],
+  [
+    "....b..",
+    "..bcb..",
+    "..bccb.",
+    ".bcdcb.",
+    ".bcddb.",
+    ".bcddb.",
+    "bcdeddb",
+    "bcdeedb",
+    ".bcdcb.",
+    "..bcb..",
+  ],
 ];
 
 function drawSpritePx(ctx, map, palette, ox, oy) {
@@ -452,18 +501,25 @@ function drawSpritePx(ctx, map, palette, ox, oy) {
   }
 }
 
-// Deterministic per-brick hash so detail placement is stable across rebuilds
-function brickHash(a, b) {
-  let h = (a * 73856093) ^ (b * 19349663);
-  h = (h ^ (h >> 13)) * 1274126177;
-  return Math.abs(h ^ (h >> 16));
+function spriteToCanvas(map, palette, name) {
+  const w = map[0].length;
+  for (const row of map) {
+    if (row.length !== w) console.error(`sprite ${name}: uneven row lengths (${row.length} vs ${w})`);
+  }
+  const cv = document.createElement("canvas");
+  cv.width = w;
+  cv.height = map.length;
+  drawSpritePx(cv.getContext("2d"), map, palette, 0, 0);
+  return cv;
 }
 
-// Pixel-granular radial glow with linear falloff, blended additively so it
-// brightens the wall instead of muddying it
-function drawGlow(ctx, cx, cy, radius, rgb, maxAlpha) {
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
+// Radial glow prerendered once; blitted additively per frame
+function glowToCanvas(radius, rgb, maxAlpha) {
+  const size = radius * 2 + 1;
+  const cv = document.createElement("canvas");
+  cv.width = size;
+  cv.height = size;
+  const ctx = cv.getContext("2d");
   for (let py = -radius; py <= radius; py++) {
     for (let px = -radius; px <= radius; px++) {
       const dist = Math.sqrt(px * px + py * py);
@@ -471,44 +527,103 @@ function drawGlow(ctx, cx, cy, radius, rgb, maxAlpha) {
       const a = maxAlpha * (1 - dist / radius);
       if (a < 0.015) continue;
       ctx.fillStyle = `rgba(${rgb}, ${a.toFixed(3)})`;
-      ctx.fillRect(cx + px, cy + py, 1, 1);
+      ctx.fillRect(radius + px, radius + py, 1, 1);
     }
   }
-  ctx.restore();
+  return cv;
 }
 
-let sceneStaticCanvas = null;
+// Deterministic per-brick hash so detail placement is stable across rebuilds
+function brickHash(a, b) {
+  let h = (a * 73856093) ^ (b * 19349663);
+  h = (h ^ (h >> 13)) * 1274126177;
+  return Math.abs(h ^ (h >> 16));
+}
 
-function buildStaticScene() {
+let ASSETS = null;
+
+function buildAssets() {
+  const d = CONFIG.colors.dungeon;
+  const f = CONFIG.colors.fireball;
+  const flamePal = { b: d.flame[1], c: d.flame[2], d: d.flame[3], e: d.flame[4] };
+  const skelEyes = [];
+  SKELETON_SPRITE.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) if (row[x] === "R") skelEyes.push([x, y]);
+  });
+  ASSETS = {
+    mage: spriteToCanvas(MAGE_SPRITE, CONFIG.colors.mage, "mage"),
+    skel: spriteToCanvas(SKELETON_SPRITE, CONFIG.colors.skeleton, "skeleton"),
+    skelHit: spriteToCanvas(SKELETON_SPRITE, CONFIG.colors.skeletonHit, "skeletonHit"),
+    fireball: spriteToCanvas(FIREBALL_SPRITE, f, "fireball"),
+    flames: FLAME_FRAMES.map((m, i) => spriteToCanvas(m, flamePal, `flame${i}`)),
+    glowTorch: glowToCanvas(16, d.glowRGB, d.glowAlpha),
+    glowOrb: glowToCanvas(8, f.glowRGB, 0.35),
+    glowFireball: glowToCanvas(9, f.glowRGB, f.glowAlpha),
+    skelEyes,
+  };
+}
+
+// Scene state: canvas element, integer pixel scale, layout, cached background
+let scene = null;
+
+function setupScene(cv) {
+  if (!ASSETS) buildAssets();
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = (cv.parentElement && cv.parentElement.clientWidth) || window.innerWidth || 360;
+  const maxCssH = (window.innerHeight || 800) * 0.28;
+  // Integer device-pixel scale: every art pixel renders at exactly `px`
+  // device pixels, eliminating uneven pixel widths.
+  let px = Math.round((cssW * dpr) / 240);
+  const maxPxByH = Math.floor((maxCssH * dpr) / SCENE_H);
+  px = Math.max(1, Math.min(px || 1, maxPxByH || 1, 8));
+  const artW = Math.ceil((cssW * dpr) / px);
+  cv.width = artW;
+  cv.height = SCENE_H;
+  cv.style.width = `${(artW * px) / dpr}px`;
+  cv.style.height = `${(SCENE_H * px) / dpr}px`;
+
+  const margin = Math.max(8, Math.round(artW * 0.07));
+  const mage = { x: margin, y: FLOOR_Y - MAGE_SPRITE.length + 2 };
+  const skel = { x: artW - margin - SKELETON_SPRITE[0].length, y: FLOOR_Y - SKELETON_SPRITE.length + 2 };
+  scene = {
+    cv,
+    artW,
+    mage,
+    skel,
+    torches: [Math.round(artW * 0.3), Math.round(artW * 0.7)],
+    staffTip: { x: mage.x + 23, y: mage.y + 11 },
+    skelChest: { x: skel.x + 12, y: skel.y + 17 },
+    bg: buildBg(artW),
+  };
+}
+
+function buildBg(artW) {
   const d = CONFIG.colors.dungeon;
   const cv = document.createElement("canvas");
-  cv.width = SCENE_W;
+  cv.width = artW;
   cv.height = SCENE_H;
   const ctx = cv.getContext("2d");
 
   // Wall: mortar base + brick courses with deterministic shade variation
   ctx.fillStyle = d.mortar;
-  ctx.fillRect(0, 0, SCENE_W, FLOOR_Y);
+  ctx.fillRect(0, 0, artW, FLOOR_Y);
   const BW = 14, BH = 7;
   for (let row = 0; row * BH < FLOOR_Y; row++) {
     const y = row * BH;
     const offset = row % 2 === 0 ? 0 : -Math.floor(BW / 2);
-    for (let col = 0; col * BW + offset < SCENE_W; col++) {
+    for (let col = 0; col * BW + offset < artW; col++) {
       const x = col * BW + offset;
       const h = brickHash(row, col);
       ctx.fillStyle = d.brickShades[h % d.brickShades.length];
       ctx.fillRect(x, y, BW - 1, BH - 1);
-      // top-edge highlight for depth
       ctx.fillStyle = "rgba(255,255,255,0.03)";
       ctx.fillRect(x, y, BW - 1, 1);
-      // occasional crack
       if (h % 7 === 0) {
         ctx.fillStyle = d.brickCrack;
         const cx = x + 2 + (h % (BW - 5));
         ctx.fillRect(cx, y + 1, 1, 2);
         ctx.fillRect(cx + 1, y + 3, 1, 2);
       }
-      // moss creeps up the lower wall
       if (y > FLOOR_Y - 28 && h % 5 === 0) {
         ctx.fillStyle = h % 2 === 0 ? d.moss : d.mossDark;
         ctx.fillRect(x + (h % (BW - 3)), y + BH - 2, 2, 1);
@@ -517,19 +632,18 @@ function buildStaticScene() {
     }
   }
 
-  // Floor: dark base, slab rows with edge highlights (subtle perspective:
-  // nearer slabs are taller)
+  // Floor: slab rows with subtle perspective (nearer slabs are taller)
   ctx.fillStyle = d.floorDark;
-  ctx.fillRect(0, FLOOR_Y, SCENE_W, SCENE_H - FLOOR_Y);
+  ctx.fillRect(0, FLOOR_Y, artW, SCENE_H - FLOOR_Y);
   ctx.fillStyle = d.slabEdge;
-  ctx.fillRect(0, FLOOR_Y, SCENE_W, 1);
+  ctx.fillRect(0, FLOOR_Y, artW, 1);
   let y = FLOOR_Y + 1;
-  let slabH = 7;
+  let slabH = 6;
   let rowIdx = 0;
   while (y < SCENE_H) {
     const offset = rowIdx % 2 === 0 ? 0 : -11;
     const slabW = 24;
-    for (let col = 0; col * slabW + offset < SCENE_W; col++) {
+    for (let col = 0; col * slabW + offset < artW; col++) {
       const x = col * slabW + offset;
       const h = brickHash(rowIdx + 100, col);
       ctx.fillStyle = h % 2 === 0 ? d.slabA : d.slabB;
@@ -542,43 +656,27 @@ function buildStaticScene() {
     rowIdx++;
   }
 
-  // Torches with layered flames and a warm glow halo
-  for (const tx of [68, 162]) {
-    const ty = 34;
-    const fl = d.flame;
-    drawGlow(ctx, tx, ty - 2, 17, d.glowRGB, d.glowAlpha);
-    // metal sconce + wood
+  // Torch sconces (static; flames are animated per frame)
+  for (const tx of [Math.round(artW * 0.3), Math.round(artW * 0.7)]) {
+    const ty = 36;
     ctx.fillStyle = d.torchMetal;
-    ctx.fillRect(tx - 1, ty + 6, 4, 2);
+    ctx.fillRect(tx - 2, ty + 6, 5, 2);
+    ctx.fillRect(tx - 1, ty + 8, 3, 1);
     ctx.fillStyle = d.torchWood;
-    ctx.fillRect(tx, ty + 2, 2, 6);
-    // flame: layered teardrop
-    ctx.fillStyle = fl[1];
-    ctx.fillRect(tx - 1, ty - 4, 4, 5);
-    ctx.fillRect(tx, ty - 6, 2, 2);
-    ctx.fillStyle = fl[2];
-    ctx.fillRect(tx, ty - 4, 2, 4);
-    ctx.fillRect(tx, ty - 5, 1, 1);
-    ctx.fillStyle = fl[3];
-    ctx.fillRect(tx, ty - 2, 2, 2);
-    ctx.fillStyle = fl[4];
-    ctx.fillRect(tx, ty - 1, 1, 1);
+    ctx.fillRect(tx - 1, ty + 1, 3, 6);
   }
 
-  // Fighters
-  drawSpritePx(ctx, MAGE_SPRITE, CONFIG.colors.mage, MAGE_POS.x, MAGE_POS.y);
-  drawSpritePx(ctx, SKELETON_SPRITE, CONFIG.colors.skeleton, SKEL_POS.x, SKEL_POS.y);
+  // Ground shadows under the fighters (soft, so they don't read as plinths)
+  const margin = Math.max(8, Math.round(artW * 0.07));
+  ctx.fillStyle = "rgba(10, 7, 15, 0.28)";
+  ctx.fillRect(margin + 3, FLOOR_Y + 1, MAGE_SPRITE[0].length - 8, 2);
+  ctx.fillRect(artW - margin - SKELETON_SPRITE[0].length + 5, FLOOR_Y + 1, SKELETON_SPRITE[0].length - 10, 2);
 
-  // Soft shadows under the fighters
-  ctx.fillStyle = "rgba(10, 7, 15, 0.5)";
-  ctx.fillRect(MAGE_POS.x + 2, FLOOR_Y + 1, 20, 2);
-  ctx.fillRect(SKEL_POS.x + 3, FLOOR_Y + 1, 14, 2);
-
-  // Vignette: darken top of the wall and bottom of the floor
+  // Vignette top and bottom
   ctx.fillStyle = d.vignette;
-  ctx.fillRect(0, 0, SCENE_W, 5);
-  ctx.fillRect(0, 0, SCENE_W, 2);
-  ctx.fillRect(0, SCENE_H - 4, SCENE_W, 4);
+  ctx.fillRect(0, 0, artW, 5);
+  ctx.fillRect(0, 0, artW, 2);
+  ctx.fillRect(0, SCENE_H - 4, artW, 4);
 
   return cv;
 }
@@ -586,44 +684,81 @@ function buildStaticScene() {
 function renderScene(now) {
   const cv = document.getElementById("scene");
   if (!cv) return;
+  if (!scene || scene.cv !== cv) setupScene(cv);
   const ctx = cv.getContext("2d");
-  if (!sceneStaticCanvas) sceneStaticCanvas = buildStaticScene();
-  ctx.drawImage(sceneStaticCanvas, 0, 0);
+  ctx.drawImage(scene.bg, 0, 0);
 
-  // Fireball cast: staff -> skeleton on wall-clock time (presentation only,
-  // FREEZE doesn't stop it), then a white-hot hit flash with a burst ring.
+  // Torch flames: 3-frame flicker + wobbling additive glow
+  scene.torches.forEach((tx, i) => {
+    const ty = 36;
+    const fi = (Math.floor(now / 130) + i * 2) % ASSETS.flames.length;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.75 + 0.25 * Math.sin(now / 95 + i * 2.1);
+    ctx.drawImage(ASSETS.glowTorch, tx - 15, ty - 18);
+    ctx.restore();
+    ctx.drawImage(ASSETS.flames[fi], tx - 3, ty - 8);
+  });
+
+  // Idle bobs: fighters breathe out of phase
+  const bobM = Math.round(Math.sin(now / 620) * 1.2);
+  const bobS = Math.round(Math.sin(now / 620 + 2.6) * 1.2);
+  ctx.drawImage(ASSETS.mage, scene.mage.x, scene.mage.y + bobM);
+
+  // Staff orb pulse
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.55 + 0.45 * Math.sin(now / 480);
+  ctx.drawImage(ASSETS.glowOrb, scene.staffTip.x - 8 , scene.staffTip.y - 8 + bobM);
+  ctx.restore();
+
+  ctx.drawImage(ASSETS.skel, scene.skel.x, scene.skel.y + bobS);
+
+  // Skeleton eye glints pulse
+  ctx.save();
+  ctx.globalAlpha = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(now / 430));
+  ctx.fillStyle = CONFIG.colors.skeleton.R;
+  for (const [ex, ey] of ASSETS.skelEyes) {
+    ctx.fillRect(scene.skel.x + ex, scene.skel.y + ey + bobS, 1, 1);
+  }
+  ctx.restore();
+
+  // Fireball cast: staff orb -> skeleton on wall-clock time (presentation
+  // only, FREEZE doesn't stop it), then a hit flash with a burst ring.
   if (!state.fireballAt) return;
   const t = now - state.fireballAt;
   const flight = CONFIG.fireballFlightMs;
   const f = CONFIG.colors.fireball;
+  const chest = { x: scene.skelChest.x, y: scene.skelChest.y + bobS };
   if (t <= flight) {
     const p = t / flight;
-    const x = STAFF_TIP.x + (SKEL_CHEST.x - STAFF_TIP.x) * p;
-    const y = STAFF_TIP.y + (SKEL_CHEST.y - STAFF_TIP.y) * p - Math.sin(p * Math.PI) * 12;
-    drawGlow(ctx, Math.round(x), Math.round(y), 9, f.glowRGB, f.glowAlpha);
-    drawSpritePx(ctx, FIREBALL_SPRITE, f, Math.round(x) - 5, Math.round(y) - 3);
+    const x = Math.round(scene.staffTip.x + (chest.x - scene.staffTip.x) * p);
+    const y = Math.round(scene.staffTip.y + (chest.y - scene.staffTip.y) * p - Math.sin(p * Math.PI) * 14);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.drawImage(ASSETS.glowFireball, x - 9, y - 9);
+    ctx.restore();
+    ctx.drawImage(ASSETS.fireball, x - 5, y - 3);
   } else if (t <= flight + CONFIG.fireballImpactMs) {
     const q = (t - flight) / CONFIG.fireballImpactMs;
     if (Math.floor((t - flight) / 70) % 2 === 0) {
-      drawSpritePx(ctx, SKELETON_SPRITE, CONFIG.colors.skeletonHit, SKEL_POS.x, SKEL_POS.y);
+      ctx.drawImage(ASSETS.skelHit, scene.skel.x, scene.skel.y + bobS);
     }
-    // expanding burst ring
     const r = Math.round(3 + q * 12);
     ctx.fillStyle = f.y;
-    ctx.fillRect(SKEL_CHEST.x - r, SKEL_CHEST.y, 2, 1);
-    ctx.fillRect(SKEL_CHEST.x + r, SKEL_CHEST.y, 2, 1);
-    ctx.fillRect(SKEL_CHEST.x, SKEL_CHEST.y - r, 1, 2);
-    ctx.fillRect(SKEL_CHEST.x, SKEL_CHEST.y + r, 1, 2);
+    ctx.fillRect(chest.x - r, chest.y, 2, 1);
+    ctx.fillRect(chest.x + r, chest.y, 2, 1);
+    ctx.fillRect(chest.x, chest.y - r, 1, 2);
+    ctx.fillRect(chest.x, chest.y + r, 1, 2);
     ctx.fillStyle = f.O;
-    ctx.fillRect(SKEL_CHEST.x - r + 2, SKEL_CHEST.y - r + 2, 1, 1);
-    ctx.fillRect(SKEL_CHEST.x + r - 2, SKEL_CHEST.y - r + 2, 1, 1);
-    ctx.fillRect(SKEL_CHEST.x - r + 2, SKEL_CHEST.y + r - 2, 1, 1);
-    ctx.fillRect(SKEL_CHEST.x + r - 2, SKEL_CHEST.y + r - 2, 1, 1);
+    ctx.fillRect(chest.x - r + 2, chest.y - r + 2, 1, 1);
+    ctx.fillRect(chest.x + r - 2, chest.y - r + 2, 1, 1);
+    ctx.fillRect(chest.x - r + 2, chest.y + r - 2, 1, 1);
+    ctx.fillRect(chest.x + r - 2, chest.y + r - 2, 1, 1);
   } else {
     state.fireballAt = 0;
   }
 }
-
 // ---------------------------------------------------------------------------
 // Word pool / circle population
 // ---------------------------------------------------------------------------
@@ -927,7 +1062,7 @@ function renderCombatFull() {
 
   app.innerHTML = `
     <div class="screen combat-screen" id="combat-root">
-      <canvas class="scene" id="scene" width="${SCENE_W}" height="${SCENE_H}"></canvas>
+      <div class="scene-wrap"><canvas class="scene" id="scene"></canvas></div>
       <div class="hud-under">
         <div class="hearts" id="hearts"></div>
         <div class="stats">
@@ -1028,6 +1163,10 @@ function patchEndMode() {
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
+window.addEventListener("resize", () => {
+  scene = null; // re-measure and rebuild the scene at the new integer scale
+});
+
 window.addEventListener("keydown", (e) => {
   if (e.key === "m" || e.key === "M") {
     cycleMode();
