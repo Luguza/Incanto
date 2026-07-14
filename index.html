@@ -189,6 +189,8 @@ const CONFIG = {
   shapeFlashDurationMs: 500,
   fireballFlightMs: 450,
   fireballImpactMs: 280,
+  castChargeMs: 420,
+  runePuffMs: 260,
   circleCenter: { x: 300, y: 300 },
   circleRadius: 215,
   runeRadius: 48,
@@ -209,6 +211,12 @@ const CONFIG = {
       glowRGB: "242, 168, 58",
       glowAlpha: 0.2,
       vignette: "rgba(10, 7, 15, 0.45)",
+    },
+    sceneRune: {
+      dot: "rgba(242, 193, 78, 0.55)",
+      line: "#f2c14e",
+      bright: "#fff7d9",
+      discRGB: "242, 193, 78",
     },
     fireball: {
       C: "#fff7d9", // core
@@ -266,7 +274,8 @@ function freshState() {
     pairAvailableAtClockMs: {},
     wrongFlashUntil: 0,
     shapeFlashUntil: 0,
-    fireballAt: 0,
+    castAt: 0,
+    castChords: null, // snapshot of the completed chords for the cast animation
     pendingRefill: false,
     _structuralDirty: false, // set true whenever runes/chords/screen need a full DOM rebuild
   };
@@ -475,7 +484,9 @@ function setupScene(cv) {
     wizard,
     skelet,
     fountains: [Math.round(artW * 0.32 / TILE) * TILE, Math.round(artW * 0.68 / TILE) * TILE],
-    staffTip: { x: wizard.x + wiz.w - 2, y: wizard.y + 10 },
+    // The traced rune floats as a tilted disc in front of the wizard —
+    // drawn in perspective, so the circle is foreshortened to an ellipse.
+    rune: { cx: wizard.x + wiz.w + 19, cy: wizard.y + 2, rx: 17, ry: 7 },
     skelChest: { x: skelet.x + skl.w / 2, y: skelet.y + 9 },
     bg: null,
   };
@@ -528,10 +539,10 @@ function buildBg(artW) {
     }
   }
 
-  // Props on the floor line: a skull near the skeleton, a crate by the wall
+  // Floor prop: a skull near the skeleton (the wizard's side stays clear —
+  // the traced rune floats there)
   const feetY = FLOOR_Y + 18;
   blit(SHEET.skull, scene.skelet.x - 16, feetY - 12);
-  blit(SHEET.crate, scene.wizard.x + 22, feetY - SHEET.crate.h - 2);
 
   // Soft ground shadows under the fighters
   ctx.fillStyle = "rgba(10, 7, 15, 0.30)";
@@ -574,41 +585,124 @@ function renderScene(now) {
   ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
   ctx.drawImage(ASSETS.skelet[sf], scene.skelet.x, scene.skelet.y);
 
-  // Fireball cast: wizard -> skeleton on wall-clock time (presentation only,
-  // FREEZE doesn't stop it), then a hit flash with a burst ring.
-  if (!state.fireballAt) return;
-  const t = now - state.fireballAt;
-  const flight = CONFIG.fireballFlightMs;
-  const f = CONFIG.colors.fireball;
-  const chest = scene.skelChest;
-  if (t <= flight) {
-    const p = t / flight;
-    const x = Math.round(scene.staffTip.x + (chest.x - scene.staffTip.x) * p);
-    const y = Math.round(scene.staffTip.y + (chest.y - scene.staffTip.y) * p - Math.sin(p * Math.PI) * 10);
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.drawImage(ASSETS.glowFireball, x - 9, y - 9);
-    ctx.restore();
-    ctx.drawImage(ASSETS.fireball, x - 5, y - 3);
-  } else if (t <= flight + CONFIG.fireballImpactMs) {
-    const q = (t - flight) / CONFIG.fireballImpactMs;
-    if (Math.floor((t - flight) / 70) % 2 === 0) {
-      ctx.drawImage(ASSETS.skeletHit[sf], scene.skelet.x, scene.skelet.y);
+  // The wizard's spell-in-progress: the rune the player is tracing below is
+  // mirrored as a tilted disc in front of the wizard. While tracing, it shows
+  // node dots plus the chords drawn so far; on completion it flares with a
+  // semi-transparent disc, then puffs away as the fireball launches from it.
+  if (state.castAt) {
+    const t = now - state.castAt;
+    const charge = CONFIG.castChargeMs;
+    const puff = CONFIG.runePuffMs;
+    const flight = CONFIG.fireballFlightMs;
+    const impact = CONFIG.fireballImpactMs;
+    const f = CONFIG.colors.fireball;
+    const chest = scene.skelChest;
+
+    if (t < charge) {
+      // charge: disc fades in behind the completed rune, lines go white-hot
+      const q = t / charge;
+      drawSceneRune(ctx, state.castChords, { disc: 0.14 + q * 0.26, bright: q, scale: 1 });
+    } else if (t < charge + puff) {
+      // puff: the rune expands and dissolves
+      const q = (t - charge) / puff;
+      drawSceneRune(ctx, state.castChords, {
+        disc: 0.4 * (1 - q),
+        bright: 1,
+        scale: 1 + q * 0.7,
+        alpha: 1 - q,
+      });
     }
-    const r = Math.round(2 + q * 10);
-    ctx.fillStyle = f.y;
-    ctx.fillRect(chest.x - r, chest.y, 2, 1);
-    ctx.fillRect(chest.x + r, chest.y, 2, 1);
-    ctx.fillRect(chest.x, chest.y - r, 1, 2);
-    ctx.fillRect(chest.x, chest.y + r, 1, 2);
-    ctx.fillStyle = f.O;
-    ctx.fillRect(chest.x - r + 1, chest.y - r + 1, 1, 1);
-    ctx.fillRect(chest.x + r - 1, chest.y - r + 1, 1, 1);
-    ctx.fillRect(chest.x - r + 1, chest.y + r - 1, 1, 1);
-    ctx.fillRect(chest.x + r - 1, chest.y + r - 1, 1, 1);
-  } else {
-    state.fireballAt = 0;
+
+    if (t >= charge && t <= charge + flight) {
+      const p = (t - charge) / flight;
+      const x = Math.round(scene.rune.cx + (chest.x - scene.rune.cx) * p);
+      const y = Math.round(scene.rune.cy + (chest.y - scene.rune.cy) * p - Math.sin(p * Math.PI) * 10);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.drawImage(ASSETS.glowFireball, x - 9, y - 9);
+      ctx.restore();
+      ctx.drawImage(ASSETS.fireball, x - 5, y - 3);
+    } else if (t > charge + flight && t <= charge + flight + impact) {
+      const q = (t - charge - flight) / impact;
+      if (Math.floor((t - charge - flight) / 70) % 2 === 0) {
+        ctx.drawImage(ASSETS.skeletHit[sf], scene.skelet.x, scene.skelet.y);
+      }
+      const r = Math.round(2 + q * 10);
+      ctx.fillStyle = f.y;
+      ctx.fillRect(chest.x - r, chest.y, 2, 1);
+      ctx.fillRect(chest.x + r, chest.y, 2, 1);
+      ctx.fillRect(chest.x, chest.y - r, 1, 2);
+      ctx.fillRect(chest.x, chest.y + r, 1, 2);
+      ctx.fillStyle = f.O;
+      ctx.fillRect(chest.x - r + 1, chest.y - r + 1, 1, 1);
+      ctx.fillRect(chest.x + r - 1, chest.y - r + 1, 1, 1);
+      ctx.fillRect(chest.x - r + 1, chest.y + r - 1, 1, 1);
+      ctx.fillRect(chest.x + r - 1, chest.y + r - 1, 1, 1);
+    } else if (t > charge + flight + impact) {
+      state.castAt = 0;
+      state.castChords = null;
+    }
+  } else if (state.screen === "combat") {
+    // tracing: live mirror of the chords drawn so far
+    drawSceneRune(ctx, state.chords, { disc: 0, bright: 0, scale: 1 });
   }
+}
+
+// Crisp 1px Bresenham line (canvas stroke() would anti-alias)
+function pixLine(ctx, x0, y0, x1, y1) {
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    ctx.fillRect(x0, y0, 1, 1);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+// Map a point on the bottom arena circle onto the scene's perspective disc
+function runePoint(px, py, scale) {
+  const { cx, cy, rx, ry } = scene.rune;
+  const a = Math.atan2(py - CONFIG.circleCenter.y, px - CONFIG.circleCenter.x);
+  return { x: cx + rx * scale * Math.cos(a), y: cy + ry * scale * Math.sin(a) };
+}
+
+function drawSceneRune(ctx, chords, { disc, bright, scale, alpha = 1 }) {
+  const c = CONFIG.colors.sceneRune;
+  const { cx, cy, rx, ry } = scene.rune;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // semi-transparent disc behind the arcs, row-filled so edges stay pixelated
+  if (disc > 0) {
+    ctx.fillStyle = `rgba(${c.discRGB}, ${disc.toFixed(3)})`;
+    const RY = Math.round(ry * scale), RX = rx * scale;
+    for (let dy = -RY; dy <= RY; dy++) {
+      const hw = Math.round(RX * Math.sqrt(Math.max(0, 1 - (dy / RY) ** 2)));
+      ctx.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2, 1);
+    }
+  }
+
+  // node dots at the six slot angles
+  ctx.fillStyle = c.dot;
+  for (let i = 0; i < CONFIG.runeCount; i++) {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / CONFIG.runeCount;
+    ctx.fillRect(Math.round(cx + rx * scale * Math.cos(a)), Math.round(cy + ry * scale * Math.sin(a)), 1, 1);
+  }
+
+  // the chords traced so far
+  if (chords) {
+    ctx.fillStyle = bright > 0.5 ? c.bright : c.line;
+    for (const ch of chords) {
+      const p1 = runePoint(ch.x1, ch.y1, scale);
+      const p2 = runePoint(ch.x2, ch.y2, scale);
+      pixLine(ctx, p1.x, p1.y, p2.x, p2.y);
+    }
+  }
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
@@ -711,7 +805,8 @@ function onShapeComplete(now) {
   // literal triangle polygon. That trio of chords lighting up together *is*
   // the "shape"; no extra geometry is constructed.
   state.shapeFlashUntil = now + CONFIG.shapeFlashDurationMs;
-  state.fireballAt = now;
+  state.castAt = now;
+  state.castChords = state.chords.map((c) => ({ ...c })); // survives the refill
   hitEnemy(CONFIG.enemyDamagePerCast);
   if (state.screen !== "combat") return; // victory may have just triggered
   if (CONFIG.staggerOnCast) state.windup = 0;
