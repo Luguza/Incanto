@@ -156,6 +156,11 @@
   .chord { stroke: #8ff7f3; stroke-width: 3.5; stroke-linecap: round; }
   .chord.flash { stroke: #ffffff; stroke-width: 6; }
   .chord-glow.flash { stroke: #ffffff; opacity: 0.6; }
+  /* Filigree sub-lines for every possible chord: pulse faintly, burst white
+     on a correct match, then stay lit alongside their main line */
+  .sub-group { stroke: #4de3e0; }
+  .sub-group.burst { stroke: #ffffff; }
+  .sub-group * { fill: none; stroke-linecap: round; }
 
   /* End screens */
   .end-screen { cursor: pointer; padding: 16px; text-align: center; }
@@ -485,10 +490,10 @@ function setupScene(cv) {
     wizard,
     skelet,
     fountains: [Math.round(artW * 0.32 / TILE) * TILE, Math.round(artW * 0.68 / TILE) * TILE],
-    // The traced rune floats as a tilted disc in the air ahead of the wizard —
-    // drawn in perspective: a circle seen at an angle, so it reads as an
-    // ellipse (~60° tilt), clear of the wall seam and the fountain.
-    rune: { cx: wizard.x + wiz.w + 14, cy: 31, rx: 18, ry: 11 },
+    // The traced rune stands upright at arm's reach in front of the wizard,
+    // facing the enemy. Our camera sees it from the side, so the circle
+    // foreshortens horizontally: a tall, narrow ellipse (height > width).
+    rune: { cx: wizard.x + wiz.w + 9, cy: wizard.y + 8, rx: 7, ry: 14 },
     skelChest: { x: skelet.x + skl.w / 2, y: skelet.y + 9 },
     bg: null,
   };
@@ -603,11 +608,11 @@ function renderScene(now) {
     if (t < charge) {
       // charge: disc fades in behind the completed rune, lines go white-hot
       const q = t / charge;
-      drawSceneRune(ctx, state.castChords, { disc: 0.14 + q * 0.26, bright: q, scale: 1 });
+      drawSceneRune(ctx, now, state.castChords, { disc: 0.14 + q * 0.26, bright: q, scale: 1 });
     } else if (t < charge + puff) {
       // puff: the rune expands and dissolves
       const q = (t - charge) / puff;
-      drawSceneRune(ctx, state.castChords, {
+      drawSceneRune(ctx, now, state.castChords, {
         disc: 0.4 * (1 - q),
         bright: 1,
         scale: 1 + q * 0.7,
@@ -646,7 +651,7 @@ function renderScene(now) {
     }
   } else if (state.screen === "combat") {
     // tracing: live mirror of the chords drawn so far
-    drawSceneRune(ctx, state.chords, { disc: 0, bright: 0, scale: 1 });
+    drawSceneRune(ctx, now, state.chords, { disc: 0, bright: 0, scale: 1 });
   }
 }
 
@@ -685,28 +690,50 @@ function pixLineGlow(ctx, x0, y0, x1, y1, core, glowRGB) {
   pixLine(ctx, x0, y0, x1, y1);
 }
 
-function drawSceneRune(ctx, chords, { disc, bright, scale, alpha = 1 }) {
+function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   const c = CONFIG.colors.sceneRune;
   const { cx, cy, rx, ry } = scene.rune;
+  const slotAngle = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / CONFIG.runeCount;
+  const slotPt = (i) => ({
+    x: Math.round(cx + rx * scale * Math.cos(slotAngle(i))),
+    y: Math.round(cy + ry * scale * Math.sin(slotAngle(i))),
+  });
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  // semi-transparent disc behind the arcs, row-filled so edges stay pixelated
-  if (disc > 0) {
-    ctx.fillStyle = `rgba(${c.discRGB}, ${disc.toFixed(3)})`;
-    const RY = Math.round(ry * scale), RX = rx * scale;
-    for (let dy = -RY; dy <= RY; dy++) {
-      // sample at the row center so the ellipse's top/bottom don't flatten
-      const s = (dy + (dy < 0 ? 0.5 : -0.5)) / (RY + 0.5);
-      const hw = Math.round(RX * Math.sqrt(Math.max(0, 1 - s * s)));
-      ctx.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2, 1);
-    }
+  // the disc hums: an ambient pulsing fill even while tracing, stronger
+  // during the cast charge
+  const discNow = Math.max(disc, 0.05 + 0.035 * Math.sin(now / 900));
+  ctx.fillStyle = `rgba(${c.discRGB}, ${discNow.toFixed(3)})`;
+  const RY = Math.round(ry * scale), RX = rx * scale;
+  for (let dy = -RY; dy <= RY; dy++) {
+    // sample at the row center so the ellipse's top/bottom don't flatten
+    const s = (dy + (dy < 0 ? 0.5 : -0.5)) / (RY + 0.5);
+    const hw = Math.round(RX * Math.sqrt(Math.max(0, 1 - s * s)));
+    ctx.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2, 1);
   }
 
-  // faint elliptical ring so the construct reads as a magic circle
+  // ghost web: every possible chord shimmers faintly, mirroring the
+  // filigree pulse on the big circle below
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.fillStyle = `rgba(${c.glowRGB}, ${(0.22 + bright * 0.3).toFixed(3)})`;
+  let pairIdx = 0;
+  for (let a = 0; a < CONFIG.runeCount; a++) {
+    for (let b = a + 1; b < CONFIG.runeCount; b++) {
+      const ga = 0.05 + 0.045 * Math.sin(now / 700 + pairIdx * 1.3);
+      ctx.fillStyle = `rgba(${c.glowRGB}, ${Math.max(0, ga).toFixed(3)})`;
+      const p1 = slotPt(a), p2 = slotPt(b);
+      pixLine(ctx, p1.x, p1.y, p2.x, p2.y);
+      pairIdx++;
+    }
+  }
+  ctx.restore();
+
+  // pulsing elliptical ring so the construct reads as a magic circle
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const ringA = 0.2 + 0.08 * Math.sin(now / 900) + bright * 0.3;
+  ctx.fillStyle = `rgba(${c.glowRGB}, ${Math.max(0, ringA).toFixed(3)})`;
   const steps = 44;
   for (let i = 0; i < steps; i++) {
     const a = (i * 2 * Math.PI) / steps;
@@ -719,25 +746,31 @@ function drawSceneRune(ctx, chords, { disc, bright, scale, alpha = 1 }) {
   ctx.globalCompositeOperation = "lighter";
   ctx.fillStyle = `rgba(${c.glowRGB}, 0.35)`;
   for (let i = 0; i < CONFIG.runeCount; i++) {
-    const a = -Math.PI / 2 + (i * 2 * Math.PI) / CONFIG.runeCount;
-    const dx = Math.round(cx + rx * scale * Math.cos(a));
-    const dy = Math.round(cy + ry * scale * Math.sin(a));
-    ctx.fillRect(dx - 1, dy - 1, 3, 3);
+    const p = slotPt(i);
+    ctx.fillRect(p.x - 1, p.y - 1, 3, 3);
   }
   ctx.restore();
   ctx.fillStyle = c.dot;
   for (let i = 0; i < CONFIG.runeCount; i++) {
-    const a = -Math.PI / 2 + (i * 2 * Math.PI) / CONFIG.runeCount;
-    ctx.fillRect(Math.round(cx + rx * scale * Math.cos(a)), Math.round(cy + ry * scale * Math.sin(a)), 1, 1);
+    const p = slotPt(i);
+    ctx.fillRect(p.x, p.y, 1, 1);
   }
 
-  // the chords traced so far, glowing
+  // the chords traced so far: burst white right after the match (mirroring
+  // the filigree burst below), then hold lit with a midpoint tick
   if (chords) {
-    const core = bright > 0.5 ? c.bright : c.line;
     for (const ch of chords) {
+      const bursting = ch.addedAt && now - ch.addedAt < 320;
+      const core = bursting || bright > 0.5 ? c.bright : c.line;
       const p1 = runePoint(ch.x1, ch.y1, scale);
       const p2 = runePoint(ch.x2, ch.y2, scale);
       pixLineGlow(ctx, Math.round(p1.x), Math.round(p1.y), Math.round(p2.x), Math.round(p2.y), core, c.glowRGB);
+      // midpoint tick perpendicular to the chord — the sub-line hint
+      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+      const len = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+      const tx = -(p2.y - p1.y) / len, ty = (p2.x - p1.x) / len;
+      ctx.fillStyle = core;
+      pixLine(ctx, Math.round(mx - tx * 2), Math.round(my - ty * 2), Math.round(mx + tx * 2), Math.round(my + ty * 2));
     }
   }
   ctx.restore();
@@ -823,7 +856,13 @@ function handleRuneClick(id) {
   if (correct) {
     first.matchState = "matched";
     rune.matchState = "matched";
-    state.chords.push({ x1: first.x, y1: first.y, x2: rune.x, y2: rune.y, pairId: rune.pairId });
+    state.chords.push({
+      x1: first.x, y1: first.y, x2: rune.x, y2: rune.y,
+      pairId: rune.pairId,
+      slotA: Math.min(first.id, rune.id),
+      slotB: Math.max(first.id, rune.id),
+      addedAt: now, // drives the burst flash on the filigree and the mirror
+    });
     state.selectedRuneId = null;
     if (state.chords.length >= CONFIG.pairsPerLoadout) {
       onShapeComplete(now);
@@ -1001,6 +1040,45 @@ function renderCombatFull() {
     `<polygon class="hexagram" points="${[0, 2, 4].map((i) => `${slots[i].x},${slots[i].y}`).join(" ")}"/>` +
     `<polygon class="hexagram" points="${[1, 3, 5].map((i) => `${slots[i].x},${slots[i].y}`).join(" ")}"/>`;
 
+  // Filigree: for each of the 15 possible chords, an artistic group of
+  // sub-lines (ghost line, perpendicular ticks, midpoint diamond, end barbs).
+  // They pulse with the background hum; a correct match bursts its group
+  // white, then it stays lit alongside the drawn main chord.
+  const filigree = [];
+  for (let a = 0; a < CONFIG.runeCount; a++) {
+    for (let b = a + 1; b < CONFIG.runeCount; b++) {
+      const p1 = slots[a], p2 = slots[b];
+      const dx = p2.x - p1.x, dy = p2.y - p1.y;
+      const len = Math.hypot(dx, dy);
+      const ux = dx / len, uy = dy / len;   // along the chord
+      const nx = -uy, ny = ux;              // perpendicular
+      const at = (t) => ({ x: p1.x + dx * t, y: p1.y + dy * t });
+      const seg = (x1, y1, x2, y2, w) =>
+        `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke-width="${w}"/>`;
+      const parts = [];
+      // ghost of the main line
+      parts.push(`<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}" stroke-width="1" stroke-dasharray="2 7"/>`);
+      // perpendicular ticks
+      for (const t of [0.35, 0.65]) {
+        const p = at(t);
+        parts.push(seg(p.x - nx * 7, p.y - ny * 7, p.x + nx * 7, p.y + ny * 7, 1.2));
+      }
+      // midpoint diamond
+      const m = at(0.5);
+      parts.push(
+        `<polygon points="${(m.x + ux * 6).toFixed(1)},${(m.y + uy * 6).toFixed(1)} ${(m.x + nx * 6).toFixed(1)},${(m.y + ny * 6).toFixed(1)} ${(m.x - ux * 6).toFixed(1)},${(m.y - uy * 6).toFixed(1)} ${(m.x - nx * 6).toFixed(1)},${(m.y - ny * 6).toFixed(1)}" stroke-width="1.2"/>`
+      );
+      // barbs angled back near each endpoint
+      for (const [t, dir] of [[0.14, 1], [0.86, -1]]) {
+        const p = at(t);
+        parts.push(seg(p.x, p.y, p.x + (nx * 9 - ux * 6 * dir), p.y + (ny * 9 - uy * 6 * dir), 1.2));
+        parts.push(seg(p.x, p.y, p.x - (nx * 9 + ux * 6 * dir), p.y - (ny * 9 + uy * 6 * dir), 1.2));
+      }
+      filigree.push(`<g class="sub-group" data-key="${a}-${b}">${parts.join("")}</g>`);
+    }
+  }
+  const filigreeHtml = filigree.join("");
+
   const chordsHtml = state.chords
     .map(
       (c) =>
@@ -1032,18 +1110,20 @@ function renderCombatFull() {
         <stop offset="0%" stop-color="#7fe3a8"/><stop offset="100%" stop-color="#41ad72"/>
       </radialGradient>
       <radialGradient id="bgGlow">
-        <stop offset="0%" stop-color="rgba(124,77,255,0.16)"/>
-        <stop offset="100%" stop-color="rgba(124,77,255,0)"/>
+        <stop offset="0%" stop-color="rgba(77,227,224,0.15)"/>
+        <stop offset="60%" stop-color="rgba(77,227,224,0.06)"/>
+        <stop offset="100%" stop-color="rgba(77,227,224,0)"/>
       </radialGradient>
       <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
         <feGaussianBlur stdDeviation="6"/>
       </filter>
     </defs>
-    <circle cx="${cx}" cy="${cy}" r="${CONFIG.circleRadius + 60}" fill="url(#bgGlow)"/>
+    <circle id="bg-glow" cx="${cx}" cy="${cy}" r="${CONFIG.circleRadius + 60}" fill="url(#bgGlow)"/>
     <circle class="ring outer" cx="${cx}" cy="${cy}" r="${ringR}"/>
     <circle class="ring mid" cx="${cx}" cy="${cy}" r="${CONFIG.circleRadius - 10}"/>
     ${marks}
-    ${hexagram}`;
+    ${hexagram}
+    ${filigreeHtml}`;
 
   app.innerHTML = `
     <div class="screen combat-screen" id="combat-root">
@@ -1117,6 +1197,26 @@ function patchCombatContinuous(now) {
 
   const shapeFlashActive = now < state.shapeFlashUntil;
   document.querySelectorAll(".chord, .chord-glow").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
+
+  // Background hum: the cyan glow behind the circle breathes slowly
+  const bgGlowEl = document.getElementById("bg-glow");
+  if (bgGlowEl) bgGlowEl.style.opacity = (0.72 + 0.28 * Math.sin(now / 900)).toFixed(3);
+
+  // Filigree: lit groups follow their matched chord (burst first, then hold);
+  // unlit groups shimmer with the background pulse
+  const chordByKey = {};
+  for (const c of state.chords) chordByKey[`${c.slotA}-${c.slotB}`] = c;
+  document.querySelectorAll(".sub-group").forEach((el, idx) => {
+    const chord = chordByKey[el.dataset.key];
+    if (chord) {
+      const burst = now - chord.addedAt < 320;
+      el.classList.toggle("burst", burst);
+      el.style.opacity = burst ? "1" : "0.8";
+    } else {
+      el.classList.remove("burst");
+      el.style.opacity = (0.06 + 0.05 * Math.sin(now / 700 + idx * 1.3)).toFixed(3);
+    }
+  });
 }
 
 let endScreenShownAt = 0;
