@@ -9,6 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>Rune Circle Combat — Prototype</title>
 <style>
+  @font-face {
+    font-family: "RuneDisplay";
+    src: url("assets/rune_font.ttf") format("truetype");
+    font-display: swap;
+  }
   :root { color-scheme: dark; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -28,8 +33,9 @@
   /* Loadout screen */
   .loadout-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
   .loadout-screen h1 {
+    font-family: "RuneDisplay", "Palatino Linotype", serif;
     font-size: clamp(22px, 6vw, 28px); margin-bottom: 20px; text-align: center;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
   }
   .cards { display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; width: min(320px, 85vw); }
   .card {
@@ -38,7 +44,10 @@
     padding: 14px 20px; text-align: center;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   }
-  .card .it { font-size: 20px; font-weight: 600; color: #f2c14e; letter-spacing: 0.4px; }
+  .card .it {
+    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    font-size: 21px; font-weight: 600; color: #f2c14e; letter-spacing: 1px;
+  }
   .card .dash { color: rgba(242, 193, 78, 0.45); margin: 4px 0; font-size: 12px; }
   .card .en { font-size: 18px; color: #eae6f5; }
   .fight-btn {
@@ -134,33 +143,32 @@
     width: 100%;
     display: block;
   }
-  /* The arcane wheel: outer band with runic script that the word-circles
-     sit on, glow layers, rotating inner script ring, and ember sparks */
-  .band-ring { fill: none; stroke: #4de3e0; stroke-width: 2; opacity: 0.55; }
-  .band-glow { fill: none; stroke: #4de3e0; }
-  .band-fine { fill: none; stroke: #4de3e0; stroke-width: 1; opacity: 0.3; stroke-dasharray: 1 5; }
+  /* The static arcane wheel is a baked high-fidelity image; live SVG on top
+     draws only what changes: word bubbles, chords, filigree, sparks, and the
+     rotating inner script ring */
   .glyph {
     fill: none; stroke: #7ff0ed; stroke-width: 1.7; opacity: 0.6;
     stroke-linecap: round; stroke-linejoin: round;
   }
-  .band-tick { stroke: #4de3e0; stroke-width: 1.5; opacity: 0.5; }
-  .inner-band circle { fill: none; stroke: #4de3e0; stroke-width: 1; }
   .inner-band .glyph { stroke-width: 1.4; }
   .spark { fill: url(#sparkGrad); }
-  .hexagram { fill: none; stroke: #4de3e0; opacity: 0.09; stroke-width: 1; }
   .rune .halo { opacity: 0; fill: #f2c14e; transition: opacity 150ms linear; pointer-events: none; }
-  .rune.selected .halo { opacity: 0.5; }
-  .rune.matched .halo { opacity: 0.25; fill: #5ecf8f; }
-  .rune .body { stroke-width: 2; cursor: pointer; transition: fill 100ms linear; }
-  .rune.unmatched .body { fill: url(#gradUnmatched); stroke: #6f668f; }
-  .rune.selected .body { fill: url(#gradSelected); stroke: #ffe9b0; }
-  .rune.matched .body { fill: url(#gradMatched); stroke: #8fe7b4; }
+  .rune.selected .halo { opacity: 0.4; }
+  .rune.matched .halo { opacity: 0.22; fill: #5ecf8f; }
+  /* Word bubbles are transparent wells over the baked sockets: a whisper of
+     dark fill for legibility, state shown by ring tint */
+  .rune .body { stroke-width: 1.5; cursor: pointer; transition: fill 100ms linear, stroke 100ms linear; }
+  .rune.unmatched .body { fill: rgba(8, 13, 18, 0.30); stroke: rgba(127, 244, 241, 0.35); }
+  .rune.selected .body { fill: rgba(242, 193, 78, 0.16); stroke: #ffe9b0; stroke-width: 2.5; }
+  .rune.matched .body { fill: rgba(94, 207, 143, 0.14); stroke: rgba(143, 231, 180, 0.8); }
   .rune text {
-    fill: #efeaff; font-size: 16px; letter-spacing: 0.3px;
+    font-family: "RuneDisplay", "Palatino Linotype", "Book Antiqua", serif;
+    fill: #c9fdfb; font-size: 17px; letter-spacing: 1px;
     text-anchor: middle; dominant-baseline: central;
     pointer-events: none;
   }
-  .rune.selected text, .rune.matched text { fill: #161222; font-weight: 600; }
+  .rune.selected text { fill: #ffe9b0; }
+  .rune.matched text { fill: #b9f2d2; }
   .chord-glow { stroke: #4de3e0; stroke-width: 9; stroke-linecap: round; opacity: 0.3; }
   .chord { stroke: #8ff7f3; stroke-width: 3.5; stroke-linecap: round; }
   .chord.flash { stroke: #ffffff; stroke-width: 6; }
@@ -173,7 +181,10 @@
 
   /* End screens */
   .end-screen { cursor: pointer; padding: 16px; text-align: center; }
-  .end-screen h1 { font-size: clamp(32px, 9vw, 44px); margin-bottom: 12px; letter-spacing: 1px; }
+  .end-screen h1 {
+    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    font-size: clamp(32px, 9vw, 44px); margin-bottom: 12px; letter-spacing: 2px;
+  }
   .end-screen h1.victory { color: #f2c14e; text-shadow: 0 0 28px rgba(242, 193, 78, 0.45); }
   .end-screen h1.defeat { color: #e5484d; text-shadow: 0 0 28px rgba(229, 72, 77, 0.4); }
   .end-screen p { font-size: clamp(15px, 4.5vw, 18px); color: #cfc9de; margin: 4px 0; }
@@ -1061,38 +1072,14 @@ function renderCombatFull() {
   const { x: cx, y: cy } = CONFIG.circleCenter;
   const slots = layoutCircle(CONFIG.runeCount);
 
-  // The arcane wheel. Outer band: two glowing rings the word-circles sit on,
-  // filled with runic script and tick marks in the gaps between runes.
-  const bandInner = CONFIG.circleRadius - 52;   // 163
-  const bandOuter = CONFIG.circleRadius + 52;   // 267
-  const band = [];
-  for (const r of [bandInner, bandOuter]) {
-    band.push(`<circle class="band-glow" cx="${cx}" cy="${cy}" r="${r}" stroke-width="26" opacity="0.10" filter="url(#wideGlow)"/>`);
-    band.push(`<circle class="band-glow" cx="${cx}" cy="${cy}" r="${r}" stroke-width="6" opacity="0.30" filter="url(#softGlow)"/>`);
-    band.push(`<circle class="band-ring" cx="${cx}" cy="${cy}" r="${r}"/>`);
-  }
-  band.push(`<circle class="band-fine" cx="${cx}" cy="${cy}" r="${bandInner + 9}"/>`);
-  band.push(`<circle class="band-fine" cx="${cx}" cy="${cy}" r="${bandOuter - 9}"/>`);
-  // runic script along the rune radius, in the six gaps between word-circles
-  let glyphSeed = 0;
-  for (let i = 0; i < CONFIG.runeCount; i++) {
-    const slotDeg = -90 + i * 60;
-    for (const off of [-21, -13, 13, 21]) {
-      band.push(glyphAt(cx, cy, CONFIG.circleRadius, slotDeg + 30 + off / 2 + 0, 9, glyphSeed++, "glyph"));
-    }
-    // double radial ticks at the gap center, near each band edge
-    const midDeg = slotDeg + 30;
-    const mc = Math.cos((midDeg * Math.PI) / 180), ms = Math.sin((midDeg * Math.PI) / 180);
-    for (const [r1, r2] of [[bandInner + 3, bandInner + 15], [bandOuter - 15, bandOuter - 3]]) {
-      band.push(`<line class="band-tick" x1="${(cx + mc * r1).toFixed(1)}" y1="${(cy + ms * r1).toFixed(1)}" x2="${(cx + mc * r2).toFixed(1)}" y2="${(cy + ms * r2).toFixed(1)}"/>`);
-    }
-  }
-  const bandHtml = `<g id="band-group">${band.join("")}</g>`;
+  // The static wheel art is baked into assets/arcane_wheel.png (generated
+  // from this exact geometry). Live SVG adds only the dynamic layers.
+  const bandInner = CONFIG.circleRadius - 52;
+  const bandOuter = CONFIG.circleRadius + 52;
 
-  // Rotating inner script ring beneath the chords
+  // Rotating inner script ring beneath the chords (rings are baked; only the
+  // rotating glyphs stay live)
   const inner = [];
-  inner.push(`<circle cx="${cx}" cy="${cy}" r="112" opacity="0.5"/>`);
-  inner.push(`<circle cx="${cx}" cy="${cy}" r="88" opacity="0.5"/>`);
   for (let i = 0; i < 24; i++) {
     inner.push(glyphAt(cx, cy, 100, i * 15, 7, 100 + i, "glyph"));
   }
@@ -1110,10 +1097,6 @@ function renderCombatFull() {
     sparks.push(`<circle class="spark" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${sr}" data-phase="${((h % 628) / 100).toFixed(2)}" style="opacity:0"/>`);
   }
   const sparksHtml = sparks.join("");
-
-  const hexagram =
-    `<polygon class="hexagram" points="${[0, 2, 4].map((i) => `${slots[i].x},${slots[i].y}`).join(" ")}"/>` +
-    `<polygon class="hexagram" points="${[1, 3, 5].map((i) => `${slots[i].x},${slots[i].y}`).join(" ")}"/>`;
 
   // Filigree: for each of the 15 possible chords, an artistic group of
   // sub-lines (ghost line, perpendicular ticks, midpoint diamond, end barbs).
@@ -1175,15 +1158,6 @@ function renderCombatFull() {
 
   const arenaDefs = `
     <defs>
-      <radialGradient id="gradUnmatched" cx="35%" cy="30%" r="80%">
-        <stop offset="0%" stop-color="#4a4463"/><stop offset="100%" stop-color="#2e2841"/>
-      </radialGradient>
-      <radialGradient id="gradSelected" cx="35%" cy="30%" r="80%">
-        <stop offset="0%" stop-color="#ffe08a"/><stop offset="100%" stop-color="#e0a93c"/>
-      </radialGradient>
-      <radialGradient id="gradMatched" cx="35%" cy="30%" r="80%">
-        <stop offset="0%" stop-color="#7fe3a8"/><stop offset="100%" stop-color="#41ad72"/>
-      </radialGradient>
       <radialGradient id="bgGlow">
         <stop offset="0%" stop-color="rgba(77,227,224,0.15)"/>
         <stop offset="60%" stop-color="rgba(77,227,224,0.06)"/>
@@ -1204,11 +1178,10 @@ function renderCombatFull() {
         <feGaussianBlur stdDeviation="9"/>
       </filter>
     </defs>
+    <image id="wheel-img" href="assets/arcane_wheel.png" x="0" y="0" width="600" height="600"/>
     <circle id="bg-glow" cx="${cx}" cy="${cy}" r="${CONFIG.circleRadius + 60}" fill="url(#bgGlow)"/>
-    ${bandHtml}
     ${innerHtml}
     ${sparksHtml}
-    ${hexagram}
     ${filigreeHtml}`;
 
   app.innerHTML = `
@@ -1289,8 +1262,8 @@ function patchCombatContinuous(now) {
   const hum = 0.72 + 0.28 * Math.sin(now / 900);
   const bgGlowEl = document.getElementById("bg-glow");
   if (bgGlowEl) bgGlowEl.style.opacity = hum.toFixed(3);
-  const bandGroup = document.getElementById("band-group");
-  if (bandGroup) bandGroup.style.opacity = (0.82 + 0.18 * Math.sin(now / 900)).toFixed(3);
+  const wheelImg = document.getElementById("wheel-img");
+  if (wheelImg) wheelImg.style.opacity = (0.86 + 0.14 * Math.sin(now / 900)).toFixed(3);
 
   // Inner script ring rotates slowly; ember sparks twinkle at their own phase
   const innerBand = document.getElementById("inner-band");
