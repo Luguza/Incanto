@@ -1,8 +1,13 @@
 # Incanto — Rune Circle Combat Prototype
 
-Learn Italian by casting spells. This is the combat-moment prototype: match
-Italian–English word pairs on a circle of runes; completing a triangle casts
-a fireball at the enemy.
+Learn Italian by casting spells. Match Italian–English word pairs on a circle
+of runes to cast fireballs at an endless horde of skeletons.
+
+**The loop:** a run starts straight in combat with a fixed build. Skeletons
+arrive in waves, each stronger than the last, until you inevitably die. Then
+you study a short vocabulary quiz to earn gold, spend it on permanent Attack
+and Vitality upgrades, and begin a stronger run. Build and gold persist
+between runs (a session only — there is no saved data).
 
 **Play:** https://luguza.github.io/Incanto/
 

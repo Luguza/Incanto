@@ -111,6 +111,7 @@
     font-size: clamp(10px, 2.7vw, 13px); letter-spacing: 0.5px; color: #b9b3c8; font-weight: 700;
   }
   .bar-label span { color: #efeaff; font-weight: 400; }
+  .bar-sub { font-size: clamp(11px, 3vw, 14px); color: #f2c14e; font-weight: 700; }
   .hp-track {
     width: clamp(120px, 40vw, 300px); height: 12px;
     background: #241f2f; border: 1px solid #3a3550; border-radius: 6px; overflow: hidden;
@@ -190,6 +191,31 @@
   .sub-group.burst { stroke: #ffffff; }
   .sub-group * { fill: none; stroke-linecap: round; }
 
+  /* Post-death vocab quiz */
+  .quiz-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); text-align: center; }
+  .quiz-progress { font-size: 13px; color: #8a8398; letter-spacing: 0.5px; margin-bottom: 14px; }
+  .quiz-screen h1 {
+    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    font-size: clamp(24px, 6.5vw, 32px); letter-spacing: 2px; color: #7ff0ed;
+    text-shadow: 0 0 22px rgba(77, 227, 224, 0.45); margin-bottom: 18px;
+  }
+  .quiz-prompt { font-size: clamp(17px, 5vw, 22px); color: #cfc9de; margin-bottom: 26px; }
+  .quiz-word {
+    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    color: #f2c14e; font-weight: 700; letter-spacing: 1px;
+  }
+  .quiz-opts { display: flex; flex-direction: column; gap: 12px; width: min(340px, 88vw); margin: 0 auto; }
+  .quiz-opt {
+    font-size: 19px; padding: 15px; border-radius: 11px;
+    background: linear-gradient(160deg, #241d33, #1a1526);
+    border: 1px solid #4de3e0; color: #efeaff; cursor: pointer;
+    transition: background 120ms, border-color 120ms;
+  }
+  .quiz-opt:active { background: #2a2340; }
+  .quiz-opt.correct { background: #1f6d43; border-color: #5ecf8f; color: #eafff2; }
+  .quiz-opt.wrong { background: #6d2330; border-color: #e5545f; color: #ffe9ec; }
+  .quiz-opt.faded { opacity: 0.4; }
+
   /* Upgrade shop (stage 2) */
   .upgrade-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); text-align: center; }
   .upgrade-screen h1 {
@@ -222,6 +248,9 @@
   .end-screen h1.victory { color: #f2c14e; text-shadow: 0 0 28px rgba(242, 193, 78, 0.45); }
   .end-screen h1.defeat { color: #e5484d; text-shadow: 0 0 28px rgba(229, 72, 77, 0.4); }
   .end-screen p { font-size: clamp(15px, 4.5vw, 18px); color: #cfc9de; margin: 4px 0; }
+  .end-screen .dim { color: #8a8398; font-size: clamp(13px, 3.6vw, 15px); }
+  .end-screen .end-flavor { color: #b9b3c8; margin: 18px auto 24px; max-width: 320px; }
+  .study-btn { background: linear-gradient(180deg, #7ff0ed, #4de3e0); box-shadow: 0 0 24px rgba(77, 227, 224, 0.3); }
   .end-screen .hint { margin-top: 24px; color: #8a8398; }
 </style>
 </head>
@@ -244,10 +273,13 @@ const CONFIG = {
   dmgUpgradeBaseCost: 30,
   hpUpgradeBaseCost: 25,
   upgradeCostGrowth: 1.6,
-  // Gold: earned by completing the rune quiz, plus a kill bounty
-  goldPerCast: 10,
-  goldKillBase: 20,
-  goldKillPerWave: 10,
+  // Currency is earned only in the post-death vocab quiz, then spent between
+  // runs on permanent build upgrades
+  quizQuestionCount: 6,
+  quizOptionCount: 4,
+  goldPerCorrect: 12,
+  quizWaveBonus: 5, // bonus gold per question, scaled by how far you got
+  quizFeedbackMs: 650,
   // Endless skeleton waves, scaling in HP and damage
   enemyBaseHP: 10,
   enemyHPGrowth: 1.45,
@@ -333,7 +365,7 @@ let state = null;
 
 function freshState() {
   return {
-    screen: "loadout",      // loadout | combat | upgrade | defeat
+    screen: "combat",       // combat | quiz | upgrade | defeat
     mode: "REAL_TIME",
     runes: [],               // {id, pairId, lang, word, x, y, matchState}
     selectedRuneId: null,
@@ -357,6 +389,14 @@ function freshState() {
     windup: 0,
     poolIndex: 0,
     wrongMatchCount: 0,
+    // Post-death vocab quiz
+    quizList: [],
+    quizIndex: 0,
+    quizCorrect: 0,
+    quizGoldEarned: 0,
+    quizPicked: null,
+    quizAnsweredAt: 0,
+    lastWaveReached: 1,
     clockMs: 0,               // internal clock warped by mode+selection, drives windup + instrumentation
     runStartMs: 0,            // wall-clock start of the run, for the end-screen summary
     pairAvailableAtClockMs: {},
@@ -373,7 +413,6 @@ function newGame() {
   const preservedMode = state ? state.mode : "REAL_TIME"; // DECISION: mode is a tester tool, preserved across restart
   state = freshState();
   state.mode = preservedMode;
-  state.loadoutPairs = drawLoadout();
 }
 
 // Enemy scaling: each wave's skeleton has more HP and hits harder
@@ -383,9 +422,6 @@ function enemyHPForWave(w) {
 function enemyDmgForWave(w) {
   return Math.round(CONFIG.enemyBaseDmg * Math.pow(CONFIG.enemyDmgGrowth, w - 1));
 }
-function killBountyForWave(w) {
-  return CONFIG.goldKillBase + CONFIG.goldKillPerWave * (w - 1);
-}
 function dmgUpgradeCost() {
   return Math.round(CONFIG.dmgUpgradeBaseCost * Math.pow(CONFIG.upgradeCostGrowth, state.dmgLevel));
 }
@@ -393,8 +429,8 @@ function hpUpgradeCost() {
   return Math.round(CONFIG.hpUpgradeBaseCost * Math.pow(CONFIG.upgradeCostGrowth, state.hpLevel));
 }
 
-// Send in a skeleton for wave `w`. First wave reuses the loadout preview words.
-function startWave(w, useLoadout) {
+// Send in a skeleton for wave `w`, with fresh words to trace.
+function startWave(w) {
   state.wave = w;
   state.enemyMaxHP = enemyHPForWave(w);
   state.enemyHP = state.enemyMaxHP;
@@ -405,7 +441,18 @@ function startWave(w, useLoadout) {
   state.windup = 0;
   state.castAt = 0;
   state.castChords = null;
-  populateCircle(useLoadout ? state.loadoutPairs : drawLoadout());
+  populateCircle(drawLoadout());
+}
+
+// A run: fixed build (persists between runs), fight escalating waves until
+// death. Build/gold are meta-progression and are NOT reset here.
+function startRun() {
+  state.wave = 1;
+  state.heroHP = state.heroMaxHP;
+  state.wrongMatchCount = 0;
+  state.runStartMs = performance.now();
+  state.screen = "combat";
+  startWave(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -962,11 +1009,6 @@ function populateCircle(pairs) {
   state._structuralDirty = true;
 }
 
-function beginCombat() {
-  state.screen = "combat";
-  state.runStartMs = performance.now();
-  startWave(1, true);
-}
 
 // ---------------------------------------------------------------------------
 // Combat logic
@@ -1031,8 +1073,7 @@ function onShapeComplete(now) {
 
   if (state.enemyPhase === "dying") return; // spell already landed the kill
 
-  // Completing the rune-quiz earns gold, then the spell hits the skeleton
-  state.gold += CONFIG.goldPerCast;
+  // The spell hits the skeleton (no gold in combat — currency is quiz-only)
   hitEnemy(state.heroDmg);
 
   if (state.enemyHP <= 0) {
@@ -1047,6 +1088,7 @@ function onShapeComplete(now) {
 function hitPlayer(n) {
   state.heroHP = Math.max(0, state.heroHP - n);
   if (state.heroHP <= 0 && state.screen === "combat") {
+    state.lastWaveReached = state.wave;
     state.screen = "defeat";
   }
 }
@@ -1055,7 +1097,54 @@ function hitEnemy(n) {
   state.enemyHP = Math.max(0, state.enemyHP - n);
 }
 
-// Upgrade shop (stage 2): spend quiz gold on hero DMG or max HP
+// ---------------------------------------------------------------------------
+// Post-death vocab quiz — the only source of currency
+// ---------------------------------------------------------------------------
+function buildQuiz() {
+  // pick N distinct pairs; each question is it -> en with distractor options
+  const pool = shuffleArray(WORD_POOL.map((p, i) => ({ ...p, i })));
+  const n = Math.min(CONFIG.quizQuestionCount, pool.length);
+  state.quizList = pool.slice(0, n).map((pair) => {
+    const distractors = shuffleArray(WORD_POOL.filter((p) => p.en !== pair.en))
+      .slice(0, CONFIG.quizOptionCount - 1)
+      .map((p) => p.en);
+    const options = shuffleArray([pair.en, ...distractors]);
+    return { it: pair.it, en: pair.en, options };
+  });
+  state.quizIndex = 0;
+  state.quizCorrect = 0;
+  state.quizGoldEarned = 0;
+  state.quizPicked = null;
+}
+function goToQuiz() {
+  buildQuiz();
+  state.screen = "quiz";
+  state._structuralDirty = true;
+}
+function answerQuiz(optIndex) {
+  if (state.quizPicked !== null) return; // already answered this question
+  const q = state.quizList[state.quizIndex];
+  const correct = q.options[optIndex] === q.en;
+  state.quizPicked = optIndex;
+  if (correct) {
+    state.quizCorrect++;
+    const reward = CONFIG.goldPerCorrect + CONFIG.quizWaveBonus * (state.lastWaveReached - 1);
+    state.gold += reward;
+    state.quizGoldEarned += reward;
+  }
+  state.quizAnsweredAt = performance.now();
+  state._structuralDirty = true;
+}
+function advanceQuiz() {
+  state.quizPicked = null;
+  state.quizIndex++;
+  if (state.quizIndex >= state.quizList.length) {
+    state.screen = "upgrade";
+  }
+  state._structuralDirty = true;
+}
+
+// Upgrade shop: spend quiz gold on permanent hero DMG or max HP
 function buyDmg() {
   const cost = dmgUpgradeCost();
   if (state.gold < cost) return;
@@ -1070,12 +1159,7 @@ function buyHp() {
   state.gold -= cost;
   state.hpLevel++;
   state.heroMaxHP += CONFIG.hpPerLevel;
-  state.heroHP += CONFIG.hpPerLevel; // buying HP also heals that much
   state._structuralDirty = true;
-}
-function nextWave() {
-  startWave(state.wave + 1, false);
-  state.screen = "combat";
 }
 
 function logAttempt(correct, first, second, secondsAvailable) {
@@ -1091,8 +1175,9 @@ function cycleMode() {
 }
 
 function restart() {
+  // Hard reset: wipes meta-progression and starts a fresh run from base build
   newGame();
-  beginCombat(); // DECISION: restart re-enters combat directly, skipping the one-time loadout screen
+  startRun();
 }
 
 // ---------------------------------------------------------------------------
@@ -1130,22 +1215,27 @@ function rafLoop(now) {
     if (state.enemyPhase === "enter" && now - state.enemyPhaseAt >= CONFIG.enemyEnterMs) {
       state.enemyPhase = "alive";
     }
-    // A lethal cast has finished animating → play the death, award the bounty
+    // A lethal cast has finished animating → play the skeleton's death
     if (state.pendingWaveEnd && state.castAt === 0 && state.enemyPhase !== "dying") {
       state.pendingWaveEnd = false;
       state.enemyPhase = "dying";
       state.enemyPhaseAt = now;
-      state.gold += killBountyForWave(state.wave);
     }
-    // Death animation done → open the upgrade shop (stage 2)
+    // Death animation done → the next, stronger skeleton walks in. The build
+    // stays fixed for the whole run; upgrades only happen between runs.
     if (state.enemyPhase === "dying" && now - state.enemyPhaseAt >= CONFIG.enemyDeathMs) {
-      state.enemyPhase = "alive"; // reset for the next wave's enter
-      state.screen = "upgrade";
+      startWave(state.wave + 1);
     }
     if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {
       state.pendingRefill = false;
       populateCircle(drawLoadout());
     }
+  }
+
+  // Quiz: advance to the next question a beat after the player answers
+  if (state.screen === "quiz" && state.quizPicked !== null &&
+      now - state.quizAnsweredAt >= CONFIG.quizFeedbackMs) {
+    advanceQuiz();
   }
 
   render(now);
@@ -1165,19 +1255,19 @@ const app = document.getElementById("app");
 let builtScreen = null;
 
 function render(now) {
-  if (state.screen === "loadout") {
-    if (builtScreen !== "loadout") {
-      renderLoadoutFull();
-      builtScreen = "loadout";
-    }
-    patchLoadoutMode();
-  } else if (state.screen === "combat") {
+  if (state.screen === "combat") {
     if (builtScreen !== "combat" || state._structuralDirty) {
       renderCombatFull();
       builtScreen = "combat";
       state._structuralDirty = false;
     }
     patchCombatContinuous(now);
+  } else if (state.screen === "quiz") {
+    if (builtScreen !== "quiz" || state._structuralDirty) {
+      renderQuizFull();
+      builtScreen = "quiz";
+      state._structuralDirty = false;
+    }
   } else if (state.screen === "upgrade") {
     if (builtScreen !== "upgrade" || state._structuralDirty) {
       renderUpgradeFull();
@@ -1189,37 +1279,35 @@ function render(now) {
       renderEndFull();
       builtScreen = state.screen;
     }
-    patchEndMode();
   }
 }
 
-function renderLoadoutFull() {
-  const cards = state.loadoutPairs
-    .map(
-      (p) => `
-    <div class="card">
-      <div class="it">${p.it}</div>
-      <div class="dash">&#10022;</div>
-      <div class="en">${p.en}</div>
-    </div>`
-    )
+// The post-death vocab quiz — answer to earn gold for upgrades
+function renderQuizFull() {
+  const q = state.quizList[state.quizIndex];
+  const answered = state.quizPicked !== null;
+  const optsHtml = q.options
+    .map((opt, i) => {
+      let cls = "quiz-opt";
+      if (answered) {
+        if (opt === q.en) cls += " correct";
+        else if (i === state.quizPicked) cls += " wrong";
+        else cls += " faded";
+      }
+      return `<button class="${cls}" onclick="answerQuiz(${i})">${opt}</button>`;
+    })
     .join("");
-
   app.innerHTML = `
-    <div class="screen loadout-screen">
-      <h1>Your runes for this fight</h1>
-      <div class="cards">${cards}</div>
-      <button class="fight-btn" onclick="beginCombat()">Fight</button>
-      <button class="mode-btn" id="loadout-mode-hint" onclick="cycleMode()"></button>
+    <div class="screen quiz-screen">
+      <div class="quiz-progress">Question ${state.quizIndex + 1} / ${state.quizList.length}
+        &middot; <span class="coin">◈</span> ${state.quizGoldEarned} earned</div>
+      <h1>Study the runes</h1>
+      <p class="quiz-prompt">What does <span class="quiz-word">${q.it}</span> mean?</p>
+      <div class="quiz-opts">${optsHtml}</div>
     </div>`;
 }
 
-function patchLoadoutMode() {
-  const el = document.getElementById("loadout-mode-hint");
-  if (el) el.textContent = `MODE: ${MODE_LABELS[state.mode]} — tap to change`;
-}
-
-// Stage 2 — the upgrade shop between waves
+// Upgrade shop — spend quiz gold on permanent build upgrades, then run again
 function renderUpgradeFull() {
   const dmgCost = dmgUpgradeCost();
   const hpCost = hpUpgradeCost();
@@ -1227,7 +1315,7 @@ function renderUpgradeFull() {
   const canHp = state.gold >= hpCost;
   app.innerHTML = `
     <div class="screen upgrade-screen">
-      <h1>Upgrades</h1>
+      <h1>Your Arsenal</h1>
       <p class="gold-big"><span class="coin">◈</span> ${state.gold} gold</p>
       <div class="upg-cards">
         <button class="upg-card ${canDmg ? "" : "poor"}" onclick="buyDmg()">
@@ -1241,8 +1329,8 @@ function renderUpgradeFull() {
           <div class="upg-cost"><span class="coin">◈</span> ${hpCost}</div>
         </button>
       </div>
-      <p class="upg-hp">HERO ${Math.ceil(state.heroHP)} / ${state.heroMaxHP} HP · ${state.heroDmg} DMG</p>
-      <button class="fight-btn next-wave-btn" onclick="nextWave()">Send in Wave ${state.wave + 1} →</button>
+      <p class="upg-hp">Build: ${state.heroMaxHP} HP · ${state.heroDmg} DMG</p>
+      <button class="fight-btn next-wave-btn" onclick="startRun()">Begin Run →</button>
     </div>`;
 }
 
@@ -1390,7 +1478,7 @@ function renderCombatFull() {
         <div class="hero-hud">
           <div class="bar-label">HERO <span id="hero-hp-text"></span></div>
           <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
-          <div class="gold-line"><span class="coin">◈</span> <span id="gold-text"></span></div>
+          <div class="bar-sub">⚔ ${state.heroDmg} DMG</div>
         </div>
         <div class="enemy-hud">
           <div class="bar-label" id="wave-label"></div>
@@ -1419,7 +1507,6 @@ function patchCombatContinuous(now) {
   document.getElementById("mode-label").textContent = `MODE: ${MODE_LABELS[state.mode]} — tap to change`;
   document.getElementById("hero-hp-text").textContent = `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}`;
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
-  document.getElementById("gold-text").textContent = state.gold;
   document.getElementById("wave-label").innerHTML = `WAVE ${state.wave} · SKELETON <span>${Math.ceil(state.enemyHP)} / ${state.enemyMaxHP}</span>`;
   document.getElementById("enemy-hp-fill").style.width = (100 * state.enemyHP / state.enemyMaxHP).toFixed(1) + "%";
 
@@ -1503,31 +1590,16 @@ function patchCombatContinuous(now) {
   });
 }
 
-let endScreenShownAt = 0;
-
 function renderEndFull() {
   const elapsed = ((performance.now() - state.runStartMs) / 1000).toFixed(0);
-  endScreenShownAt = performance.now();
   app.innerHTML = `
-    <div class="screen end-screen" onclick="restartFromTap()">
+    <div class="screen end-screen">
       <h1 class="defeat">Defeat</h1>
-      <p>You fell on <strong>Wave ${state.wave}</strong></p>
-      <p><span class="coin">◈</span> ${state.gold} gold &middot; ${elapsed}s &middot; ${state.wrongMatchCount} wrong matches</p>
-      <p id="end-mode"></p>
-      <p class="hint">Tap anywhere to restart</p>
+      <p>The horde overwhelmed you on <strong>Wave ${state.lastWaveReached}</strong></p>
+      <p class="dim">${elapsed}s survived &middot; ${state.wrongMatchCount} mismatches</p>
+      <p class="end-flavor">Study your vocabulary to grow stronger for the next run.</p>
+      <button class="fight-btn study-btn" onclick="goToQuiz()">Study &amp; Earn Gold →</button>
     </div>`;
-}
-
-function restartFromTap() {
-  // DECISION: ignore taps in the first 400ms of the end screen so a tap
-  // aimed at a rune during the final match doesn't instantly restart.
-  if (performance.now() - endScreenShownAt < 400) return;
-  restart();
-}
-
-function patchEndMode() {
-  const el = document.getElementById("end-mode");
-  if (el) el.textContent = `Mode: ${MODE_LABELS[state.mode]}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1541,14 +1613,16 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "m" || e.key === "M") {
     cycleMode();
   } else if (e.key === "r" || e.key === "R") {
-    if (state.screen === "defeat") restart();
+    // Hard reset (wipes upgrades) — only from menus, never mid-combat
+    if (state.screen !== "combat") restart();
   }
 });
 
 // ---------------------------------------------------------------------------
-// Bootstrap
+// Bootstrap — you start straight in combat with the base build
 // ---------------------------------------------------------------------------
 newGame();
+startRun();
 requestAnimationFrame(rafLoop);
 </script>
 </body>
