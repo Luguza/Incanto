@@ -100,16 +100,26 @@
     border-top: 1px solid #3a3550;
     border-bottom: 1px solid #3a3550;
   }
-  .hud-under .stats { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .hero-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 40%; }
+  .enemy-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; min-width: 40%; }
   .combat-mode-row {
     flex: 0 0 auto;
     display: flex; justify-content: center;
     padding: 8px 0;
   }
-  .heart { font-size: clamp(15px, 4vw, 24px); margin-right: 1px; }
-  .heart.full { color: #e5484d; text-shadow: 0 0 8px rgba(229, 72, 77, 0.55); }
-  .heart.empty { color: #3a3540; }
-  .enemy-hp { font-size: clamp(13px, 3.5vw, 18px); color: #cfc9de; }
+  .bar-label {
+    font-size: clamp(10px, 2.7vw, 13px); letter-spacing: 0.5px; color: #b9b3c8; font-weight: 700;
+  }
+  .bar-label span { color: #efeaff; font-weight: 400; }
+  .hp-track {
+    width: clamp(120px, 40vw, 300px); height: 12px;
+    background: #241f2f; border: 1px solid #3a3550; border-radius: 6px; overflow: hidden;
+  }
+  .hp-fill { height: 100%; transition: width 180ms linear; }
+  .hp-track.hero .hp-fill { background: linear-gradient(90deg, #2f9e57, #5ecf8f); }
+  .hp-track.enemy .hp-fill { background: linear-gradient(90deg, #9a3550, #e5545f); }
+  .coin { color: #f2c14e; }
+  .gold-line { font-size: clamp(13px, 3.6vw, 17px); color: #f2c14e; font-weight: 700; }
   .windup-track {
     width: clamp(90px, 26vw, 280px); height: 14px;
     background: #241f2f; border: 1px solid #3a3550; border-radius: 7px;
@@ -163,7 +173,8 @@
   .rune.matched .body { fill: rgba(94, 207, 143, 0.14); stroke: rgba(143, 231, 180, 0.8); }
   .rune text {
     font-family: "RuneDisplay", "Palatino Linotype", "Book Antiqua", serif;
-    fill: #c9fdfb; font-size: 17px; letter-spacing: 1px;
+    fill: #e8fffe; font-size: 19px; letter-spacing: 0.5px; font-weight: 700;
+    paint-order: stroke; stroke: rgba(8, 13, 18, 0.9); stroke-width: 3px;
     text-anchor: middle; dominant-baseline: central;
     pointer-events: none;
   }
@@ -178,6 +189,29 @@
   .sub-group { stroke: #4de3e0; }
   .sub-group.burst { stroke: #ffffff; }
   .sub-group * { fill: none; stroke-linecap: round; }
+
+  /* Upgrade shop (stage 2) */
+  .upgrade-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); text-align: center; }
+  .upgrade-screen h1 {
+    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    font-size: clamp(26px, 7vw, 36px); letter-spacing: 2px; color: #7ff0ed;
+    text-shadow: 0 0 22px rgba(77, 227, 224, 0.5); margin-bottom: 6px;
+  }
+  .gold-big { font-size: clamp(18px, 5vw, 24px); color: #f2c14e; font-weight: 700; margin-bottom: 22px; }
+  .upg-cards { display: flex; flex-direction: column; gap: 14px; width: min(340px, 88vw); margin-bottom: 18px; }
+  .upg-card {
+    display: flex; flex-direction: column; gap: 6px; align-items: center;
+    background: linear-gradient(160deg, #241d33, #1a1526);
+    border: 1px solid #4de3e0; border-radius: 12px; padding: 14px 18px;
+    color: #efeaff; cursor: pointer; box-shadow: 0 0 18px rgba(77, 227, 224, 0.12);
+  }
+  .upg-card:active { background: #2a2340; }
+  .upg-card.poor { opacity: 0.5; border-color: #3a3550; box-shadow: none; }
+  .upg-name { font-size: 20px; font-weight: 700; color: #7ff0ed; letter-spacing: 0.5px; }
+  .upg-stat { font-size: 15px; color: #cfc9de; }
+  .upg-cost { font-size: 16px; font-weight: 700; color: #f2c14e; }
+  .upg-hp { font-size: 13px; color: #8a8398; margin-bottom: 18px; letter-spacing: 0.5px; }
+  .next-wave-btn { background: linear-gradient(180deg, #7ff0ed, #4de3e0); box-shadow: 0 0 24px rgba(77, 227, 224, 0.3); }
 
   /* End screens */
   .end-screen { cursor: pointer; padding: 16px; text-align: center; }
@@ -202,11 +236,26 @@
 const CONFIG = {
   windupDurationMs: 8000,
   slowMoFactor: 0.3,
-  playerHearts: 5,
-  enemyHP: 3,
-  heartLossPerWrongMatch: 1,
-  heartLossPerFullWindup: 1,
-  enemyDamagePerCast: 1,
+  // Hero: big HP pool, starts weak, upgrades bought with gold
+  heroBaseHP: 100,
+  heroBaseDmg: 3,
+  dmgPerLevel: 2,
+  hpPerLevel: 25,
+  dmgUpgradeBaseCost: 30,
+  hpUpgradeBaseCost: 25,
+  upgradeCostGrowth: 1.6,
+  // Gold: earned by completing the rune quiz, plus a kill bounty
+  goldPerCast: 10,
+  goldKillBase: 20,
+  goldKillPerWave: 10,
+  // Endless skeleton waves, scaling in HP and damage
+  enemyBaseHP: 10,
+  enemyHPGrowth: 1.45,
+  enemyBaseDmg: 6,
+  enemyDmgGrowth: 1.3,
+  wrongMatchDmgFactor: 0.5, // wrong match costs this fraction of enemy damage
+  enemyEnterMs: 900,
+  enemyDeathMs: 600,
   runeCount: 6,
   pairsPerLoadout: 3,
   staggerOnCast: true,
@@ -284,19 +333,32 @@ let state = null;
 
 function freshState() {
   return {
-    screen: "loadout",      // loadout | combat | victory | defeat
+    screen: "loadout",      // loadout | combat | upgrade | defeat
     mode: "REAL_TIME",
     runes: [],               // {id, pairId, lang, word, x, y, matchState}
     selectedRuneId: null,
     chords: [],              // {x1,y1,x2,y2,pairId}
     currentPairs: [],
-    hearts: CONFIG.playerHearts,
-    enemyHP: CONFIG.enemyHP,
+    // Hero: an HP pool (no discrete hearts) that upgrades persist across waves
+    heroMaxHP: CONFIG.heroBaseHP,
+    heroHP: CONFIG.heroBaseHP,
+    heroDmg: CONFIG.heroBaseDmg,
+    dmgLevel: 0,
+    hpLevel: 0,
+    gold: 0,
+    // Endless waves
+    wave: 1,
+    enemyMaxHP: CONFIG.enemyBaseHP,
+    enemyHP: CONFIG.enemyBaseHP,
+    enemyDmg: CONFIG.enemyBaseDmg,
+    enemyPhase: "enter",      // enter | alive | dying
+    enemyPhaseAt: 0,
+    pendingWaveEnd: false,    // set when a lethal cast lands; ends the wave after the cast anim
     windup: 0,
     poolIndex: 0,
     wrongMatchCount: 0,
     clockMs: 0,               // internal clock warped by mode+selection, drives windup + instrumentation
-    realFightStartMs: 0,      // wall-clock time, used only for the end-screen summary
+    runStartMs: 0,            // wall-clock start of the run, for the end-screen summary
     pairAvailableAtClockMs: {},
     wrongFlashUntil: 0,
     shapeFlashUntil: 0,
@@ -312,6 +374,38 @@ function newGame() {
   state = freshState();
   state.mode = preservedMode;
   state.loadoutPairs = drawLoadout();
+}
+
+// Enemy scaling: each wave's skeleton has more HP and hits harder
+function enemyHPForWave(w) {
+  return Math.round(CONFIG.enemyBaseHP * Math.pow(CONFIG.enemyHPGrowth, w - 1));
+}
+function enemyDmgForWave(w) {
+  return Math.round(CONFIG.enemyBaseDmg * Math.pow(CONFIG.enemyDmgGrowth, w - 1));
+}
+function killBountyForWave(w) {
+  return CONFIG.goldKillBase + CONFIG.goldKillPerWave * (w - 1);
+}
+function dmgUpgradeCost() {
+  return Math.round(CONFIG.dmgUpgradeBaseCost * Math.pow(CONFIG.upgradeCostGrowth, state.dmgLevel));
+}
+function hpUpgradeCost() {
+  return Math.round(CONFIG.hpUpgradeBaseCost * Math.pow(CONFIG.upgradeCostGrowth, state.hpLevel));
+}
+
+// Send in a skeleton for wave `w`. First wave reuses the loadout preview words.
+function startWave(w, useLoadout) {
+  state.wave = w;
+  state.enemyMaxHP = enemyHPForWave(w);
+  state.enemyHP = state.enemyMaxHP;
+  state.enemyDmg = enemyDmgForWave(w);
+  state.enemyPhase = "enter";
+  state.enemyPhaseAt = performance.now();
+  state.pendingWaveEnd = false;
+  state.windup = 0;
+  state.castAt = 0;
+  state.castChords = null;
+  populateCircle(useLoadout ? state.loadoutPairs : drawLoadout());
 }
 
 // ---------------------------------------------------------------------------
@@ -610,7 +704,33 @@ function renderScene(now) {
   const wf = Math.floor(now / 160) % ASSETS.wizard.length;
   const sf = Math.floor(now / 160 + 2) % ASSETS.skelet.length;
   ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
-  ctx.drawImage(ASSETS.skelet[sf], scene.skelet.x, scene.skelet.y);
+
+  // Skeleton: walks in from the right on a new wave, fades out on death
+  let exOff = 0, eAlpha = 1;
+  if (state.enemyPhase === "enter") {
+    const p = Math.min(1, (now - state.enemyPhaseAt) / CONFIG.enemyEnterMs);
+    const eased = 1 - Math.pow(1 - p, 3);
+    exOff = Math.round((1 - eased) * (scene.artW + 24 - scene.skelet.x));
+  } else if (state.enemyPhase === "dying") {
+    const p = Math.min(1, (now - state.enemyPhaseAt) / CONFIG.enemyDeathMs);
+    eAlpha = 1 - p;
+    exOff = Math.round(p * 8);
+    // dissolving embers rise as it collapses
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 7; i++) {
+      const h = (i * 97) % 13;
+      const ex = scene.skelet.x + 3 + ((i * 5) % SHEET.skeletIdle.w);
+      const ey = scene.skelet.y + SHEET.skeletIdle.h - Math.round(p * (10 + h));
+      ctx.fillStyle = `rgba(77, 227, 224, ${(eAlpha * 0.8).toFixed(2)})`;
+      ctx.fillRect(ex, ey, 1, 1);
+    }
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.globalAlpha = eAlpha;
+  ctx.drawImage(ASSETS.skelet[sf], scene.skelet.x + exOff, scene.skelet.y);
+  ctx.restore();
 
   // The wizard's spell-in-progress: the rune the player is tracing below is
   // mirrored as a tilted disc in front of the wizard. While tracing, it shows
@@ -844,8 +964,8 @@ function populateCircle(pairs) {
 
 function beginCombat() {
   state.screen = "combat";
-  state.realFightStartMs = performance.now();
-  populateCircle(state.loadoutPairs);
+  state.runStartMs = performance.now();
+  startWave(1, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -898,32 +1018,64 @@ function handleRuneClick(id) {
     first.matchState = "unmatched";
     state.selectedRuneId = null;
     state.wrongFlashUntil = now + CONFIG.wrongFlashDurationMs;
-    hitPlayer(CONFIG.heartLossPerWrongMatch);
+    hitPlayer(Math.max(1, Math.round(state.enemyDmg * CONFIG.wrongMatchDmgFactor)));
   }
 }
 
 function onShapeComplete(now) {
-  // NOTE: per the design's actual geometry, the 3 completed chords are three
-  // straight lines connecting distinct rune positions on the circle — not a
-  // literal triangle polygon. That trio of chords lighting up together *is*
-  // the "shape"; no extra geometry is constructed.
+  // The three completed chords lighting up together *is* the cast. Fire the
+  // spell animation, then resolve damage — unless the enemy is already dying.
   state.shapeFlashUntil = now + CONFIG.shapeFlashDurationMs;
   state.castAt = now;
   state.castChords = state.chords.map((c) => ({ ...c })); // survives the refill
-  hitEnemy(CONFIG.enemyDamagePerCast);
-  if (state.screen !== "combat") return; // victory may have just triggered
-  if (CONFIG.staggerOnCast) state.windup = 0;
-  state.pendingRefill = true;
+
+  if (state.enemyPhase === "dying") return; // spell already landed the kill
+
+  // Completing the rune-quiz earns gold, then the spell hits the skeleton
+  state.gold += CONFIG.goldPerCast;
+  hitEnemy(state.heroDmg);
+
+  if (state.enemyHP <= 0) {
+    // lethal: end the wave once the cast animation finishes (see rafLoop)
+    state.pendingWaveEnd = true;
+  } else {
+    if (CONFIG.staggerOnCast) state.windup = 0;
+    state.pendingRefill = true;
+  }
 }
 
 function hitPlayer(n) {
-  state.hearts = Math.max(0, state.hearts - n);
-  if (state.hearts <= 0 && state.screen === "combat") state.screen = "defeat";
+  state.heroHP = Math.max(0, state.heroHP - n);
+  if (state.heroHP <= 0 && state.screen === "combat") {
+    state.screen = "defeat";
+  }
 }
 
 function hitEnemy(n) {
   state.enemyHP = Math.max(0, state.enemyHP - n);
-  if (state.enemyHP <= 0 && state.screen === "combat") state.screen = "victory";
+}
+
+// Upgrade shop (stage 2): spend quiz gold on hero DMG or max HP
+function buyDmg() {
+  const cost = dmgUpgradeCost();
+  if (state.gold < cost) return;
+  state.gold -= cost;
+  state.dmgLevel++;
+  state.heroDmg = CONFIG.heroBaseDmg + state.dmgLevel * CONFIG.dmgPerLevel;
+  state._structuralDirty = true;
+}
+function buyHp() {
+  const cost = hpUpgradeCost();
+  if (state.gold < cost) return;
+  state.gold -= cost;
+  state.hpLevel++;
+  state.heroMaxHP += CONFIG.hpPerLevel;
+  state.heroHP += CONFIG.hpPerLevel; // buying HP also heals that much
+  state._structuralDirty = true;
+}
+function nextWave() {
+  startWave(state.wave + 1, false);
+  state.screen = "combat";
 }
 
 function logAttempt(correct, first, second, secondsAvailable) {
@@ -965,10 +1117,30 @@ function rafLoop(now) {
   if (state.screen === "combat") {
     const effectiveDt = getEffectiveDt(rawDt);
     state.clockMs += effectiveDt;
-    state.windup += effectiveDt / CONFIG.windupDurationMs;
-    if (state.windup >= 1) {
-      state.windup = 0;
-      hitPlayer(CONFIG.heartLossPerFullWindup);
+    // The skeleton only winds up its attack once it has fully entered and is
+    // still alive — not while walking in or dying.
+    if (state.enemyPhase === "alive") {
+      state.windup += effectiveDt / CONFIG.windupDurationMs;
+      if (state.windup >= 1) {
+        state.windup = 0;
+        hitPlayer(state.enemyDmg);
+      }
+    }
+    // Enemy finished walking in → it's now active
+    if (state.enemyPhase === "enter" && now - state.enemyPhaseAt >= CONFIG.enemyEnterMs) {
+      state.enemyPhase = "alive";
+    }
+    // A lethal cast has finished animating → play the death, award the bounty
+    if (state.pendingWaveEnd && state.castAt === 0 && state.enemyPhase !== "dying") {
+      state.pendingWaveEnd = false;
+      state.enemyPhase = "dying";
+      state.enemyPhaseAt = now;
+      state.gold += killBountyForWave(state.wave);
+    }
+    // Death animation done → open the upgrade shop (stage 2)
+    if (state.enemyPhase === "dying" && now - state.enemyPhaseAt >= CONFIG.enemyDeathMs) {
+      state.enemyPhase = "alive"; // reset for the next wave's enter
+      state.screen = "upgrade";
     }
     if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {
       state.pendingRefill = false;
@@ -1006,9 +1178,15 @@ function render(now) {
       state._structuralDirty = false;
     }
     patchCombatContinuous(now);
+  } else if (state.screen === "upgrade") {
+    if (builtScreen !== "upgrade" || state._structuralDirty) {
+      renderUpgradeFull();
+      builtScreen = "upgrade";
+      state._structuralDirty = false;
+    }
   } else {
     if (builtScreen !== state.screen) {
-      renderEndFull(state.screen === "victory" ? "Victory!" : "Defeat");
+      renderEndFull();
       builtScreen = state.screen;
     }
     patchEndMode();
@@ -1041,10 +1219,31 @@ function patchLoadoutMode() {
   if (el) el.textContent = `MODE: ${MODE_LABELS[state.mode]} — tap to change`;
 }
 
-function heartsHtml() {
-  return Array.from({ length: CONFIG.playerHearts })
-    .map((_, i) => `<span class="heart ${i < state.hearts ? "full" : "empty"}">&#9829;</span>`)
-    .join("");
+// Stage 2 — the upgrade shop between waves
+function renderUpgradeFull() {
+  const dmgCost = dmgUpgradeCost();
+  const hpCost = hpUpgradeCost();
+  const canDmg = state.gold >= dmgCost;
+  const canHp = state.gold >= hpCost;
+  app.innerHTML = `
+    <div class="screen upgrade-screen">
+      <h1>Upgrades</h1>
+      <p class="gold-big"><span class="coin">◈</span> ${state.gold} gold</p>
+      <div class="upg-cards">
+        <button class="upg-card ${canDmg ? "" : "poor"}" onclick="buyDmg()">
+          <div class="upg-name">⚔ Attack</div>
+          <div class="upg-stat">${state.heroDmg} → ${state.heroDmg + CONFIG.dmgPerLevel} dmg</div>
+          <div class="upg-cost"><span class="coin">◈</span> ${dmgCost}</div>
+        </button>
+        <button class="upg-card ${canHp ? "" : "poor"}" onclick="buyHp()">
+          <div class="upg-name">✚ Vitality</div>
+          <div class="upg-stat">${state.heroMaxHP} → ${state.heroMaxHP + CONFIG.hpPerLevel} max HP</div>
+          <div class="upg-cost"><span class="coin">◈</span> ${hpCost}</div>
+        </button>
+      </div>
+      <p class="upg-hp">HERO ${Math.ceil(state.heroHP)} / ${state.heroMaxHP} HP · ${state.heroDmg} DMG</p>
+      <button class="fight-btn next-wave-btn" onclick="nextWave()">Send in Wave ${state.wave + 1} →</button>
+    </div>`;
 }
 
 // Small runic-looking polyline glyphs, procedurally placed so no font
@@ -1188,9 +1387,14 @@ function renderCombatFull() {
     <div class="screen combat-screen" id="combat-root">
       <div class="scene-wrap"><canvas class="scene" id="scene"></canvas></div>
       <div class="hud-under">
-        <div class="hearts" id="hearts"></div>
-        <div class="stats">
-          <div class="enemy-hp" id="enemy-hp"></div>
+        <div class="hero-hud">
+          <div class="bar-label">HERO <span id="hero-hp-text"></span></div>
+          <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
+          <div class="gold-line"><span class="coin">◈</span> <span id="gold-text"></span></div>
+        </div>
+        <div class="enemy-hud">
+          <div class="bar-label" id="wave-label"></div>
+          <div class="hp-track enemy"><div class="hp-fill" id="enemy-hp-fill"></div></div>
           <div class="windup-track" id="windup-track"><div class="windup-fill" id="windup-fill"></div></div>
           <div class="time-chip" id="time-chip"></div>
         </div>
@@ -1212,9 +1416,12 @@ function patchCombatContinuous(now) {
   if (!root) return;
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
-  document.getElementById("hearts").innerHTML = heartsHtml();
   document.getElementById("mode-label").textContent = `MODE: ${MODE_LABELS[state.mode]} — tap to change`;
-  document.getElementById("enemy-hp").textContent = `Enemy HP: ${state.enemyHP} / ${CONFIG.enemyHP}`;
+  document.getElementById("hero-hp-text").textContent = `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}`;
+  document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
+  document.getElementById("gold-text").textContent = state.gold;
+  document.getElementById("wave-label").innerHTML = `WAVE ${state.wave} · SKELETON <span>${Math.ceil(state.enemyHP)} / ${state.enemyMaxHP}</span>`;
+  document.getElementById("enemy-hp-fill").style.width = (100 * state.enemyHP / state.enemyMaxHP).toFixed(1) + "%";
 
   const windupPct = Math.max(0, Math.min(1, state.windup));
   const fillEl = document.getElementById("windup-fill");
@@ -1298,13 +1505,14 @@ function patchCombatContinuous(now) {
 
 let endScreenShownAt = 0;
 
-function renderEndFull(title) {
-  const elapsed = ((performance.now() - state.realFightStartMs) / 1000).toFixed(1);
+function renderEndFull() {
+  const elapsed = ((performance.now() - state.runStartMs) / 1000).toFixed(0);
   endScreenShownAt = performance.now();
   app.innerHTML = `
     <div class="screen end-screen" onclick="restartFromTap()">
-      <h1 class="${state.screen}">${title}</h1>
-      <p>Time: ${elapsed}s &mdash; Wrong matches: ${state.wrongMatchCount}</p>
+      <h1 class="defeat">Defeat</h1>
+      <p>You fell on <strong>Wave ${state.wave}</strong></p>
+      <p><span class="coin">◈</span> ${state.gold} gold &middot; ${elapsed}s &middot; ${state.wrongMatchCount} wrong matches</p>
       <p id="end-mode"></p>
       <p class="hint">Tap anywhere to restart</p>
     </div>`;
@@ -1333,7 +1541,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "m" || e.key === "M") {
     cycleMode();
   } else if (e.key === "r" || e.key === "R") {
-    if (state.screen === "victory" || state.screen === "defeat") restart();
+    if (state.screen === "defeat") restart();
   }
 });
 
