@@ -806,9 +806,13 @@ function shuffleArray(arr) {
 // uneven widths — the "warped" look). Idle/fountain animations play from the
 // sheet's own frames; the fireball and glows remain procedural.
 // ---------------------------------------------------------------------------
-const SCENE_H = 80;   // native art pixels: 3 wall tile rows + 2 floor rows
-const FLOOR_Y = 48;
 const TILE = 16;
+// Scene geometry, in tile rows. A taller wall (one top-cap row + several mid
+// rows) gives the arena more vertical presence; the floor rows sit below it.
+const WALL_ROWS = 3;   // 1 top-cap row + 2 mid rows of wall face (kept low)
+const FLOOR_ROWS = 4;  // floor rows below the wall (roomy foreground)
+const FLOOR_Y = WALL_ROWS * TILE;                    // wall→floor transition line
+const SCENE_H = (WALL_ROWS + FLOOR_ROWS) * TILE;     // native art pixel height
 
 // Frame rects in assets/dungeon_tiles.png (from tiles_list.txt)
 const SHEET = {
@@ -945,7 +949,7 @@ function setupScene(cv) {
   if (!ASSETS) buildAssets();
   const dpr = window.devicePixelRatio || 1;
   const cssW = (cv.parentElement && cv.parentElement.clientWidth) || window.innerWidth || 360;
-  const maxCssH = (window.innerHeight || 800) * 0.28;
+  const maxCssH = (window.innerHeight || 800) * 0.36;
   // Integer device-pixel scale: every art pixel renders at exactly `px`
   // device pixels, eliminating uneven pixel widths.
   let px = Math.round((cssW * dpr) / 200);
@@ -960,7 +964,8 @@ function setupScene(cv) {
   const margin = Math.max(10, Math.round(artW * 0.08));
   const wiz = SHEET.wizardIdle;
   const skl = SHEET.skeletIdle;
-  const feetY = FLOOR_Y + 18;
+  // Fighters stand in the middle of the floor, not right up against the wall
+  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.6);
   const wizard = { x: margin, y: feetY - wiz.h };
   const skelet = { x: artW - margin - skl.w, y: feetY - skl.h };
   scene = {
@@ -995,28 +1000,14 @@ function buildBg(artW) {
 
   const cols = Math.ceil(artW / TILE);
 
-  // Wall: one top-edge row, two mid rows
+  // Wall: a top-cap row, then mid rows filling straight down to the floor line
   for (let c = 0; c < cols; c++) {
     blit(SHEET.wallTopMid, c * TILE, 0);
-    blit(SHEET.wallMid, c * TILE, TILE);
-    blit(SHEET.wallMid, c * TILE, TILE * 2);
+    for (let y = TILE; y < FLOOR_Y; y += TILE) blit(SHEET.wallMid, c * TILE, y);
   }
 
-  // Decor: columns near the edges, banners between fountains and fighters
-  for (const cx of [TILE, (cols - 2) * TILE]) {
-    blit(SHEET.wallColumnTop, cx, 0);
-    blit(SHEET.wallColumnMid, cx, TILE);
-    blit(SHEET.wallColumnBase, cx, TILE * 2);
-  }
-  blit(SHEET.bannerRed, Math.round(artW * 0.46 / TILE) * TILE, TILE);
-  blit(SHEET.bannerGreen, Math.round(artW * 0.54 / TILE) * TILE, TILE);
-
-  // Fountain tops (mid/basin are animated per frame)
-  for (const fx of scene.fountains) {
-    blit(SHEET.fountainTop, fx, 0);
-  }
-
-  // Floor: mostly floor_1 with stable variation
+  // Floor: mostly floor_1 with stable variation (drawn before the props that
+  // stand on it, so their base tiles read as resting on the floor)
   for (let r = 0; r * TILE + FLOOR_Y < SCENE_H; r++) {
     for (let c = 0; c < cols; c++) {
       const h = tileHash(r, c);
@@ -1025,9 +1016,34 @@ function buildBg(artW) {
     }
   }
 
+  // Contact shadow: the wall casts a soft gradient onto the floor just below
+  // the seam, giving a crisp wall→floor transition instead of a muddy tile join.
+  for (let y = 0; y < 6; y++) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${(0.42 * (1 - y / 6)).toFixed(3)})`;
+    ctx.fillRect(0, FLOOR_Y + y, artW, 1);
+  }
+
+  // Columns near the edges: capital on top, shaft down the full wall, and the
+  // base tile planted on the first floor row so the pillar stands on the floor
+  // with its bottom tile aligned to the wall→floor transition.
+  for (const cx of [TILE, (cols - 2) * TILE]) {
+    blit(SHEET.wallColumnTop, cx, 0);
+    for (let y = TILE; y < FLOOR_Y; y += TILE) blit(SHEET.wallColumnMid, cx, y);
+    blit(SHEET.wallColumnBase, cx, FLOOR_Y);
+  }
+
+  // Banners hang from just below the top cap
+  blit(SHEET.bannerRed, Math.round(artW * 0.46 / TILE) * TILE, TILE);
+  blit(SHEET.bannerGreen, Math.round(artW * 0.54 / TILE) * TILE, TILE);
+
+  // Fountain spouts sit one row below the cap (the stream + basin are animated)
+  for (const fx of scene.fountains) {
+    blit(SHEET.fountainTop, fx, TILE);
+  }
+
   // Floor prop: a skull near the skeleton (the wizard's side stays clear —
   // the traced rune floats there)
-  const feetY = FLOOR_Y + 18;
+  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.6);
   blit(SHEET.skull, scene.skelet.x - 16, feetY - 12);
 
   // Soft ground shadows under the fighters
@@ -1053,15 +1069,18 @@ function renderScene(now) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(scene.bg, 0, 0);
 
-  // Lava fountains: 3-frame animation + wobbling additive glow
+  // Lava fountains: 3-frame animation + wobbling additive glow. The spout sits
+  // one row below the cap; lava streams down the wall into a basin that rests
+  // on the floor line.
+  const fountainBasinY = FLOOR_Y;   // basin on the first floor row
   scene.fountains.forEach((fx, i) => {
     const fi = (Math.floor(now / 160) + i) % ASSETS.fountainMid.length;
-    ctx.drawImage(ASSETS.fountainMid[fi], fx, TILE);
-    ctx.drawImage(ASSETS.fountainBasin[fi], fx, TILE * 2);
+    for (let y = TILE * 2; y < fountainBasinY; y += TILE) ctx.drawImage(ASSETS.fountainMid[fi], fx, y);
+    ctx.drawImage(ASSETS.fountainBasin[fi], fx, fountainBasinY);
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 110 + i * 2.1);
-    ctx.drawImage(ASSETS.glowFountain, fx + 8 - 15, TILE + 10 - 15);
+    ctx.drawImage(ASSETS.glowFountain, fx + 8 - 15, fountainBasinY + 8 - 15);
     ctx.restore();
   });
 
