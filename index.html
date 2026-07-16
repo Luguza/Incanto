@@ -809,8 +809,8 @@ function shuffleArray(arr) {
 const TILE = 16;
 // Scene geometry, in tile rows. A taller wall (one top-cap row + several mid
 // rows) gives the arena more vertical presence; the floor rows sit below it.
-const WALL_ROWS = 5;   // 1 top-cap row + 4 mid rows of wall face
-const FLOOR_ROWS = 2;  // floor rows below the wall
+const WALL_ROWS = 3;   // 1 top-cap row + 2 mid rows of wall face (kept low)
+const FLOOR_ROWS = 4;  // floor rows below the wall (roomy foreground)
 const FLOOR_Y = WALL_ROWS * TILE;                    // wall→floor transition line
 const SCENE_H = (WALL_ROWS + FLOOR_ROWS) * TILE;     // native art pixel height
 
@@ -998,7 +998,6 @@ function buildBg(artW) {
   ctx.fillRect(0, 0, artW, SCENE_H);
 
   const cols = Math.ceil(artW / TILE);
-  const wallBaseY = FLOOR_Y - TILE;   // top of the last wall row; its bottom sits on FLOOR_Y
 
   // Wall: a top-cap row, then mid rows filling straight down to the floor line
   for (let c = 0; c < cols; c++) {
@@ -1006,24 +1005,8 @@ function buildBg(artW) {
     for (let y = TILE; y < FLOOR_Y; y += TILE) blit(SHEET.wallMid, c * TILE, y);
   }
 
-  // Columns near the edges: capital on top, shaft filling the wall, and the
-  // base tile resting on the last wall row so it grounds on the floor line.
-  for (const cx of [TILE, (cols - 2) * TILE]) {
-    blit(SHEET.wallColumnTop, cx, 0);
-    for (let y = TILE; y < wallBaseY; y += TILE) blit(SHEET.wallColumnMid, cx, y);
-    blit(SHEET.wallColumnBase, cx, wallBaseY);
-  }
-
-  // Banners hang from just below the top cap
-  blit(SHEET.bannerRed, Math.round(artW * 0.46 / TILE) * TILE, TILE);
-  blit(SHEET.bannerGreen, Math.round(artW * 0.54 / TILE) * TILE, TILE);
-
-  // Fountain spouts at the top (the stream + basin are animated per frame)
-  for (const fx of scene.fountains) {
-    blit(SHEET.fountainTop, fx, 0);
-  }
-
-  // Floor: mostly floor_1 with stable variation
+  // Floor: mostly floor_1 with stable variation (drawn before the props that
+  // stand on it, so their base tiles read as resting on the floor)
   for (let r = 0; r * TILE + FLOOR_Y < SCENE_H; r++) {
     for (let c = 0; c < cols; c++) {
       const h = tileHash(r, c);
@@ -1037,6 +1020,24 @@ function buildBg(artW) {
   for (let y = 0; y < 6; y++) {
     ctx.fillStyle = `rgba(0, 0, 0, ${(0.42 * (1 - y / 6)).toFixed(3)})`;
     ctx.fillRect(0, FLOOR_Y + y, artW, 1);
+  }
+
+  // Columns near the edges: capital on top, shaft down the full wall, and the
+  // base tile planted on the first floor row so the pillar stands on the floor
+  // with its bottom tile aligned to the wall→floor transition.
+  for (const cx of [TILE, (cols - 2) * TILE]) {
+    blit(SHEET.wallColumnTop, cx, 0);
+    for (let y = TILE; y < FLOOR_Y; y += TILE) blit(SHEET.wallColumnMid, cx, y);
+    blit(SHEET.wallColumnBase, cx, FLOOR_Y);
+  }
+
+  // Banners hang from just below the top cap
+  blit(SHEET.bannerRed, Math.round(artW * 0.46 / TILE) * TILE, TILE);
+  blit(SHEET.bannerGreen, Math.round(artW * 0.54 / TILE) * TILE, TILE);
+
+  // Fountain spouts sit one row below the cap (the stream + basin are animated)
+  for (const fx of scene.fountains) {
+    blit(SHEET.fountainTop, fx, TILE);
   }
 
   // Floor prop: a skull near the skeleton (the wizard's side stays clear —
@@ -1067,12 +1068,13 @@ function renderScene(now) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(scene.bg, 0, 0);
 
-  // Lava fountains: 3-frame animation + wobbling additive glow. The lava
-  // streams down the full wall from the spout into a basin on the floor line.
-  const fountainBasinY = FLOOR_Y - TILE;
+  // Lava fountains: 3-frame animation + wobbling additive glow. The spout sits
+  // one row below the cap; lava streams down the wall into a basin that rests
+  // on the floor line.
+  const fountainBasinY = FLOOR_Y;   // basin on the first floor row
   scene.fountains.forEach((fx, i) => {
     const fi = (Math.floor(now / 160) + i) % ASSETS.fountainMid.length;
-    for (let y = TILE; y < fountainBasinY; y += TILE) ctx.drawImage(ASSETS.fountainMid[fi], fx, y);
+    for (let y = TILE * 2; y < fountainBasinY; y += TILE) ctx.drawImage(ASSETS.fountainMid[fi], fx, y);
     ctx.drawImage(ASSETS.fountainBasin[fi], fx, fountainBasinY);
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
