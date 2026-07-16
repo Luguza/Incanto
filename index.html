@@ -964,7 +964,8 @@ function setupScene(cv) {
   const margin = Math.max(10, Math.round(artW * 0.08));
   const wiz = SHEET.wizardIdle;
   const skl = SHEET.skeletIdle;
-  const feetY = FLOOR_Y + 18;
+  // Fighters stand in the middle of the floor, not right up against the wall
+  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.6);
   const wizard = { x: margin, y: feetY - wiz.h };
   const skelet = { x: artW - margin - skl.w, y: feetY - skl.h };
   scene = {
@@ -1042,7 +1043,7 @@ function buildBg(artW) {
 
   // Floor prop: a skull near the skeleton (the wizard's side stays clear —
   // the traced rune floats there)
-  const feetY = FLOOR_Y + 18;
+  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.6);
   blit(SHEET.skull, scene.skelet.x - 16, feetY - 12);
 
   // Soft ground shadows under the fighters
