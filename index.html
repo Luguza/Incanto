@@ -884,6 +884,26 @@ function glowToCanvas(radius, rgb, maxAlpha) {
   return cv;
 }
 
+// Soft elliptical shadow prerendered once; blitted normally under props/fighters
+function shadowToCanvas(rx, ry, maxAlpha) {
+  const w = rx * 2 + 1, h = ry * 2 + 1;
+  const cv = document.createElement("canvas");
+  cv.width = w;
+  cv.height = h;
+  const ctx = cv.getContext("2d");
+  for (let py = -ry; py <= ry; py++) {
+    for (let px = -rx; px <= rx; px++) {
+      const dist = Math.sqrt((px / rx) ** 2 + (py / ry) ** 2);
+      if (dist > 1) continue;
+      const a = maxAlpha * (1 - dist);
+      if (a < 0.01) continue;
+      ctx.fillStyle = `rgba(8, 5, 12, ${a.toFixed(3)})`;
+      ctx.fillRect(rx + px, ry + py, 1, 1);
+    }
+  }
+  return cv;
+}
+
 // Deterministic hash so tile variation is stable across rebuilds
 function tileHash(a, b) {
   let h = (a * 73856093) ^ (b * 19349663);
@@ -934,6 +954,12 @@ function buildAssets() {
     fireball: spriteToCanvas(FIREBALL_SPRITE, f),
     glowFountain: glowToCanvas(15, d.glowRGB, d.glowAlpha),
     glowFireball: glowToCanvas(9, f.glowRGB, f.glowAlpha),
+    // Large soft light pools the fountains/rune cast across the scene, and
+    // grounding shadows for the fighters — the "sharper look" atmosphere pass.
+    poolWarm: glowToCanvas(34, d.glowRGB, 0.34),
+    poolCool: glowToCanvas(22, CONFIG.colors.sceneRune.glowRGB, 0.30),
+    shadow: shadowToCanvas(9, 3, 0.5),
+    shadowSm: shadowToCanvas(8, 3, 0.45),
   };
 }
 
@@ -1029,16 +1055,34 @@ function buildBg(artW) {
   // the traced rune floats there)
   const feetY = FLOOR_Y + 18;
   blit(SHEET.skull, scene.skelet.x - 16, feetY - 12);
+  ctx.drawImage(ASSETS.shadow, scene.skelet.x - 16 + 8 - 9, feetY - 2); // skull shadow
 
-  // Soft ground shadows under the fighters
-  ctx.fillStyle = "rgba(10, 7, 15, 0.30)";
-  ctx.fillRect(scene.wizard.x + 1, feetY - 1, SHEET.wizardIdle.w - 2, 2);
-  ctx.fillRect(scene.skelet.x + 1, feetY - 1, SHEET.skeletIdle.w - 2, 2);
+  // --- Atmosphere pass (baked): depth + vignette ---------------------------
+  // Ambient occlusion: the wall casts a soft shadow onto the front of the floor.
+  const ao = ctx.createLinearGradient(0, FLOOR_Y, 0, FLOOR_Y + 12);
+  ao.addColorStop(0, "rgba(8, 5, 12, 0.55)");
+  ao.addColorStop(1, "rgba(8, 5, 12, 0)");
+  ctx.fillStyle = ao;
+  ctx.fillRect(0, FLOOR_Y, artW, 12);
 
-  // Vignette top and bottom
-  ctx.fillStyle = d.vignette;
-  ctx.fillRect(0, 0, artW, 3);
-  ctx.fillRect(0, SCENE_H - 3, artW, 3);
+  // Gentle global darken so the lava and rune read as actual light sources.
+  ctx.fillStyle = "rgba(9, 6, 14, 0.16)";
+  ctx.fillRect(0, 0, artW, SCENE_H);
+
+  // Edge vignette: soft darkening on all four borders.
+  const band = (grad, x, y, w, h) => { ctx.fillStyle = grad; ctx.fillRect(x, y, w, h); };
+  const vt = ctx.createLinearGradient(0, 0, 0, 8);
+  vt.addColorStop(0, "rgba(6, 4, 10, 0.7)"); vt.addColorStop(1, "rgba(6, 4, 10, 0)");
+  band(vt, 0, 0, artW, 8);
+  const vb = ctx.createLinearGradient(0, SCENE_H - 8, 0, SCENE_H);
+  vb.addColorStop(0, "rgba(6, 4, 10, 0)"); vb.addColorStop(1, "rgba(6, 4, 10, 0.6)");
+  band(vb, 0, SCENE_H - 8, artW, 8);
+  const vl = ctx.createLinearGradient(0, 0, 16, 0);
+  vl.addColorStop(0, "rgba(6, 4, 10, 0.55)"); vl.addColorStop(1, "rgba(6, 4, 10, 0)");
+  band(vl, 0, 0, 16, SCENE_H);
+  const vr = ctx.createLinearGradient(artW - 16, 0, artW, 0);
+  vr.addColorStop(0, "rgba(6, 4, 10, 0)"); vr.addColorStop(1, "rgba(6, 4, 10, 0.55)");
+  band(vr, artW - 16, 0, 16, SCENE_H);
 
   return cv;
 }
@@ -1052,6 +1096,23 @@ function renderScene(now) {
   const ctx = cv.getContext("2d");
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(scene.bg, 0, 0);
+
+  const feetY = FLOOR_Y + 18;
+
+  // Light pools: the lava fountains throw warm light across floor and wall, the
+  // rune throws cool light near the wizard. Additive, gently flickering.
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  scene.fountains.forEach((fx, i) => {
+    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 130 + i * 2.1);
+    ctx.drawImage(ASSETS.poolWarm, fx + 8 - 34, FLOOR_Y - 2 - 34);
+  });
+  ctx.globalAlpha = (0.6 + 0.25 * Math.sin(now / 300)) * (state.screen === "combat" ? 1 : 0.5);
+  ctx.drawImage(ASSETS.poolCool, scene.rune.cx - 22, FLOOR_Y + 4 - 22);
+  ctx.restore();
+
+  // Grounding shadow under the wizard (the skeleton's is drawn with it below).
+  ctx.drawImage(ASSETS.shadow, scene.wizard.x + SHEET.wizardIdle.w / 2 - 9, feetY - 2);
 
   // Lava fountains: 3-frame animation + wobbling additive glow
   scene.fountains.forEach((fx, i) => {
@@ -1094,6 +1155,7 @@ function renderScene(now) {
   }
   ctx.save();
   ctx.globalAlpha = eAlpha;
+  ctx.drawImage(ASSETS.shadowSm, scene.skelet.x + exOff + SHEET.skeletIdle.w / 2 - 8, feetY - 2);
   ctx.drawImage(ASSETS.skelet[sf], scene.skelet.x + exOff, scene.skelet.y);
   ctx.restore();
 

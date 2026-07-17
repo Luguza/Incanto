@@ -1,7 +1,0 @@
-# Time Fantasy art is licensed for use but NOT for redistribution, and this repo
-# is public. Never commit the real sheets here — drop them in locally instead.
-*.png
-*.jpg
-*.aseprite
-# keep this folder tracked so the drop-in path exists
-!.gitignore
