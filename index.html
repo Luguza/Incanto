@@ -809,8 +809,8 @@ function shuffleArray(arr) {
 const TILE = 16;
 // Scene geometry, in tile rows. A taller wall (one top-cap row + several mid
 // rows) gives the arena more vertical presence; the floor rows sit below it.
-const WALL_ROWS = 3;   // 1 top-cap row + 2 mid rows of wall face (kept low)
-const FLOOR_ROWS = 4;  // floor rows below the wall (roomy foreground)
+const WALL_ROWS = 2;   // 1 top-cap row + 1 mid row of wall face (kept low)
+const FLOOR_ROWS = 3;  // floor rows below the wall (roomy foreground)
 const FLOOR_Y = WALL_ROWS * TILE;                    // wall→floor transition line
 const SCENE_H = (WALL_ROWS + FLOOR_ROWS) * TILE;     // native art pixel height
 
@@ -991,7 +991,7 @@ function setupScene(cv) {
   const wiz = SHEET.wizardIdle;
   const skl = SHEET.skeletIdle;
   // Fighters stand in the middle of the floor, not right up against the wall
-  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.6);
+  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
   const wizard = { x: margin, y: feetY - wiz.h };
   const skelet = { x: artW - margin - skl.w, y: feetY - skl.h };
   scene = {
@@ -1069,7 +1069,7 @@ function buildBg(artW) {
 
   // Floor prop: a skull near the skeleton (the wizard's side stays clear —
   // the traced rune floats there)
-  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.6);
+  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
   blit(SHEET.skull, scene.skelet.x - 16, feetY - 12);
   ctx.drawImage(ASSETS.shadow, scene.skelet.x - 16 + 8 - 9, feetY - 2); // skull shadow
 
@@ -1113,16 +1113,28 @@ function renderScene(now) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(scene.bg, 0, 0);
 
-  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.6);
+  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
   const fountainBasinY = FLOOR_Y;   // basin on the first floor row
 
-  // Light pools: the lava fountains throw warm light across floor and wall, the
-  // rune throws cool light near the wizard. Additive, gently flickering.
+  // Lava fountains: 3-frame animation, stream + basin. Drawn BEFORE the warm
+  // light pools so the light washes over the fountain itself, not only the
+  // tiles around it (otherwise the opaque basin sprite leaves a dark core).
+  scene.fountains.forEach((fx, i) => {
+    const fi = (Math.floor(now / 160) + i) % ASSETS.fountainMid.length;
+    for (let y = TILE * 2; y < fountainBasinY; y += TILE) ctx.drawImage(ASSETS.fountainMid[fi], fx, y);
+    ctx.drawImage(ASSETS.fountainBasin[fi], fx, fountainBasinY);
+  });
+
+  // Light pools (additive): each fountain spills warm light over itself and the
+  // surrounding floor/wall, with a hot core right on the basin; the rune throws
+  // cool light near the wizard. Gently flickering.
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   scene.fountains.forEach((fx, i) => {
     ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 130 + i * 2.1);
     ctx.drawImage(ASSETS.poolWarm, fx + 8 - 34, fountainBasinY - 34);
+    ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now / 110 + i * 2.1);
+    ctx.drawImage(ASSETS.glowFountain, fx + 8 - 15, fountainBasinY + 4 - 15);
   });
   ctx.globalAlpha = (0.6 + 0.25 * Math.sin(now / 300)) * (state.screen === "combat" ? 1 : 0.5);
   ctx.drawImage(ASSETS.poolCool, scene.rune.cx - 22, scene.rune.cy - 22);
@@ -1130,20 +1142,6 @@ function renderScene(now) {
 
   // Grounding shadow under the wizard (the skeleton's is drawn with it below).
   ctx.drawImage(ASSETS.shadow, scene.wizard.x + SHEET.wizardIdle.w / 2 - 9, feetY - 2);
-
-  // Lava fountains: 3-frame animation + wobbling additive glow. The spout sits
-  // one row below the cap; lava streams down the wall into a basin that rests
-  // on the floor line.
-  scene.fountains.forEach((fx, i) => {
-    const fi = (Math.floor(now / 160) + i) % ASSETS.fountainMid.length;
-    for (let y = TILE * 2; y < fountainBasinY; y += TILE) ctx.drawImage(ASSETS.fountainMid[fi], fx, y);
-    ctx.drawImage(ASSETS.fountainBasin[fi], fx, fountainBasinY);
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 110 + i * 2.1);
-    ctx.drawImage(ASSETS.glowFountain, fx + 8 - 15, fountainBasinY + 8 - 15);
-    ctx.restore();
-  });
 
   // Fighters: the sheet's own 4-frame idle animations, out of phase
   const wf = Math.floor(now / 160) % ASSETS.wizard.length;
