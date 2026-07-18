@@ -1062,9 +1062,11 @@ function buildBg(artW) {
   blit(SHEET.bannerRed, Math.round(artW * 0.46 / TILE) * TILE, TILE);
   blit(SHEET.bannerGreen, Math.round(artW * 0.54 / TILE) * TILE, TILE);
 
-  // Fountain spouts sit one row below the cap (the stream + basin are animated)
+  // Fountains are a 3-tile stack anchored to the floor line: spout, streaming
+  // mid, and basin. The spout sits two rows above the floor so the mid tile
+  // always has room (the stream + basin are animated in renderScene).
   for (const fx of scene.fountains) {
-    blit(SHEET.fountainTop, fx, TILE);
+    blit(SHEET.fountainTop, fx, FLOOR_Y - 2 * TILE);
   }
 
   // Floor prop: a skull near the skeleton (the wizard's side stays clear —
@@ -1121,7 +1123,8 @@ function renderScene(now) {
   // tiles around it (otherwise the opaque basin sprite leaves a dark core).
   scene.fountains.forEach((fx, i) => {
     const fi = (Math.floor(now / 160) + i) % ASSETS.fountainMid.length;
-    for (let y = TILE * 2; y < fountainBasinY; y += TILE) ctx.drawImage(ASSETS.fountainMid[fi], fx, y);
+    // Streaming mid tiles fill the gap between the spout and the basin.
+    for (let y = FLOOR_Y - TILE; y > FLOOR_Y - 2 * TILE; y -= TILE) ctx.drawImage(ASSETS.fountainMid[fi], fx, y);
     ctx.drawImage(ASSETS.fountainBasin[fi], fx, fountainBasinY);
   });
 
