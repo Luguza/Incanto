@@ -147,14 +147,20 @@ for sa in VERT:
     d.line([(pxc - nx * sz, pyc - ny * sz), (pxc + c * sz * 0.9, pyc + s * sz * 0.9),
             (pxc + nx * sz, pyc + ny * sz)], fill=MID, width=int(1.1 * S))
 
-# ---- hexagram + hexagon ----------------------------------------------------
+# ---- connect every possible path between the six vocabulary nodes ----------
+# the complete graph on the six vertices: star diagonals, the three diameters
+# through the centre, and the outer perimeter (no filled hexagon).
 RV = 0.262
 pts = [(CX + rpx(RV) * math.cos(math.radians(sa)),
         CY + rpx(RV) * math.sin(math.radians(sa))) for sa in VERT]
-for tri in ([0, 2, 4], [1, 3, 5]):
-    d.line([pts[tri[0]], pts[tri[1]], pts[tri[2]], pts[tri[0]]],
-           fill=MID, width=int(1.3 * S), joint="curve")
-d.line(pts + [pts[0]], fill=DIM, width=int(0.9 * S), joint="curve")
+for i in range(6):                                  # skip-one star diagonals
+    d.line([pts[i], pts[(i + 2) % 6]], fill=MID, width=int(1.2 * S),
+           joint="curve")
+for i in range(3):                                  # opposite diameters
+    d.line([pts[i], pts[i + 3]], fill=MID, width=int(1.0 * S), joint="curve")
+for i in range(6):                                  # perimeter edges
+    d.line([pts[i], pts[(i + 1) % 6]], fill=DIM, width=int(1.0 * S),
+           joint="curve")
 
 # node markers at the six vertices
 for (x, y), sa in zip(pts, VERT):
@@ -215,13 +221,6 @@ glow = ImageChops.add(ImageChops.add(scaled(b3, 0.5), scaled(b2, 0.55)),
                       ImageChops.add(scaled(b1, 0.8), art))
 alpha = glow.convert("L").point(lambda v: min(255, int(v * 1.5)))
 top = Image.merge("RGBA", (*glow.split(), alpha))
-
-# gold core, crisp on top
-nd = ImageDraw.Draw(top)
-for rr, col in [(0.028, (*GOLD, 255)), (0.017, (*GOLD_HI, 255)),
-                (0.008, (255, 250, 235, 255))]:
-    r = rr * OUT
-    nd.ellipse([OUT / 2 - r, OUT / 2 - r, OUT / 2 + r, OUT / 2 + r], fill=col)
 
 # ---- radial ground + composite ---------------------------------------------
 bg = Image.new("RGB", (OUT, OUT), (20, 16, 24))
