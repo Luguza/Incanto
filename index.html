@@ -14,7 +14,15 @@
     src: url("assets/rune_font.otf") format("opentype");
     font-display: swap;
   }
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: dark;
+    /* Display face for spell words, titles and rune labels. Readability comes
+       first: a widely-available classical serif renders on essentially every
+       device. The runic "RuneDisplay" stays in the stack as a deliberately
+       low-priority fallback — it only surfaces where none of the readable
+       serifs exist. */
+    --display-font: "Palatino Linotype", "Book Antiqua", Georgia, "RuneDisplay", serif;
+  }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0; padding: 0; height: 100%;
@@ -33,7 +41,7 @@
   /* Loadout screen */
   .loadout-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
   .loadout-screen h1 {
-    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    font-family: var(--display-font);
     font-size: clamp(22px, 6vw, 28px); margin-bottom: 20px; text-align: center;
     letter-spacing: 1px;
   }
@@ -45,11 +53,11 @@
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   }
   .card .it {
-    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    font-family: var(--display-font);
     font-size: 21px; font-weight: 600; color: #f2c14e; letter-spacing: 1px;
   }
   .card .dash { color: rgba(242, 193, 78, 0.45); margin: 4px 0; font-size: 12px; }
-  .card .en { font-size: 18px; color: #eae6f5; }
+  .card .de { font-size: 18px; color: #eae6f5; }
   .fight-btn {
     font-size: 22px; padding: 16px 0; width: min(320px, 85vw);
     border-radius: 12px; border: none;
@@ -173,7 +181,7 @@
   .rune.selected .body { fill: rgba(242, 193, 78, 0.16); stroke: #ffe9b0; stroke-width: 2.5; }
   .rune.matched .body { fill: rgba(94, 207, 143, 0.14); stroke: rgba(143, 231, 180, 0.8); }
   .rune text {
-    font-family: "RuneDisplay", "Palatino Linotype", "Book Antiqua", serif;
+    font-family: var(--display-font);
     fill: #e8fffe; font-size: 19px; letter-spacing: 0.5px; font-weight: 700;
     paint-order: stroke; stroke: rgba(8, 13, 18, 0.9); stroke-width: 3px;
     text-anchor: middle; dominant-baseline: central;
@@ -195,13 +203,13 @@
   .quiz-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); text-align: center; }
   .quiz-progress { font-size: 13px; color: #8a8398; letter-spacing: 0.5px; margin-bottom: 14px; }
   .quiz-screen h1 {
-    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    font-family: var(--display-font);
     font-size: clamp(24px, 6.5vw, 32px); letter-spacing: 2px; color: #7ff0ed;
     text-shadow: 0 0 22px rgba(77, 227, 224, 0.45); margin-bottom: 18px;
   }
   .quiz-prompt { font-size: clamp(17px, 5vw, 22px); color: #cfc9de; margin-bottom: 26px; }
   .quiz-word {
-    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    font-family: var(--display-font);
     color: #f2c14e; font-weight: 700; letter-spacing: 1px;
   }
   .quiz-opts { display: flex; flex-direction: column; gap: 12px; width: min(340px, 88vw); margin: 0 auto; }
@@ -219,7 +227,7 @@
   /* Upgrade shop (stage 2) */
   .upgrade-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); text-align: center; }
   .upgrade-screen h1 {
-    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    font-family: var(--display-font);
     font-size: clamp(26px, 7vw, 36px); letter-spacing: 2px; color: #7ff0ed;
     text-shadow: 0 0 22px rgba(77, 227, 224, 0.5); margin-bottom: 6px;
   }
@@ -242,7 +250,7 @@
   /* End screens */
   .end-screen { cursor: pointer; padding: 16px; text-align: center; }
   .end-screen h1 {
-    font-family: "RuneDisplay", "Palatino Linotype", serif;
+    font-family: var(--display-font);
     font-size: clamp(32px, 9vw, 44px); margin-bottom: 12px; letter-spacing: 2px;
   }
   .end-screen h1.victory { color: #f2c14e; text-shadow: 0 0 28px rgba(242, 193, 78, 0.45); }
@@ -342,338 +350,339 @@ const MODE_LABELS = { REAL_TIME: "REAL-TIME", SLOW_MO: "SLOW-MO", FREEZE: "FREEZ
 
 // ---------------------------------------------------------------------------
 // Word pool — the A1 (beginner) Italian vocabulary, drawn in order and cycled.
-// Nouns keep their article so the learner absorbs gender; verbs are given as
-// infinitives, everything else in its base form. Grouped by theme for upkeep;
-// the game treats it as one flat list.
+// Each entry pairs the Italian word (`it`, shown in the circle) with its German
+// meaning (`de`). Nouns keep their article in both languages so the learner
+// absorbs gender; verbs are given as infinitives, everything else in its base
+// form. Grouped by theme for upkeep; the game treats it as one flat list.
 // ---------------------------------------------------------------------------
 const WORD_POOL = [
   // Greetings & courtesy
-  { it: "ciao", en: "hello" },
-  { it: "buongiorno", en: "good morning" },
-  { it: "buonasera", en: "good evening" },
-  { it: "buonanotte", en: "good night" },
-  { it: "arrivederci", en: "goodbye" },
-  { it: "grazie", en: "thank you" },
-  { it: "prego", en: "you're welcome" },
-  { it: "per favore", en: "please" },
-  { it: "scusa", en: "sorry" },
-  { it: "sì", en: "yes" },
+  { it: "ciao", de: "hallo" },
+  { it: "buongiorno", de: "guten Morgen" },
+  { it: "buonasera", de: "guten Abend" },
+  { it: "buonanotte", de: "gute Nacht" },
+  { it: "arrivederci", de: "auf Wiedersehen" },
+  { it: "grazie", de: "danke" },
+  { it: "prego", de: "gern geschehen" },
+  { it: "per favore", de: "bitte" },
+  { it: "scusa", de: "Entschuldigung" },
+  { it: "sì", de: "ja" },
 
   // People & family
-  { it: "la famiglia", en: "family" },
-  { it: "la madre", en: "mother" },
-  { it: "il padre", en: "father" },
-  { it: "il figlio", en: "son" },
-  { it: "la figlia", en: "daughter" },
-  { it: "il fratello", en: "brother" },
-  { it: "la sorella", en: "sister" },
-  { it: "il nonno", en: "grandfather" },
-  { it: "la nonna", en: "grandmother" },
-  { it: "il bambino", en: "child" },
-  { it: "l'uomo", en: "man" },
-  { it: "la donna", en: "woman" },
-  { it: "l'amico", en: "friend" },
-  { it: "il ragazzo", en: "boy" },
-  { it: "la ragazza", en: "girl" },
-  { it: "il nome", en: "name" },
+  { it: "la famiglia", de: "die Familie" },
+  { it: "la madre", de: "die Mutter" },
+  { it: "il padre", de: "der Vater" },
+  { it: "il figlio", de: "der Sohn" },
+  { it: "la figlia", de: "die Tochter" },
+  { it: "il fratello", de: "der Bruder" },
+  { it: "la sorella", de: "die Schwester" },
+  { it: "il nonno", de: "der Großvater" },
+  { it: "la nonna", de: "die Großmutter" },
+  { it: "il bambino", de: "das Kind" },
+  { it: "l'uomo", de: "der Mann" },
+  { it: "la donna", de: "die Frau" },
+  { it: "l'amico", de: "der Freund" },
+  { it: "il ragazzo", de: "der Junge" },
+  { it: "la ragazza", de: "das Mädchen" },
+  { it: "il nome", de: "der Name" },
 
   // Body
-  { it: "la testa", en: "head" },
-  { it: "la faccia", en: "face" },
-  { it: "la mano", en: "hand" },
-  { it: "il piede", en: "foot" },
-  { it: "l'occhio", en: "eye" },
-  { it: "la bocca", en: "mouth" },
-  { it: "il naso", en: "nose" },
-  { it: "l'orecchio", en: "ear" },
-  { it: "il braccio", en: "arm" },
-  { it: "la gamba", en: "leg" },
-  { it: "il cuore", en: "heart" },
-  { it: "i capelli", en: "hair" },
-  { it: "il dente", en: "tooth" },
+  { it: "la testa", de: "der Kopf" },
+  { it: "la faccia", de: "das Gesicht" },
+  { it: "la mano", de: "die Hand" },
+  { it: "il piede", de: "der Fuß" },
+  { it: "l'occhio", de: "das Auge" },
+  { it: "la bocca", de: "der Mund" },
+  { it: "il naso", de: "die Nase" },
+  { it: "l'orecchio", de: "das Ohr" },
+  { it: "il braccio", de: "der Arm" },
+  { it: "la gamba", de: "das Bein" },
+  { it: "il cuore", de: "das Herz" },
+  { it: "i capelli", de: "die Haare" },
+  { it: "il dente", de: "der Zahn" },
 
   // Food & drink
-  { it: "il cibo", en: "food" },
-  { it: "il pane", en: "bread" },
-  { it: "l'acqua", en: "water" },
-  { it: "il vino", en: "wine" },
-  { it: "il latte", en: "milk" },
-  { it: "il caffè", en: "coffee" },
-  { it: "il tè", en: "tea" },
-  { it: "la birra", en: "beer" },
-  { it: "la frutta", en: "fruit" },
-  { it: "la mela", en: "apple" },
-  { it: "l'arancia", en: "orange" },
-  { it: "il formaggio", en: "cheese" },
-  { it: "la carne", en: "meat" },
-  { it: "il pesce", en: "fish" },
-  { it: "l'uovo", en: "egg" },
-  { it: "il riso", en: "rice" },
-  { it: "il sale", en: "salt" },
-  { it: "lo zucchero", en: "sugar" },
-  { it: "la verdura", en: "vegetables" },
-  { it: "il pollo", en: "chicken" },
-  { it: "il gelato", en: "ice cream" },
-  { it: "il burro", en: "butter" },
-  { it: "il dolce", en: "dessert" },
-  { it: "la colazione", en: "breakfast" },
-  { it: "il pranzo", en: "lunch" },
-  { it: "la cena", en: "dinner" },
+  { it: "il cibo", de: "das Essen" },
+  { it: "il pane", de: "das Brot" },
+  { it: "l'acqua", de: "das Wasser" },
+  { it: "il vino", de: "der Wein" },
+  { it: "il latte", de: "die Milch" },
+  { it: "il caffè", de: "der Kaffee" },
+  { it: "il tè", de: "der Tee" },
+  { it: "la birra", de: "das Bier" },
+  { it: "la frutta", de: "das Obst" },
+  { it: "la mela", de: "der Apfel" },
+  { it: "l'arancia", de: "die Orange" },
+  { it: "il formaggio", de: "der Käse" },
+  { it: "la carne", de: "das Fleisch" },
+  { it: "il pesce", de: "der Fisch" },
+  { it: "l'uovo", de: "das Ei" },
+  { it: "il riso", de: "der Reis" },
+  { it: "il sale", de: "das Salz" },
+  { it: "lo zucchero", de: "der Zucker" },
+  { it: "la verdura", de: "das Gemüse" },
+  { it: "il pollo", de: "das Hähnchen" },
+  { it: "il gelato", de: "das Eis" },
+  { it: "il burro", de: "die Butter" },
+  { it: "il dolce", de: "der Nachtisch" },
+  { it: "la colazione", de: "das Frühstück" },
+  { it: "il pranzo", de: "das Mittagessen" },
+  { it: "la cena", de: "das Abendessen" },
 
   // Animals
-  { it: "il gatto", en: "cat" },
-  { it: "il cane", en: "dog" },
-  { it: "il cavallo", en: "horse" },
-  { it: "l'uccello", en: "bird" },
-  { it: "la mucca", en: "cow" },
-  { it: "il topo", en: "mouse" },
-  { it: "il maiale", en: "pig" },
-  { it: "la pecora", en: "sheep" },
+  { it: "il gatto", de: "die Katze" },
+  { it: "il cane", de: "der Hund" },
+  { it: "il cavallo", de: "das Pferd" },
+  { it: "l'uccello", de: "der Vogel" },
+  { it: "la mucca", de: "die Kuh" },
+  { it: "il topo", de: "die Maus" },
+  { it: "il maiale", de: "das Schwein" },
+  { it: "la pecora", de: "das Schaf" },
 
   // Home & objects
-  { it: "la casa", en: "house" },
-  { it: "la porta", en: "door" },
-  { it: "la finestra", en: "window" },
-  { it: "la sedia", en: "chair" },
-  { it: "il tavolo", en: "table" },
-  { it: "il letto", en: "bed" },
-  { it: "la cucina", en: "kitchen" },
-  { it: "il bagno", en: "bathroom" },
-  { it: "la camera", en: "room" },
-  { it: "la chiave", en: "key" },
-  { it: "il libro", en: "book" },
-  { it: "la penna", en: "pen" },
-  { it: "la carta", en: "paper" },
-  { it: "la lampada", en: "lamp" },
-  { it: "lo specchio", en: "mirror" },
-  { it: "il telefono", en: "phone" },
-  { it: "l'orologio", en: "clock" },
+  { it: "la casa", de: "das Haus" },
+  { it: "la porta", de: "die Tür" },
+  { it: "la finestra", de: "das Fenster" },
+  { it: "la sedia", de: "der Stuhl" },
+  { it: "il tavolo", de: "der Tisch" },
+  { it: "il letto", de: "das Bett" },
+  { it: "la cucina", de: "die Küche" },
+  { it: "il bagno", de: "das Badezimmer" },
+  { it: "la camera", de: "das Zimmer" },
+  { it: "la chiave", de: "der Schlüssel" },
+  { it: "il libro", de: "das Buch" },
+  { it: "la penna", de: "der Stift" },
+  { it: "la carta", de: "das Papier" },
+  { it: "la lampada", de: "die Lampe" },
+  { it: "lo specchio", de: "der Spiegel" },
+  { it: "il telefono", de: "das Telefon" },
+  { it: "l'orologio", de: "die Uhr" },
 
   // Clothes
-  { it: "il vestito", en: "dress" },
-  { it: "la scarpa", en: "shoe" },
-  { it: "il cappello", en: "hat" },
-  { it: "la giacca", en: "jacket" },
-  { it: "i pantaloni", en: "trousers" },
-  { it: "la camicia", en: "shirt" },
-  { it: "la borsa", en: "bag" },
+  { it: "il vestito", de: "das Kleid" },
+  { it: "la scarpa", de: "der Schuh" },
+  { it: "il cappello", de: "der Hut" },
+  { it: "la giacca", de: "die Jacke" },
+  { it: "i pantaloni", de: "die Hose" },
+  { it: "la camicia", de: "das Hemd" },
+  { it: "la borsa", de: "die Tasche" },
 
   // Nature
-  { it: "il sole", en: "sun" },
-  { it: "la luna", en: "moon" },
-  { it: "la stella", en: "star" },
-  { it: "il cielo", en: "sky" },
-  { it: "il mare", en: "sea" },
-  { it: "la montagna", en: "mountain" },
-  { it: "il fiume", en: "river" },
-  { it: "l'albero", en: "tree" },
-  { it: "il fiore", en: "flower" },
-  { it: "la pioggia", en: "rain" },
-  { it: "la neve", en: "snow" },
-  { it: "il vento", en: "wind" },
-  { it: "il fuoco", en: "fire" },
-  { it: "la terra", en: "earth" },
-  { it: "il bosco", en: "forest" },
-  { it: "la spiaggia", en: "beach" },
+  { it: "il sole", de: "die Sonne" },
+  { it: "la luna", de: "der Mond" },
+  { it: "la stella", de: "der Stern" },
+  { it: "il cielo", de: "der Himmel" },
+  { it: "il mare", de: "das Meer" },
+  { it: "la montagna", de: "der Berg" },
+  { it: "il fiume", de: "der Fluss" },
+  { it: "l'albero", de: "der Baum" },
+  { it: "il fiore", de: "die Blume" },
+  { it: "la pioggia", de: "der Regen" },
+  { it: "la neve", de: "der Schnee" },
+  { it: "il vento", de: "der Wind" },
+  { it: "il fuoco", de: "das Feuer" },
+  { it: "la terra", de: "die Erde" },
+  { it: "il bosco", de: "der Wald" },
+  { it: "la spiaggia", de: "der Strand" },
 
   // Time
-  { it: "il giorno", en: "day" },
-  { it: "la notte", en: "night" },
-  { it: "la mattina", en: "morning" },
-  { it: "la sera", en: "evening" },
-  { it: "la settimana", en: "week" },
-  { it: "il mese", en: "month" },
-  { it: "l'anno", en: "year" },
-  { it: "l'ora", en: "hour" },
-  { it: "il tempo", en: "time" },
-  { it: "oggi", en: "today" },
-  { it: "domani", en: "tomorrow" },
-  { it: "ieri", en: "yesterday" },
-  { it: "adesso", en: "now" },
-  { it: "sempre", en: "always" },
-  { it: "mai", en: "never" },
-  { it: "presto", en: "early" },
-  { it: "tardi", en: "late" },
+  { it: "il giorno", de: "der Tag" },
+  { it: "la notte", de: "die Nacht" },
+  { it: "la mattina", de: "der Morgen" },
+  { it: "la sera", de: "der Abend" },
+  { it: "la settimana", de: "die Woche" },
+  { it: "il mese", de: "der Monat" },
+  { it: "l'anno", de: "das Jahr" },
+  { it: "l'ora", de: "die Stunde" },
+  { it: "il tempo", de: "die Zeit" },
+  { it: "oggi", de: "heute" },
+  { it: "domani", de: "morgen" },
+  { it: "ieri", de: "gestern" },
+  { it: "adesso", de: "jetzt" },
+  { it: "sempre", de: "immer" },
+  { it: "mai", de: "nie" },
+  { it: "presto", de: "früh" },
+  { it: "tardi", de: "spät" },
 
   // Days of the week
-  { it: "lunedì", en: "Monday" },
-  { it: "martedì", en: "Tuesday" },
-  { it: "mercoledì", en: "Wednesday" },
-  { it: "giovedì", en: "Thursday" },
-  { it: "venerdì", en: "Friday" },
-  { it: "sabato", en: "Saturday" },
-  { it: "domenica", en: "Sunday" },
+  { it: "lunedì", de: "Montag" },
+  { it: "martedì", de: "Dienstag" },
+  { it: "mercoledì", de: "Mittwoch" },
+  { it: "giovedì", de: "Donnerstag" },
+  { it: "venerdì", de: "Freitag" },
+  { it: "sabato", de: "Samstag" },
+  { it: "domenica", de: "Sonntag" },
 
   // Colours
-  { it: "rosso", en: "red" },
-  { it: "blu", en: "blue" },
-  { it: "verde", en: "green" },
-  { it: "giallo", en: "yellow" },
-  { it: "nero", en: "black" },
-  { it: "bianco", en: "white" },
-  { it: "grigio", en: "grey" },
-  { it: "rosa", en: "pink" },
-  { it: "arancione", en: "orange" },
-  { it: "marrone", en: "brown" },
+  { it: "rosso", de: "rot" },
+  { it: "blu", de: "blau" },
+  { it: "verde", de: "grün" },
+  { it: "giallo", de: "gelb" },
+  { it: "nero", de: "schwarz" },
+  { it: "bianco", de: "weiß" },
+  { it: "grigio", de: "grau" },
+  { it: "rosa", de: "rosa" },
+  { it: "arancione", de: "orange" },
+  { it: "marrone", de: "braun" },
 
   // Numbers
-  { it: "uno", en: "one" },
-  { it: "due", en: "two" },
-  { it: "tre", en: "three" },
-  { it: "quattro", en: "four" },
-  { it: "cinque", en: "five" },
-  { it: "sei", en: "six" },
-  { it: "sette", en: "seven" },
-  { it: "otto", en: "eight" },
-  { it: "nove", en: "nine" },
-  { it: "dieci", en: "ten" },
+  { it: "uno", de: "eins" },
+  { it: "due", de: "zwei" },
+  { it: "tre", de: "drei" },
+  { it: "quattro", de: "vier" },
+  { it: "cinque", de: "fünf" },
+  { it: "sei", de: "sechs" },
+  { it: "sette", de: "sieben" },
+  { it: "otto", de: "acht" },
+  { it: "nove", de: "neun" },
+  { it: "dieci", de: "zehn" },
 
   // Adjectives
-  { it: "grande", en: "big" },
-  { it: "piccolo", en: "small" },
-  { it: "buono", en: "good" },
-  { it: "cattivo", en: "bad" },
-  { it: "bello", en: "beautiful" },
-  { it: "brutto", en: "ugly" },
-  { it: "nuovo", en: "new" },
-  { it: "vecchio", en: "old" },
-  { it: "caldo", en: "hot" },
-  { it: "freddo", en: "cold" },
-  { it: "alto", en: "tall" },
-  { it: "basso", en: "low" },
-  { it: "lungo", en: "long" },
-  { it: "corto", en: "short" },
-  { it: "facile", en: "easy" },
-  { it: "difficile", en: "difficult" },
-  { it: "felice", en: "happy" },
-  { it: "triste", en: "sad" },
-  { it: "veloce", en: "fast" },
-  { it: "lento", en: "slow" },
-  { it: "forte", en: "strong" },
-  { it: "debole", en: "weak" },
-  { it: "giovane", en: "young" },
-  { it: "ricco", en: "rich" },
-  { it: "povero", en: "poor" },
-  { it: "pieno", en: "full" },
-  { it: "vuoto", en: "empty" },
-  { it: "pulito", en: "clean" },
-  { it: "sporco", en: "dirty" },
+  { it: "grande", de: "groß" },
+  { it: "piccolo", de: "klein" },
+  { it: "buono", de: "gut" },
+  { it: "cattivo", de: "schlecht" },
+  { it: "bello", de: "schön" },
+  { it: "brutto", de: "hässlich" },
+  { it: "nuovo", de: "neu" },
+  { it: "vecchio", de: "alt" },
+  { it: "caldo", de: "heiß" },
+  { it: "freddo", de: "kalt" },
+  { it: "alto", de: "hoch" },
+  { it: "basso", de: "niedrig" },
+  { it: "lungo", de: "lang" },
+  { it: "corto", de: "kurz" },
+  { it: "facile", de: "einfach" },
+  { it: "difficile", de: "schwierig" },
+  { it: "felice", de: "glücklich" },
+  { it: "triste", de: "traurig" },
+  { it: "veloce", de: "schnell" },
+  { it: "lento", de: "langsam" },
+  { it: "forte", de: "stark" },
+  { it: "debole", de: "schwach" },
+  { it: "giovane", de: "jung" },
+  { it: "ricco", de: "reich" },
+  { it: "povero", de: "arm" },
+  { it: "pieno", de: "voll" },
+  { it: "vuoto", de: "leer" },
+  { it: "pulito", de: "sauber" },
+  { it: "sporco", de: "schmutzig" },
 
   // Verbs
-  { it: "essere", en: "to be" },
-  { it: "avere", en: "to have" },
-  { it: "fare", en: "to do" },
-  { it: "andare", en: "to go" },
-  { it: "venire", en: "to come" },
-  { it: "stare", en: "to stay" },
-  { it: "mangiare", en: "to eat" },
-  { it: "bere", en: "to drink" },
-  { it: "dormire", en: "to sleep" },
-  { it: "parlare", en: "to speak" },
-  { it: "dire", en: "to say" },
-  { it: "leggere", en: "to read" },
-  { it: "scrivere", en: "to write" },
-  { it: "vedere", en: "to see" },
-  { it: "sentire", en: "to hear" },
-  { it: "capire", en: "to understand" },
-  { it: "sapere", en: "to know" },
-  { it: "volere", en: "to want" },
-  { it: "potere", en: "can" },
-  { it: "dovere", en: "must" },
-  { it: "vivere", en: "to live" },
-  { it: "amare", en: "to love" },
-  { it: "giocare", en: "to play" },
-  { it: "lavorare", en: "to work" },
-  { it: "studiare", en: "to study" },
-  { it: "comprare", en: "to buy" },
-  { it: "aprire", en: "to open" },
-  { it: "chiudere", en: "to close" },
-  { it: "guardare", en: "to watch" },
-  { it: "ascoltare", en: "to listen" },
-  { it: "camminare", en: "to walk" },
-  { it: "correre", en: "to run" },
-  { it: "pensare", en: "to think" },
-  { it: "prendere", en: "to take" },
-  { it: "dare", en: "to give" },
-  { it: "trovare", en: "to find" },
-  { it: "chiamare", en: "to call" },
-  { it: "aspettare", en: "to wait" },
-  { it: "arrivare", en: "to arrive" },
-  { it: "partire", en: "to leave" },
-  { it: "pagare", en: "to pay" },
-  { it: "cucinare", en: "to cook" },
+  { it: "essere", de: "sein" },
+  { it: "avere", de: "haben" },
+  { it: "fare", de: "machen" },
+  { it: "andare", de: "gehen" },
+  { it: "venire", de: "kommen" },
+  { it: "stare", de: "bleiben" },
+  { it: "mangiare", de: "essen" },
+  { it: "bere", de: "trinken" },
+  { it: "dormire", de: "schlafen" },
+  { it: "parlare", de: "sprechen" },
+  { it: "dire", de: "sagen" },
+  { it: "leggere", de: "lesen" },
+  { it: "scrivere", de: "schreiben" },
+  { it: "vedere", de: "sehen" },
+  { it: "sentire", de: "hören" },
+  { it: "capire", de: "verstehen" },
+  { it: "sapere", de: "wissen" },
+  { it: "volere", de: "wollen" },
+  { it: "potere", de: "können" },
+  { it: "dovere", de: "müssen" },
+  { it: "vivere", de: "leben" },
+  { it: "amare", de: "lieben" },
+  { it: "giocare", de: "spielen" },
+  { it: "lavorare", de: "arbeiten" },
+  { it: "studiare", de: "lernen" },
+  { it: "comprare", de: "kaufen" },
+  { it: "aprire", de: "öffnen" },
+  { it: "chiudere", de: "schließen" },
+  { it: "guardare", de: "schauen" },
+  { it: "ascoltare", de: "zuhören" },
+  { it: "camminare", de: "laufen" },
+  { it: "correre", de: "rennen" },
+  { it: "pensare", de: "denken" },
+  { it: "prendere", de: "nehmen" },
+  { it: "dare", de: "geben" },
+  { it: "trovare", de: "finden" },
+  { it: "chiamare", de: "rufen" },
+  { it: "aspettare", de: "warten" },
+  { it: "arrivare", de: "ankommen" },
+  { it: "partire", de: "abfahren" },
+  { it: "pagare", de: "bezahlen" },
+  { it: "cucinare", de: "kochen" },
 
   // Places
-  { it: "la città", en: "city" },
-  { it: "il paese", en: "country" },
-  { it: "la strada", en: "street" },
-  { it: "la scuola", en: "school" },
-  { it: "il negozio", en: "shop" },
-  { it: "il ristorante", en: "restaurant" },
-  { it: "l'ospedale", en: "hospital" },
-  { it: "la stazione", en: "station" },
-  { it: "l'aeroporto", en: "airport" },
-  { it: "la banca", en: "bank" },
-  { it: "il parco", en: "park" },
-  { it: "la chiesa", en: "church" },
-  { it: "il mercato", en: "market" },
-  { it: "l'ufficio", en: "office" },
-  { it: "il museo", en: "museum" },
-  { it: "la piazza", en: "square" },
+  { it: "la città", de: "die Stadt" },
+  { it: "il paese", de: "das Land" },
+  { it: "la strada", de: "die Straße" },
+  { it: "la scuola", de: "die Schule" },
+  { it: "il negozio", de: "das Geschäft" },
+  { it: "il ristorante", de: "das Restaurant" },
+  { it: "l'ospedale", de: "das Krankenhaus" },
+  { it: "la stazione", de: "der Bahnhof" },
+  { it: "l'aeroporto", de: "der Flughafen" },
+  { it: "la banca", de: "die Bank" },
+  { it: "il parco", de: "der Park" },
+  { it: "la chiesa", de: "die Kirche" },
+  { it: "il mercato", de: "der Markt" },
+  { it: "l'ufficio", de: "das Büro" },
+  { it: "il museo", de: "das Museum" },
+  { it: "la piazza", de: "der Platz" },
 
   // Transport
-  { it: "la macchina", en: "car" },
-  { it: "il treno", en: "train" },
-  { it: "l'autobus", en: "bus" },
-  { it: "la bicicletta", en: "bicycle" },
-  { it: "l'aereo", en: "airplane" },
-  { it: "la nave", en: "ship" },
+  { it: "la macchina", de: "das Auto" },
+  { it: "il treno", de: "der Zug" },
+  { it: "l'autobus", de: "der Bus" },
+  { it: "la bicicletta", de: "das Fahrrad" },
+  { it: "l'aereo", de: "das Flugzeug" },
+  { it: "la nave", de: "das Schiff" },
 
   // Everyday life
-  { it: "il lavoro", en: "work" },
-  { it: "i soldi", en: "money" },
-  { it: "il regalo", en: "gift" },
-  { it: "la festa", en: "party" },
-  { it: "la musica", en: "music" },
-  { it: "il film", en: "movie" },
-  { it: "la parola", en: "word" },
-  { it: "la lingua", en: "language" },
-  { it: "il numero", en: "number" },
-  { it: "la domanda", en: "question" },
-  { it: "la risposta", en: "answer" },
-  { it: "il problema", en: "problem" },
-  { it: "l'idea", en: "idea" },
-  { it: "la vita", en: "life" },
-  { it: "l'amore", en: "love" },
-  { it: "la storia", en: "story" },
-  { it: "il colore", en: "colour" },
+  { it: "il lavoro", de: "die Arbeit" },
+  { it: "i soldi", de: "das Geld" },
+  { it: "il regalo", de: "das Geschenk" },
+  { it: "la festa", de: "die Party" },
+  { it: "la musica", de: "die Musik" },
+  { it: "il film", de: "der Film" },
+  { it: "la parola", de: "das Wort" },
+  { it: "la lingua", de: "die Sprache" },
+  { it: "il numero", de: "die Zahl" },
+  { it: "la domanda", de: "die Frage" },
+  { it: "la risposta", de: "die Antwort" },
+  { it: "il problema", de: "das Problem" },
+  { it: "l'idea", de: "die Idee" },
+  { it: "la vita", de: "das Leben" },
+  { it: "l'amore", de: "die Liebe" },
+  { it: "la storia", de: "die Geschichte" },
+  { it: "il colore", de: "die Farbe" },
 
   // Question & function words
-  { it: "chi", en: "who" },
-  { it: "che", en: "what" },
-  { it: "dove", en: "where" },
-  { it: "quando", en: "when" },
-  { it: "perché", en: "why" },
-  { it: "come", en: "how" },
-  { it: "quanto", en: "how much" },
-  { it: "molto", en: "very" },
-  { it: "poco", en: "little" },
-  { it: "tutto", en: "everything" },
-  { it: "niente", en: "nothing" },
-  { it: "qui", en: "here" },
-  { it: "là", en: "there" },
-  { it: "bene", en: "well" },
-  { it: "male", en: "badly" },
-  { it: "anche", en: "also" },
-  { it: "ma", en: "but" },
-  { it: "con", en: "with" },
-  { it: "senza", en: "without" },
-  { it: "sotto", en: "under" },
-  { it: "sopra", en: "above" },
-  { it: "dentro", en: "inside" },
-  { it: "fuori", en: "outside" },
-  { it: "vicino", en: "near" },
-  { it: "lontano", en: "far" },
+  { it: "chi", de: "wer" },
+  { it: "che", de: "was" },
+  { it: "dove", de: "wo" },
+  { it: "quando", de: "wann" },
+  { it: "perché", de: "warum" },
+  { it: "come", de: "wie" },
+  { it: "quanto", de: "wie viel" },
+  { it: "molto", de: "sehr" },
+  { it: "poco", de: "wenig" },
+  { it: "tutto", de: "alles" },
+  { it: "niente", de: "nichts" },
+  { it: "qui", de: "hier" },
+  { it: "là", de: "dort" },
+  { it: "bene", de: "gut" },
+  { it: "male", de: "schlecht" },
+  { it: "anche", de: "auch" },
+  { it: "ma", de: "aber" },
+  { it: "con", de: "mit" },
+  { it: "senza", de: "ohne" },
+  { it: "sotto", de: "unter" },
+  { it: "sopra", de: "über" },
+  { it: "dentro", de: "drinnen" },
+  { it: "fuori", de: "draußen" },
+  { it: "vicino", de: "nah" },
+  { it: "lontano", de: "weit" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1376,7 +1385,7 @@ function drawLoadout() {
   const pairs = [];
   for (let i = 0; i < CONFIG.pairsPerLoadout; i++) {
     const idx = (state.poolIndex + i) % WORD_POOL.length;
-    pairs.push({ id: idx, it: WORD_POOL[idx].it, en: WORD_POOL[idx].en });
+    pairs.push({ id: idx, it: WORD_POOL[idx].it, de: WORD_POOL[idx].de });
   }
   state.poolIndex = (state.poolIndex + CONFIG.pairsPerLoadout) % WORD_POOL.length;
   return pairs;
@@ -1387,7 +1396,7 @@ function populateCircle(pairs) {
   const contents = [];
   pairs.forEach((p) => {
     contents.push({ pairId: p.id, lang: "it", word: p.it });
-    contents.push({ pairId: p.id, lang: "en", word: p.en });
+    contents.push({ pairId: p.id, lang: "de", word: p.de });
   });
   shuffleArray(contents);
 
@@ -1505,11 +1514,11 @@ function buildQuiz() {
   const pool = shuffleArray(WORD_POOL.map((p, i) => ({ ...p, i })));
   const n = Math.min(CONFIG.quizQuestionCount, pool.length);
   state.quizList = pool.slice(0, n).map((pair) => {
-    const distractors = shuffleArray(WORD_POOL.filter((p) => p.en !== pair.en))
+    const distractors = shuffleArray(WORD_POOL.filter((p) => p.de !== pair.de))
       .slice(0, CONFIG.quizOptionCount - 1)
-      .map((p) => p.en);
-    const options = shuffleArray([pair.en, ...distractors]);
-    return { it: pair.it, en: pair.en, options };
+      .map((p) => p.de);
+    const options = shuffleArray([pair.de, ...distractors]);
+    return { it: pair.it, de: pair.de, options };
   });
   state.quizIndex = 0;
   state.quizCorrect = 0;
@@ -1524,7 +1533,7 @@ function goToQuiz() {
 function answerQuiz(optIndex) {
   if (state.quizPicked !== null) return; // already answered this question
   const q = state.quizList[state.quizIndex];
-  const correct = q.options[optIndex] === q.en;
+  const correct = q.options[optIndex] === q.de;
   state.quizPicked = optIndex;
   if (correct) {
     state.quizCorrect++;
@@ -1690,7 +1699,7 @@ function renderQuizFull() {
     .map((opt, i) => {
       let cls = "quiz-opt";
       if (answered) {
-        if (opt === q.en) cls += " correct";
+        if (opt === q.de) cls += " correct";
         else if (i === state.quizPicked) cls += " wrong";
         else cls += " faded";
       }
