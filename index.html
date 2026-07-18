@@ -809,8 +809,8 @@ function shuffleArray(arr) {
 const TILE = 16;
 // Scene geometry, in tile rows. A taller wall (one top-cap row + several mid
 // rows) gives the arena more vertical presence; the floor rows sit below it.
-const WALL_ROWS = 3;   // 1 top-cap row + 2 mid rows of wall face (kept low)
-const FLOOR_ROWS = 4;  // floor rows below the wall (roomy foreground)
+const WALL_ROWS = 2;   // 1 top-cap row + 1 mid row of wall face (kept low)
+const FLOOR_ROWS = 3;  // floor rows below the wall (roomy foreground)
 const FLOOR_Y = WALL_ROWS * TILE;                    // wall→floor transition line
 const SCENE_H = (WALL_ROWS + FLOOR_ROWS) * TILE;     // native art pixel height
 
@@ -888,6 +888,26 @@ function glowToCanvas(radius, rgb, maxAlpha) {
   return cv;
 }
 
+// Soft elliptical shadow prerendered once; blitted normally under props/fighters
+function shadowToCanvas(rx, ry, maxAlpha) {
+  const w = rx * 2 + 1, h = ry * 2 + 1;
+  const cv = document.createElement("canvas");
+  cv.width = w;
+  cv.height = h;
+  const ctx = cv.getContext("2d");
+  for (let py = -ry; py <= ry; py++) {
+    for (let px = -rx; px <= rx; px++) {
+      const dist = Math.sqrt((px / rx) ** 2 + (py / ry) ** 2);
+      if (dist > 1) continue;
+      const a = maxAlpha * (1 - dist);
+      if (a < 0.01) continue;
+      ctx.fillStyle = `rgba(8, 5, 12, ${a.toFixed(3)})`;
+      ctx.fillRect(rx + px, ry + py, 1, 1);
+    }
+  }
+  return cv;
+}
+
 // Deterministic hash so tile variation is stable across rebuilds
 function tileHash(a, b) {
   let h = (a * 73856093) ^ (b * 19349663);
@@ -938,6 +958,12 @@ function buildAssets() {
     fireball: spriteToCanvas(FIREBALL_SPRITE, f),
     glowFountain: glowToCanvas(15, d.glowRGB, d.glowAlpha),
     glowFireball: glowToCanvas(9, f.glowRGB, f.glowAlpha),
+    // Large soft light pools the fountains/rune cast across the scene, and
+    // grounding shadows for the fighters — the "sharper look" atmosphere pass.
+    poolWarm: glowToCanvas(34, d.glowRGB, 0.34),
+    poolCool: glowToCanvas(22, CONFIG.colors.sceneRune.glowRGB, 0.30),
+    shadow: shadowToCanvas(9, 3, 0.5),
+    shadowSm: shadowToCanvas(8, 3, 0.45),
   };
 }
 
@@ -965,7 +991,7 @@ function setupScene(cv) {
   const wiz = SHEET.wizardIdle;
   const skl = SHEET.skeletIdle;
   // Fighters stand in the middle of the floor, not right up against the wall
-  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.6);
+  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
   const wizard = { x: margin, y: feetY - wiz.h };
   const skelet = { x: artW - margin - skl.w, y: feetY - skl.h };
   scene = {
@@ -1036,25 +1062,45 @@ function buildBg(artW) {
   blit(SHEET.bannerRed, Math.round(artW * 0.46 / TILE) * TILE, TILE);
   blit(SHEET.bannerGreen, Math.round(artW * 0.54 / TILE) * TILE, TILE);
 
-  // Fountain spouts sit one row below the cap (the stream + basin are animated)
+  // Fountains are a 3-tile stack anchored to the floor line: spout, streaming
+  // mid, and basin. The spout sits two rows above the floor so the mid tile
+  // always has room (the stream + basin are animated in renderScene).
   for (const fx of scene.fountains) {
-    blit(SHEET.fountainTop, fx, TILE);
+    blit(SHEET.fountainTop, fx, FLOOR_Y - 2 * TILE);
   }
 
   // Floor prop: a skull near the skeleton (the wizard's side stays clear —
   // the traced rune floats there)
-  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.6);
+  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
   blit(SHEET.skull, scene.skelet.x - 16, feetY - 12);
+  ctx.drawImage(ASSETS.shadow, scene.skelet.x - 16 + 8 - 9, feetY - 2); // skull shadow
 
-  // Soft ground shadows under the fighters
-  ctx.fillStyle = "rgba(10, 7, 15, 0.30)";
-  ctx.fillRect(scene.wizard.x + 1, feetY - 1, SHEET.wizardIdle.w - 2, 2);
-  ctx.fillRect(scene.skelet.x + 1, feetY - 1, SHEET.skeletIdle.w - 2, 2);
+  // --- Atmosphere pass (baked): depth + vignette ---------------------------
+  // Ambient occlusion: the wall casts a soft shadow onto the front of the floor.
+  const ao = ctx.createLinearGradient(0, FLOOR_Y, 0, FLOOR_Y + 12);
+  ao.addColorStop(0, "rgba(8, 5, 12, 0.55)");
+  ao.addColorStop(1, "rgba(8, 5, 12, 0)");
+  ctx.fillStyle = ao;
+  ctx.fillRect(0, FLOOR_Y, artW, 12);
 
-  // Vignette top and bottom
-  ctx.fillStyle = d.vignette;
-  ctx.fillRect(0, 0, artW, 3);
-  ctx.fillRect(0, SCENE_H - 3, artW, 3);
+  // Gentle global darken so the lava and rune read as actual light sources.
+  ctx.fillStyle = "rgba(9, 6, 14, 0.16)";
+  ctx.fillRect(0, 0, artW, SCENE_H);
+
+  // Edge vignette: soft darkening on all four borders.
+  const band = (grad, x, y, w, h) => { ctx.fillStyle = grad; ctx.fillRect(x, y, w, h); };
+  const vt = ctx.createLinearGradient(0, 0, 0, 8);
+  vt.addColorStop(0, "rgba(6, 4, 10, 0.7)"); vt.addColorStop(1, "rgba(6, 4, 10, 0)");
+  band(vt, 0, 0, artW, 8);
+  const vb = ctx.createLinearGradient(0, SCENE_H - 8, 0, SCENE_H);
+  vb.addColorStop(0, "rgba(6, 4, 10, 0)"); vb.addColorStop(1, "rgba(6, 4, 10, 0.6)");
+  band(vb, 0, SCENE_H - 8, artW, 8);
+  const vl = ctx.createLinearGradient(0, 0, 16, 0);
+  vl.addColorStop(0, "rgba(6, 4, 10, 0.55)"); vl.addColorStop(1, "rgba(6, 4, 10, 0)");
+  band(vl, 0, 0, 16, SCENE_H);
+  const vr = ctx.createLinearGradient(artW - 16, 0, artW, 0);
+  vr.addColorStop(0, "rgba(6, 4, 10, 0)"); vr.addColorStop(1, "rgba(6, 4, 10, 0.55)");
+  band(vr, artW - 16, 0, 16, SCENE_H);
 
   return cv;
 }
@@ -1069,20 +1115,36 @@ function renderScene(now) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(scene.bg, 0, 0);
 
-  // Lava fountains: 3-frame animation + wobbling additive glow. The spout sits
-  // one row below the cap; lava streams down the wall into a basin that rests
-  // on the floor line.
+  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
   const fountainBasinY = FLOOR_Y;   // basin on the first floor row
+
+  // Lava fountains: 3-frame animation, stream + basin. Drawn BEFORE the warm
+  // light pools so the light washes over the fountain itself, not only the
+  // tiles around it (otherwise the opaque basin sprite leaves a dark core).
   scene.fountains.forEach((fx, i) => {
     const fi = (Math.floor(now / 160) + i) % ASSETS.fountainMid.length;
-    for (let y = TILE * 2; y < fountainBasinY; y += TILE) ctx.drawImage(ASSETS.fountainMid[fi], fx, y);
+    // Streaming mid tiles fill the gap between the spout and the basin.
+    for (let y = FLOOR_Y - TILE; y > FLOOR_Y - 2 * TILE; y -= TILE) ctx.drawImage(ASSETS.fountainMid[fi], fx, y);
     ctx.drawImage(ASSETS.fountainBasin[fi], fx, fountainBasinY);
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 110 + i * 2.1);
-    ctx.drawImage(ASSETS.glowFountain, fx + 8 - 15, fountainBasinY + 8 - 15);
-    ctx.restore();
   });
+
+  // Light pools (additive): each fountain spills warm light over itself and the
+  // surrounding floor/wall, with a hot core right on the basin; the rune throws
+  // cool light near the wizard. Gently flickering.
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  scene.fountains.forEach((fx, i) => {
+    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 130 + i * 2.1);
+    ctx.drawImage(ASSETS.poolWarm, fx + 8 - 34, fountainBasinY - 34);
+    ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now / 110 + i * 2.1);
+    ctx.drawImage(ASSETS.glowFountain, fx + 8 - 15, fountainBasinY + 4 - 15);
+  });
+  ctx.globalAlpha = (0.6 + 0.25 * Math.sin(now / 300)) * (state.screen === "combat" ? 1 : 0.5);
+  ctx.drawImage(ASSETS.poolCool, scene.rune.cx - 22, scene.rune.cy - 22);
+  ctx.restore();
+
+  // Grounding shadow under the wizard (the skeleton's is drawn with it below).
+  ctx.drawImage(ASSETS.shadow, scene.wizard.x + SHEET.wizardIdle.w / 2 - 9, feetY - 2);
 
   // Fighters: the sheet's own 4-frame idle animations, out of phase
   const wf = Math.floor(now / 160) % ASSETS.wizard.length;
@@ -1113,6 +1175,7 @@ function renderScene(now) {
   }
   ctx.save();
   ctx.globalAlpha = eAlpha;
+  ctx.drawImage(ASSETS.shadowSm, scene.skelet.x + exOff + SHEET.skeletIdle.w / 2 - 8, feetY - 2);
   ctx.drawImage(ASSETS.skelet[sf], scene.skelet.x + exOff, scene.skelet.y);
   ctx.restore();
 
