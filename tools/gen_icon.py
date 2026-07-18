@@ -1,16 +1,14 @@
-"""Generate the home-screen app icons — a rune blazing inside a fireball.
+"""Generate the home-screen app icons — a hero rune inside an arcane ring.
 
-Tells the game's story (cast spells by matching runes -> hurl fireballs): a
-white-hot rune sigil at the core of a fireball, flames licking upward, on a
-dark ember-lit ground. Warm palette with the game's gold (#f2c14e) accent.
+Echoes the game's rune circle (see gen_wheel.py): a decorative cyan ring — a
+band of tiny rune script, fine ticks and six socket nodes — framing one bold
+glowing rune with a gold (#f2c14e) node at its heart, on the dark #141018
+field. Calm, emblem-like, and recognisably Incanto.
 
-Technique: draw the fire as a grayscale "heat" field (central orb + flame
-tongues, biased upward), bloom it, then map heat -> a black->red->orange->
-yellow->white fire ramp. The rune is overlaid as its own crisp gold-white
-glow so it stays legible at small sizes.
+Everything sits within the centre ~80% so iOS corner-rounding and Android
+maskable crops leave the ring whole.
 
-Outputs (square, full-bleed; rune+core kept within the centre ~60% so iOS
-rounding and Android maskable crops leave it whole):
+Outputs:
   assets/apple-touch-icon.png  180x180
   assets/icon-192.png          192x192
   assets/icon-512.png          512x512
@@ -19,138 +17,113 @@ import math
 import random
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
 
-random.seed(11)
+random.seed(7)
 
-S = 4                       # supersample factor
-OUT = 512                   # master render size
+S = 4
+OUT = 512
 W = OUT * S
 CX = CY = W // 2
 
+CORE = (198, 255, 252)
+BRIGHT = (127, 244, 241)
+MID = (77, 227, 224)
+DIM = (40, 130, 128)
+FAINT = (24, 78, 76)
 GOLD = (242, 193, 78)
 GOLD_HI = (255, 226, 150)
 
-# ---------------------------------------------------------------------------
-# 1. Fire heat field (grayscale intensity, additive)
-# ---------------------------------------------------------------------------
-heat = Image.new("L", (W, W), 0)
+art = Image.new("RGB", (W, W), (0, 0, 0))
+d = ImageDraw.Draw(art)
 
 
-def stamp(layer_draw, x, y, r, val):
-    layer_draw.ellipse([x - r, y - r, x + r, y + r], fill=val)
+def px(f):                      # icon-fraction -> supersampled pixels
+    return f * W
 
 
-def add_flame(acc, ang, length, base_w, base_i):
-    """One tongue of flame: a stack of circles from a hot base to a cool tip."""
-    tmp = Image.new("L", (W, W), 0)
-    td = ImageDraw.Draw(tmp)
-    dx, dy = math.cos(ang), math.sin(ang)
-    steps = 26
-    for i in range(steps, -1, -1):          # tip first, base last (base wins)
-        t = i / steps
-        r0 = 0.13 * W                        # start out from the core, not on it
-        px = CX + (r0 + t * length) * dx
-        # add a lateral wobble so tongues aren't ruler-straight
-        wob = math.sin(t * 6 + ang * 3) * 0.03 * W * t
-        px += -dy * wob
-        py = CY + (r0 + t * length) * dy + dx * wob
-        rr = base_w * (1 - 0.82 * t) + 2
-        val = int(base_i * (1 - 0.55 * t) ** 1.4)
-        stamp(td, px, py, rr, val)
-    return ImageChops.add(acc, tmp)
+def ring(rf, width, color):
+    r = px(rf)
+    d.ellipse([CX - r, CY - r, CX + r, CY + r], outline=color,
+              width=max(1, int(width * S)))
 
 
-# broad orange body halo (fills gaps so the fireball reads as a full mass)
-body = Image.new("L", (W, W), 0)
-bod = ImageDraw.Draw(body)
-for i in range(60, 0, -1):
-    t = i / 60
-    stamp(bod, CX, CY, 0.24 * W * t, int(118 * (1 - t) ** 0.9))
-heat = ImageChops.add(heat, body)
-
-# small white-hot core
-core = Image.new("L", (W, W), 0)
-cod = ImageDraw.Draw(core)
-for i in range(40, 0, -1):
-    t = i / 40
-    stamp(cod, CX, CY, 0.075 * W * t, int(130 * (1 - t) ** 0.6))
-heat = ImageChops.add(heat, core)
-
-# flame tongues licking outward, a little taller pointing up (screen up = -y)
-for k in range(26):
-    ang = math.radians(random.uniform(0, 360))
-    up = max(0.0, -math.sin(ang))           # 1 straight up, 0 down/sideways
-    length = (0.14 + 0.18 * up + random.uniform(0, 0.07)) * W
-    base_w = (0.05 + 0.025 * random.random()) * W
-    base_i = int(80 + 40 * up)
-    heat = add_flame(heat, ang, length, base_w, base_i)
-
-# a few tall central plumes for a licking crown
-for ang_deg in (-90, -76, -104, -62, -118):
-    ang = math.radians(ang_deg + random.uniform(-4, 4))
-    heat = add_flame(heat, ang, 0.33 * W + random.uniform(0, 0.05) * W,
-                     0.045 * W, 120)
-
-# bloom the heat (gentle, so the core does not blow out to white)
-heat = heat.resize((OUT, OUT), Image.LANCZOS)
+def radial(a_deg, rf1, rf2, width, color):
+    c, s = math.cos(math.radians(a_deg)), math.sin(math.radians(a_deg))
+    d.line([CX + px(rf1) * c, CY + px(rf1) * s, CX + px(rf2) * c, CY + px(rf2) * s],
+           fill=color, width=max(1, int(width * S)))
 
 
-def scaled(img, f):
-    return img.point(lambda v: int(v * f))
-
-
-# the flame SHAPE / opacity mask (bloomed heat). Colour is handled separately
-# below by a radial temperature ramp, so overlaps never wash out to white.
-soft = ImageChops.add(heat, ImageChops.add(
-    scaled(heat.filter(ImageFilter.GaussianBlur(4)), 0.55),
-    scaled(heat.filter(ImageFilter.GaussianBlur(12)), 0.45)))
-
-# ---------------------------------------------------------------------------
-# 2. Fire colour from a radial temperature ramp (hot centre -> cool tips)
-# ---------------------------------------------------------------------------
-STOPS = [
-    (0.00, (30, 4, 2)),
-    (0.16, (150, 26, 10)),
-    (0.36, (224, 74, 18)),
-    (0.56, (250, 142, 42)),
-    (0.76, (255, 202, 98)),
-    (0.90, (255, 238, 168)),
-    (1.00, (255, 252, 242)),
+# tiny rune-script glyphs (same alphabet as the arena wheel)
+GLYPHS = [
+    [(0, -5), (0, 5)],
+    [(-3, 5), (0, -5), (3, 5)],
+    [(-3, -5), (-3, 5), (3, 5)],
+    [(-3, 5), (-3, -5), (3, -5), (3, 5)],
+    [(-3, -5), (3, 5), (3, -5)],
+    [(0, -5), (0, 5), (3, 0), (-3, 0)],
+    [(-3, 0), (0, -5), (3, 0), (0, 5), (-3, 0)],
+    [(3, -5), (-3, -1), (3, 3), (0, 5)],
+    [(-3, -5), (3, -5), (-3, 5), (3, 5)],
+    [(0, -5), (-3, 0), (0, 5), (3, 0), (0, -5), (0, 5)],
 ]
 
 
-def ramp(v):
-    f = v / 255.0
-    for i in range(len(STOPS) - 1):
-        a, ca = STOPS[i]
-        b, cb = STOPS[i + 1]
-        if f <= b:
-            t = 0 if b == a else (f - a) / (b - a)
-            return tuple(int(ca[j] + (cb[j] - ca[j]) * t) for j in range(3))
-    return STOPS[-1][1]
+def glyph(rf, a_deg, size, width, color):
+    t = random.choice(GLYPHS)
+    gx = CX + px(rf) * math.cos(math.radians(a_deg))
+    gy = CY + px(rf) * math.sin(math.radians(a_deg))
+    rot = math.radians(a_deg + 90)
+    pts = []
+    for x, y in t:
+        p, q = x * size / 5.0 * S, y * size / 5.0 * S
+        rx = p * math.cos(rot) - q * math.sin(rot)
+        ry = p * math.sin(rot) + q * math.cos(rot)
+        pts.append((gx + rx, gy + ry))
+    d.line(pts, fill=color, width=max(1, int(width * S)), joint="curve")
 
 
-lut_r = [ramp(i)[0] for i in range(256)]
-lut_g = [ramp(i)[1] for i in range(256)]
-lut_b = [ramp(i)[2] for i in range(256)]
+SOCKETS = [-90 + i * 60 for i in range(6)]
 
-# radial temperature: 255 (white) at the core falling to 0 at the flame reach
-temp = Image.new("L", (OUT, OUT), 0)
-td2 = ImageDraw.Draw(temp)
-Rmax = 0.42 * OUT
-for i in range(int(Rmax), 0, -1):
-    fr = i / Rmax
-    td2.ellipse([OUT / 2 - i, OUT / 2 - i, OUT / 2 + i, OUT / 2 + i],
-                fill=int(255 * (1 - fr) ** 0.82))
-temp = temp.filter(ImageFilter.GaussianBlur(2))
-fire = Image.merge("RGB", (temp.point(lut_r), temp.point(lut_g),
-                           temp.point(lut_b)))
 
-# ---------------------------------------------------------------------------
-# 3. The rune sigil (crisp gold-white glow over the core)
-# ---------------------------------------------------------------------------
-rune_i = Image.new("L", (W, W), 0)
-rd = ImageDraw.Draw(rune_i)
-R = 0.245 * W
+def near_socket(a_deg, margin):
+    a = a_deg % 360
+    return any(min(abs(a - (s % 360)), 360 - abs(a - (s % 360))) < margin
+               for s in SOCKETS)
+
+
+# ---- decorative ring -------------------------------------------------------
+ring(0.400, 2.0, BRIGHT)
+ring(0.415, 0.8, DIM)
+ring(0.385, 0.8, DIM)
+ring(0.300, 1.4, MID)
+ring(0.286, 0.7, FAINT)
+
+# rune-script band between the two main rings
+for a in range(0, 360, 9):
+    if not near_socket(a, 15):
+        glyph(0.345, a + random.uniform(-1.5, 1.5), 9, 1.1, MID)
+
+# fine ticks just inside the outer ring
+for a in range(0, 360, 6):
+    if not near_socket(a, 12):
+        radial(a, 0.378, 0.398, 0.7, DIM)
+
+# six socket nodes on the outer ring
+for sa in SOCKETS:
+    sx = CX + px(0.400) * math.cos(math.radians(sa))
+    sy = CY + px(0.400) * math.sin(math.radians(sa))
+    for rr, wd, col in [(0.030, 1.4, BRIGHT), (0.038, 0.7, DIM)]:
+        r = px(rr)
+        d.ellipse([sx - r, sy - r, sx + r, sy + r], outline=col,
+                  width=max(1, int(wd * S)))
+    r = px(0.010)
+    d.ellipse([sx - r, sy - r, sx + r, sy + r], fill=MID)
+
+# faint spokes from the inner ring out toward the sockets' gaps
+for sa in SOCKETS:
+    radial(sa + 30, 0.300, 0.385, 0.6, FAINT)
+
+# ---- hero rune -------------------------------------------------------------
+R = px(0.205)
 STAVE = [(0, -0.72), (0, 0.72)]
 BRANCHES = [
     [(0, -0.26), (-0.40, -0.58)],
@@ -160,71 +133,63 @@ BRANCHES = [
 ]
 
 
-def to_px(pts):
-    return [(CX + x * R, CY + y * R) for x, y in pts]
-
-
-def stroke(pts, width, val):
-    p = to_px(pts)
-    rd.line(p, fill=val, width=max(1, int(width * S)), joint="curve")
+def stroke(pts, width, color):
+    p = [(CX + x * R, CY + y * R) for x, y in pts]
+    d.line(p, fill=color, width=max(1, int(width * S)), joint="curve")
     r = max(1, int(width * S / 2))
     for x, y in p:
-        rd.ellipse([x - r, y - r, x + r, y + r], fill=val)
+        d.ellipse([x - r, y - r, x + r, y + r], fill=color)
 
 
-for width, val in [(7.5, 150), (4.5, 220), (2.4, 255)]:
-    stroke(STAVE, width, val)
+for width, color in [(6.5, DIM), (4.0, MID), (2.3, BRIGHT), (1.1, CORE)]:
+    stroke(STAVE, width, color)
     for br in BRANCHES:
-        stroke(br, width, val)
+        stroke(br, width, color)
 
-rune_i = rune_i.resize((OUT, OUT), Image.LANCZOS)
+# ---- sparks / particle field for life --------------------------------------
+for _ in range(90):
+    a = random.uniform(0, 360)
+    rf = random.uniform(0.10, 0.40)
+    x = CX + px(rf) * math.cos(math.radians(a))
+    y = CY + px(rf) * math.sin(math.radians(a))
+    sz = random.uniform(0.4, 1.4) * S
+    b = random.random()
+    col = CORE if b > 0.9 else (BRIGHT if b > 0.6 else MID if b > 0.3 else DIM)
+    d.ellipse([x - sz, y - sz, x + sz, y + sz], fill=col)
 
-# soft dark halo so the glowing rune stays legible over the bright core
-shadow_mask = rune_i.filter(ImageFilter.MaxFilter(7)).filter(
-    ImageFilter.GaussianBlur(4)).point(lambda v: int(v * 0.55))
-rune_shadow = Image.merge("RGBA", (Image.new("L", (OUT, OUT), 30),
-                                   Image.new("L", (OUT, OUT), 12),
-                                   Image.new("L", (OUT, OUT), 8), shadow_mask))
+# ---- downscale + bloom -----------------------------------------------------
+art = art.resize((OUT, OUT), Image.LANCZOS)
 
-rune_glow = ImageChops.add(rune_i.filter(ImageFilter.GaussianBlur(2)),
-                           rune_i.filter(ImageFilter.GaussianBlur(7)))
-rune_soft = ImageChops.add(rune_glow, rune_i)
 
-# tint the rune white-hot with a gold bias
-rune_rgb = Image.merge("RGB", (
-    rune_soft,
-    rune_soft.point(lambda v: int(v * 0.92)),
-    rune_soft.point(lambda v: int(v * 0.72)),
-))
-rune_layer = Image.merge("RGBA", (*rune_rgb.split(),
-                                  rune_soft.point(lambda v: min(255, int(v * 1.5)))))
+def scaled(img, f):
+    return img.point(lambda v: int(v * f))
 
-# ---------------------------------------------------------------------------
-# 4. Compose over an ember-lit ground
-# ---------------------------------------------------------------------------
-bg = Image.new("RGB", (OUT, OUT), (18, 12, 14))
+
+b1 = art.filter(ImageFilter.GaussianBlur(2))
+b2 = art.filter(ImageFilter.GaussianBlur(7))
+b3 = art.filter(ImageFilter.GaussianBlur(18))
+glow = ImageChops.add(ImageChops.add(scaled(b3, 0.5), scaled(b2, 0.55)),
+                      ImageChops.add(scaled(b1, 0.8), art))
+alpha = glow.convert("L").point(lambda v: min(255, int(v * 1.5)))
+
+# gold node diamond, drawn crisp on top after bloom
+top = Image.merge("RGBA", (*glow.split(), alpha))
+nd = ImageDraw.Draw(top)
+for rr, col in [(0.052, (*GOLD, 255)), (0.032, (*GOLD_HI, 255)),
+                (0.015, (255, 250, 235, 255))]:
+    r = rr * OUT
+    nd.polygon([(OUT / 2, OUT / 2 - r), (OUT / 2 + r, OUT / 2),
+                (OUT / 2, OUT / 2 + r), (OUT / 2 - r, OUT / 2)], fill=col)
+
+# ---- radial ground + composite ---------------------------------------------
+bg = Image.new("RGB", (OUT, OUT), (20, 16, 24))
 bd = ImageDraw.Draw(bg)
 for i in range(OUT // 2, 0, -1):
-    t = i / (OUT / 2)                       # centre warm -> edge dark
-    col = (int(8 + 34 * (1 - t) ** 2), int(6 + 14 * (1 - t) ** 2),
-           int(12 + 8 * (1 - t) ** 2))
+    t = i / (OUT / 2)
+    col = (int(10 + 16 * (1 - t)), int(7 + 13 * (1 - t)), int(15 + 19 * (1 - t)))
     bd.ellipse([OUT / 2 - i, OUT / 2 - i, OUT / 2 + i, OUT / 2 + i], fill=col)
 
-fire_alpha = soft.point(lambda v: min(255, int(v * 1.4)))
-scene = Image.alpha_composite(bg.convert("RGBA"),
-                              Image.merge("RGBA", (*fire.split(), fire_alpha)))
-scene = Image.alpha_composite(scene, rune_shadow)
-scene = Image.alpha_composite(scene, rune_layer)
-
-# gold node diamond last, at the crossing, on top of everything
-sd = ImageDraw.Draw(scene)
-for rr, col in [(0.052 * OUT, (*GOLD, 255)),
-                (0.032 * OUT, (*GOLD_HI, 255)),
-                (0.015 * OUT, (255, 250, 235, 255))]:
-    sd.polygon([(OUT / 2, OUT / 2 - rr), (OUT / 2 + rr, OUT / 2),
-                (OUT / 2, OUT / 2 + rr), (OUT / 2 - rr, OUT / 2)], fill=col)
-
-master = scene.convert("RGB")
+master = Image.alpha_composite(bg.convert("RGBA"), top).convert("RGB")
 
 for size, name in [(512, "icon-512.png"), (192, "icon-192.png"),
                    (180, "apple-touch-icon.png")]:
