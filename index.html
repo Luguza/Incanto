@@ -1513,10 +1513,10 @@ function drawWizardStaff(ctx, now) {
   const S = 0.64;             // fixed staff scale — never varies with reach
   const totalLen = spr.height * S;      // full staff length in scene px
   // Two aim anchors: the planted foot (grounded rest, beside the wizard) and the
-  // chest (aiming — the butt tucks behind his body). We ease between them so the
-  // gem can be pinned to the target and still always reach it.
+  // hand at his waist (aiming — the butt tucks behind his body). We ease between
+  // them so the gem can be pinned to the target and still always reach it.
   const foot = { x: scene.wizard.x + wiz.w, y: scene.wizard.y + wiz.h - 1 };
-  const chest = { x: scene.wizard.x + wiz.w * 0.5, y: scene.wizard.y + 11 };
+  const hand = { x: scene.wizard.x + wiz.w * 0.5, y: scene.wizard.y + 16 };
   const uprightTip = { x: foot.x + sway * 0.5, y: foot.y - totalLen };
 
   let target = uprightTip, glow = 0, thrust = 0, smooth = 0.25, formA = null, active = 0;
@@ -1562,12 +1562,12 @@ function drawWizardStaff(ctx, now) {
   staffAct += (active - staffAct) * 0.14;        // eased raise/lower
 
   // The gem is pinned to the (smoothed) target, so it always reaches. The aim
-  // anchor eases foot→chest as the staff raises; the butt is one staff-length
+  // anchor eases foot→hand as the staff raises; the butt is one staff-length
   // back from the gem along that aim, so at rest it lands on the foot (grounded)
-  // and while aiming it lands behind the chest (hidden by the body, drawn behind).
+  // and while aiming it lands behind the waist (hidden by the body, drawn behind).
   const gemx = staffTip.x, gemy = staffTip.y;
-  const anchorx = foot.x + (chest.x - foot.x) * staffAct;
-  const anchory = foot.y + (chest.y - foot.y) * staffAct;
+  const anchorx = foot.x + (hand.x - foot.x) * staffAct;
+  const anchory = foot.y + (hand.y - foot.y) * staffAct;
   let dx = gemx - anchorx, dy = gemy - anchory;
   const d = Math.hypot(dx, dy) || 1;
   const aimx = dx / d, aimy = dy / d;
