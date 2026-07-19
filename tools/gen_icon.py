@@ -158,8 +158,8 @@ for i in range(6):                                  # skip-one star diagonals
            joint="curve")
 for i in range(3):                                  # opposite diameters
     d.line([pts[i], pts[i + 3]], fill=MID, width=int(1.0 * S), joint="curve")
-for i in range(6):                                  # perimeter edges
-    d.line([pts[i], pts[(i + 1) % 6]], fill=DIM, width=int(1.0 * S),
+for i in range(6):                                  # outer perimeter edges
+    d.line([pts[i], pts[(i + 1) % 6]], fill=MID, width=int(1.2 * S),
            joint="curve")
 
 # node markers at the six vertices
