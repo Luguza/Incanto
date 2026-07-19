@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="assets/icon-512.png">
 <link rel="manifest" href="manifest.webmanifest">
-<title>Rune Circle Combat — Prototype</title>
+<title>Runenkreis — Prototyp</title>
 <style>
   @font-face {
     font-family: "RuneDisplay";
@@ -239,6 +239,84 @@
   .quiz-opt.correct { background: #1f6d43; border-color: #5ecf8f; color: #eafff2; }
   .quiz-opt.wrong { background: #6d2330; border-color: #e5545f; color: #ffe9ec; }
   .quiz-opt.faded { opacity: 0.4; }
+  .quiz-opt:disabled { cursor: default; }
+
+  /* Quiz — shared chrome across the Duolingo-style exercise types */
+  .quiz-typeline { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
+  .quiz-badge {
+    font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;
+    color: #9fd8d6; background: rgba(77, 227, 224, 0.1);
+    border: 1px solid rgba(77, 227, 224, 0.35); border-radius: 999px; padding: 4px 11px;
+  }
+  .quiz-badge.kind { color: #cfeae9; }
+  .quiz-hint { font-size: 14px; color: #8a8398; font-style: italic; margin: 4px 0 20px; }
+  .quiz-sentence {
+    font-size: clamp(18px, 5.2vw, 24px); color: #efeaff; line-height: 1.7;
+    max-width: min(420px, 90vw); margin: 6px auto 4px;
+  }
+  .quiz-sentence .blank {
+    color: #f2c14e; font-weight: 700; border-bottom: 2px dashed #f2c14e; padding: 0 6px;
+  }
+  .quiz-sentence .blank.filled { border-bottom-style: solid; }
+
+  /* Typed exercises */
+  .quiz-input {
+    font-size: 20px; padding: 13px 16px; width: min(340px, 88vw); margin: 4px auto 0;
+    display: block; text-align: center; color: #efeaff;
+    background: #14101d; border: 2px solid #4de3e0; border-radius: 11px; outline: none;
+  }
+  .quiz-input::placeholder { color: #6b6580; }
+  .quiz-input:disabled { opacity: 0.75; }
+
+  /* Match-pairs board */
+  .match-cols { display: flex; gap: 12px; justify-content: center; width: min(420px, 92vw); margin: 4px auto 0; }
+  .match-col { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .match-tile {
+    font-size: 17px; padding: 13px 8px; border-radius: 10px;
+    background: linear-gradient(160deg, #241d33, #1a1526);
+    border: 1px solid #4de3e0; color: #efeaff; cursor: pointer;
+    transition: background 120ms, border-color 120ms, opacity 200ms, transform 120ms;
+  }
+  .match-tile.sel { background: #2a3a52; border-color: #f2c14e; transform: scale(1.03); }
+  .match-tile.done { opacity: 0.25; border-color: #5ecf8f; cursor: default; }
+  .match-tile.wrong { background: #6d2330; border-color: #e5545f; color: #ffe9ec; }
+
+  /* Build-the-sentence word bank */
+  .build-line {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center;
+    min-height: 52px; width: min(440px, 92vw); margin: 6px auto 14px; padding: 8px;
+    border-bottom: 2px solid #2f2942;
+  }
+  .build-placeholder { color: #6b6580; font-style: italic; }
+  .build-bank {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    width: min(440px, 92vw); margin: 0 auto;
+  }
+  .tile {
+    font-size: 17px; padding: 10px 14px; border-radius: 10px;
+    background: linear-gradient(160deg, #241d33, #1a1526);
+    border: 1px solid #4de3e0; color: #efeaff; cursor: pointer;
+  }
+  .tile.built { border-color: #f2c14e; }
+  .tile.spent { visibility: hidden; } /* keeps the bank from reflowing as tiles are used */
+
+  /* Check / Continue action bar + feedback banner */
+  .quiz-check, .quiz-continue { margin: 22px auto 0; width: min(340px, 88vw); }
+  .quiz-continue { background: linear-gradient(180deg, #7ff0ed, #4de3e0); box-shadow: 0 0 24px rgba(77, 227, 224, 0.3); }
+  .quiz-feedback {
+    font-size: 16px; margin: 20px auto 0; width: min(340px, 88vw);
+    padding: 12px; border-radius: 11px;
+  }
+  .quiz-feedback.good { background: rgba(31, 109, 67, 0.35); border: 1px solid #5ecf8f; color: #d6ffe6; }
+  .quiz-feedback.bad { background: rgba(109, 35, 48, 0.35); border: 1px solid #e5545f; color: #ffe1e5; }
+  .quiz-feedback.reveal { background: rgba(77, 227, 224, 0.12); border: 1px solid #4de3e0; color: #cfeae9; }
+  .quiz-feedback strong { color: #ffe9b0; }
+  .quiz-reveal {
+    display: block; margin: 14px auto 0; padding: 6px 4px; width: min(340px, 88vw);
+    background: none; border: none; color: #8a8398; cursor: pointer;
+    font-size: 14px; text-decoration: underline; text-underline-offset: 3px;
+  }
+  .quiz-reveal:active { color: #cfc9de; }
 
   /* Upgrade shop (stage 2) */
   .upgrade-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); text-align: center; }
@@ -299,11 +377,12 @@ const CONFIG = {
   upgradeCostGrowth: 1.6,
   // Currency is earned only in the post-death vocab quiz, then spent between
   // runs on permanent build upgrades
-  quizQuestionCount: 6,
+  quizQuestionCount: 8,  // one of each Duolingo-style exercise per session
   quizOptionCount: 4,
+  quizMatchPairs: 5,     // tap-to-match exercise: pairs per board
   goldPerCorrect: 12,
   quizWaveBonus: 5, // bonus gold per question, scaled by how far you got
-  quizFeedbackMs: 650,
+  quizFeedbackMs: 650,   // how long a wrong match flashes red before clearing
   // Endless skeleton waves, scaling in HP and damage
   enemyBaseHP: 10,
   enemyHPGrowth: 1.45,
@@ -364,7 +443,7 @@ const CONFIG = {
 };
 
 const MODE_ORDER = ["REAL_TIME", "SLOW_MO", "FREEZE"];
-const MODE_LABELS = { REAL_TIME: "REAL-TIME", SLOW_MO: "SLOW-MO", FREEZE: "FREEZE" };
+const MODE_LABELS = { REAL_TIME: "ECHTZEIT", SLOW_MO: "ZEITLUPE", FREEZE: "ZEITSTOPP" };
 
 // ---------------------------------------------------------------------------
 // Word pool — the A1 (beginner) Italian vocabulary, drawn in order and cycled.
@@ -704,6 +783,66 @@ const WORD_POOL = [
 ];
 
 // ---------------------------------------------------------------------------
+// Sentence pool — short A1 Italian sentences with their German translation.
+// These feed the "fill the blank" and "build the sentence" quiz exercises.
+// `it` is the Italian sentence (tokens split on spaces), `de` its German
+// meaning (shown as a hint), `blank` the single Italian token that gets removed
+// for fill-in exercises, and `pos` its part of speech so that the multiple-
+// choice distractors stay the same kind of word (noun/adj/verb) as the answer.
+// ---------------------------------------------------------------------------
+const SENTENCE_POOL = [
+  { it: "Io bevo il caffè", de: "Ich trinke den Kaffee", blank: "caffè", pos: "noun" },
+  { it: "Tu mangi il pane", de: "Du isst das Brot", blank: "pane", pos: "noun" },
+  { it: "La mela è rossa", de: "Der Apfel ist rot", blank: "mela", pos: "noun" },
+  { it: "Il cane è grande", de: "Der Hund ist groß", blank: "cane", pos: "noun" },
+  { it: "La casa è bianca", de: "Das Haus ist weiß", blank: "casa", pos: "noun" },
+  { it: "Beviamo molta acqua", de: "Wir trinken viel Wasser", blank: "acqua", pos: "noun" },
+  { it: "Il bambino ha fame", de: "Das Kind hat Hunger", blank: "bambino", pos: "noun" },
+  { it: "La madre legge un libro", de: "Die Mutter liest ein Buch", blank: "libro", pos: "noun" },
+  { it: "Il padre lavora oggi", de: "Der Vater arbeitet heute", blank: "padre", pos: "noun" },
+  { it: "Mangio una mela", de: "Ich esse einen Apfel", blank: "mela", pos: "noun" },
+  { it: "Il vino è buono", de: "Der Wein ist gut", blank: "vino", pos: "noun" },
+  { it: "La sorella ha un gatto", de: "Die Schwester hat eine Katze", blank: "gatto", pos: "noun" },
+  { it: "Il fratello beve il tè", de: "Der Bruder trinkt den Tee", blank: "tè", pos: "noun" },
+  { it: "La nonna fa il pane", de: "Die Großmutter macht das Brot", blank: "pane", pos: "noun" },
+  { it: "Il pesce nuota nel mare", de: "Der Fisch schwimmt im Meer", blank: "pesce", pos: "noun" },
+  { it: "Noi mangiamo il formaggio", de: "Wir essen den Käse", blank: "formaggio", pos: "noun" },
+  { it: "La donna beve il vino", de: "Die Frau trinkt den Wein", blank: "vino", pos: "noun" },
+  { it: "Ho un amico italiano", de: "Ich habe einen italienischen Freund", blank: "amico", pos: "noun" },
+  { it: "La città è grande", de: "Die Stadt ist groß", blank: "città", pos: "noun" },
+  { it: "Il libro è nuovo", de: "Das Buch ist neu", blank: "libro", pos: "noun" },
+  { it: "Mangiamo la frutta", de: "Wir essen das Obst", blank: "frutta", pos: "noun" },
+  { it: "Il latte è freddo", de: "Die Milch ist kalt", blank: "latte", pos: "noun" },
+  { it: "La casa ha una porta", de: "Das Haus hat eine Tür", blank: "porta", pos: "noun" },
+  { it: "Il gatto dorme", de: "Die Katze schläft", blank: "gatto", pos: "noun" },
+  { it: "La ragazza è felice", de: "Das Mädchen ist glücklich", blank: "felice", pos: "adj" },
+  { it: "Il ragazzo corre veloce", de: "Der Junge läuft schnell", blank: "veloce", pos: "adj" },
+  { it: "Il caffè è caldo", de: "Der Kaffee ist heiß", blank: "caldo", pos: "adj" },
+  { it: "La neve è bianca", de: "Der Schnee ist weiß", blank: "bianca", pos: "adj" },
+  { it: "Il mare è grande", de: "Das Meer ist groß", blank: "grande", pos: "adj" },
+  { it: "Oggi fa freddo", de: "Heute ist es kalt", blank: "freddo", pos: "adj" },
+  { it: "Il cane mangia la carne", de: "Der Hund isst das Fleisch", blank: "mangia", pos: "verb" },
+  { it: "La donna legge il libro", de: "Die Frau liest das Buch", blank: "legge", pos: "verb" },
+  { it: "Noi beviamo il latte", de: "Wir trinken die Milch", blank: "beviamo", pos: "verb" },
+  { it: "Il bambino dorme molto", de: "Das Kind schläft viel", blank: "dorme", pos: "verb" },
+];
+
+// Blank words grouped by part of speech, so fill-in distractors match the
+// answer's kind of word (deduped once at load).
+const BLANKS_BY_POS = (() => {
+  const acc = {};
+  for (const s of SENTENCE_POOL) (acc[s.pos] ||= []).push(s.blank);
+  for (const k in acc) acc[k] = [...new Set(acc[k])];
+  return acc;
+})();
+
+// Content-word pool used to pad the "build the sentence" word bank with a
+// couple of plausible wrong tiles (all real words from the sentence corpus).
+const SENTENCE_WORDS = [
+  ...new Set(SENTENCE_POOL.flatMap((s) => s.it.split(" ").filter((w) => w.length > 2))),
+];
+
+// ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 let state = null;
@@ -738,12 +877,21 @@ function freshState() {
     windup: 0,
     poolIndex: 0,
     wrongMatchCount: 0,
-    // Post-death vocab quiz
+    // Post-death vocab quiz — a mixed Duolingo-style session
     quizList: [],
     quizIndex: 0,
     quizCorrect: 0,
     quizGoldEarned: 0,
-    quizPicked: null,
+    quizChecked: false,      // the current question has been answered/checked
+    quizWasCorrect: false,   // result of the checked answer
+    quizRevealed: false,     // solution shown via "I don't know" (checked, but no gold)
+    quizPicked: null,        // choose / fill-choose: selected option index
+    quizTyped: "",           // type / fill-type: mirror of the text input
+    quizBuilt: [],           // arrange: bank tile indices placed, in order
+    quizMatchSel: null,      // match: {col, idx} currently armed tile
+    quizMatchDone: [],       // match: pair ids already solved
+    quizMatchWrong: null,    // match: {left, right} flashing red, briefly
+    quizMatchMisses: 0,      // match: wrong taps this question
     quizAnsweredAt: 0,
     lastWaveReached: 1,
     clockMs: 0,               // internal clock warped by mode+selection, drives windup + instrumentation
@@ -1576,35 +1724,126 @@ function hitEnemy(n) {
 // ---------------------------------------------------------------------------
 // Post-death vocab quiz — the only source of currency
 // ---------------------------------------------------------------------------
+// The quiz is a mixed session of Duolingo-style exercises (everything but the
+// audio/speech ones): multiple-choice translation both ways, typed translation
+// both ways, tap-to-match pairs, fill-the-blank by word bank or by typing, and
+// build-the-sentence from a word bank. Each entry in quizList is a self-
+// contained question object carrying everything its renderer + checker need.
+// ---------------------------------------------------------------------------
+
+// Draw n distinct random items from a copy of arr (optionally filtered).
+function sampleN(arr, n, keep) {
+  const pool = shuffleArray((keep ? arr.filter(keep) : arr).slice());
+  return pool.slice(0, n);
+}
+
+// --- per-type question builders ---------------------------------------------
+function makeChoose(dir) {
+  // dir: "it2de" (show Italian, pick German) or "de2it" (show German, pick Italian)
+  const pair = sampleN(WORD_POOL, 1)[0];
+  const promptKey = dir === "it2de" ? "it" : "de";
+  const answerKey = dir === "it2de" ? "de" : "it";
+  const answer = pair[answerKey];
+  const distractors = sampleN(WORD_POOL, CONFIG.quizOptionCount - 1, (p) => p[answerKey] !== answer)
+    .map((p) => p[answerKey]);
+  return { type: "choose", dir, prompt: pair[promptKey], answer, options: shuffleArray([answer, ...distractors]) };
+}
+
+function makeType(dir) {
+  const pair = sampleN(WORD_POOL, 1)[0];
+  const promptKey = dir === "it2de" ? "it" : "de";
+  const answerKey = dir === "it2de" ? "de" : "it";
+  return { type: "type", dir, prompt: pair[promptKey], answer: pair[answerKey] };
+}
+
+function makeMatch() {
+  const n = CONFIG.quizMatchPairs;
+  const pairs = sampleN(WORD_POOL, n).map((p, i) => ({ id: i, it: p.it, de: p.de }));
+  return {
+    type: "match",
+    pairs,
+    left: shuffleArray(pairs.map((p) => ({ id: p.id, word: p.it }))),
+    right: shuffleArray(pairs.map((p) => ({ id: p.id, word: p.de }))),
+  };
+}
+
+function makeFill(kind) {
+  // kind: "fill-choose" (word bank) or "fill-type" (keyboard)
+  const s = sampleN(SENTENCE_POOL, 1)[0];
+  const tokens = s.it.split(" ");
+  const blankIdx = tokens.indexOf(s.blank);
+  const q = { type: kind, tokens, blankIdx, answer: s.blank, de: s.de, pos: s.pos };
+  if (kind === "fill-choose") {
+    const distractors = sampleN(BLANKS_BY_POS[s.pos] || [], CONFIG.quizOptionCount - 1, (w) => w !== s.blank);
+    q.options = shuffleArray([s.blank, ...distractors]);
+  }
+  return q;
+}
+
+function makeArrange() {
+  const s = sampleN(SENTENCE_POOL, 1)[0];
+  const answer = s.it.split(" ");
+  const distractors = sampleN(SENTENCE_WORDS, 2, (w) => !answer.includes(w));
+  // Bank tiles are shuffled; each carries the token plus a stable tile id so a
+  // repeated word (e.g. two "il") stays individually addressable.
+  const bank = shuffleArray([...answer, ...distractors].map((word, i) => ({ id: i, word })));
+  return { type: "arrange", answer, de: s.de, bank };
+}
+
 function buildQuiz() {
-  // pick N distinct pairs; each question is it -> en with distractor options
-  const pool = shuffleArray(WORD_POOL.map((p, i) => ({ ...p, i })));
-  const n = Math.min(CONFIG.quizQuestionCount, pool.length);
-  state.quizList = pool.slice(0, n).map((pair) => {
-    const distractors = shuffleArray(WORD_POOL.filter((p) => p.de !== pair.de))
-      .slice(0, CONFIG.quizOptionCount - 1)
-      .map((p) => p.de);
-    const options = shuffleArray([pair.de, ...distractors]);
-    return { it: pair.it, de: pair.de, options };
-  });
+  // A fixed variety template so every session shows the full range of
+  // exercises; the vocabulary within each is random. Trimmed to the configured
+  // question count.
+  const plan = [
+    () => makeChoose("it2de"),
+    () => makeMatch(),
+    () => makeType("de2it"),
+    () => makeFill("fill-choose"),
+    () => makeArrange(),
+    () => makeChoose("de2it"),
+    () => makeFill("fill-type"),
+    () => makeType("it2de"),
+  ];
+  const n = Math.min(CONFIG.quizQuestionCount, plan.length);
+  state.quizList = plan.slice(0, n).map((make) => make());
   state.quizIndex = 0;
   state.quizCorrect = 0;
   state.quizGoldEarned = 0;
-  state.quizPicked = null;
+  resetQuizInput();
 }
+
+function resetQuizInput() {
+  state.quizChecked = false;
+  state.quizWasCorrect = false;
+  state.quizRevealed = false;
+  state.quizPicked = null;
+  state.quizTyped = "";
+  state.quizBuilt = [];
+  state.quizMatchSel = null;
+  state.quizMatchDone = [];
+  state.quizMatchWrong = null;
+  state.quizMatchMisses = 0;
+}
+
 function goToQuiz() {
   buildQuiz();
   state.screen = "quiz";
   state._structuralDirty = true;
 }
-function answerQuiz(optIndex) {
-  if (state.quizPicked !== null) return; // already answered this question
-  const q = state.quizList[state.quizIndex];
-  const correct = q.options[optIndex] === q.de;
-  state.quizPicked = optIndex;
+
+function quizReward() {
+  return CONFIG.goldPerCorrect + CONFIG.quizWaveBonus * (state.lastWaveReached - 1);
+}
+
+// Mark the current question checked and, if correct, pay out gold. Shared by
+// every exercise type; `correct` is decided by that type's own handler.
+function settleQuiz(correct) {
+  if (state.quizChecked) return;
+  state.quizChecked = true;
+  state.quizWasCorrect = correct;
   if (correct) {
     state.quizCorrect++;
-    const reward = CONFIG.goldPerCorrect + CONFIG.quizWaveBonus * (state.lastWaveReached - 1);
+    const reward = quizReward();
     state.gold += reward;
     state.quizGoldEarned += reward;
     saveProgress();
@@ -1612,8 +1851,133 @@ function answerQuiz(optIndex) {
   state.quizAnsweredAt = performance.now();
   state._structuralDirty = true;
 }
+
+// "I don't know" — reveal the solution in place, mark the question resolved but
+// award no gold. Fills the answer into whatever surface the exercise uses so
+// the learner sees the correct form before continuing.
+function quizReveal() {
+  if (state.quizChecked) return;
+  const q = state.quizList[state.quizIndex];
+  if (q.type === "match") {
+    state.quizMatchDone = q.pairs.map((p) => p.id);
+    state.quizMatchSel = null;
+  } else if (q.type === "arrange") {
+    const built = [];
+    for (const tok of q.answer) {
+      const t = q.bank.find((b) => b.word === tok && !built.includes(b.id));
+      if (t) built.push(t.id);
+    }
+    state.quizBuilt = built;
+  } else if (q.type === "type" || q.type === "fill-type") {
+    state.quizTyped = q.answer;
+  } else {
+    state.quizPicked = null; // choose/fill-choose: highlight only the correct option
+  }
+  state.quizRevealed = true;
+  state.quizChecked = true;
+  state.quizWasCorrect = false;
+  state.quizAnsweredAt = performance.now();
+  state._structuralDirty = true;
+}
+
+// --- answer normalization for the typed exercises ---------------------------
+function foldAccents(s) {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // strip combining accents
+}
+function normAnswer(s) {
+  return foldAccents(String(s).toLowerCase())
+    .replace(/['’.,!?;:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+const ARTICLE_TOKENS = new Set([
+  "il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "l",
+  "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "einer",
+]);
+// The set of typed strings we accept for a target: the full phrase, and the
+// same phrase with a leading article dropped (so "milch" is fine for "die Milch").
+function acceptedForms(target) {
+  const norm = normAnswer(target);
+  const forms = new Set([norm]);
+  const toks = norm.split(" ");
+  if (toks.length > 1 && ARTICLE_TOKENS.has(toks[0])) forms.add(toks.slice(1).join(" "));
+  return forms;
+}
+function typedMatches(input, target) {
+  return acceptedForms(target).has(normAnswer(input));
+}
+
+// --- exercise input handlers (called from inline on* attributes) ------------
+function quizChoose(i) {
+  if (state.quizChecked) return;
+  const q = state.quizList[state.quizIndex];
+  state.quizPicked = i;
+  settleQuiz(q.options[i] === q.answer);
+}
+
+function quizTypeInput(el) { state.quizTyped = el.value; }
+function quizCheckType() {
+  if (state.quizChecked) return;
+  const q = state.quizList[state.quizIndex];
+  if (normAnswer(state.quizTyped) === "") return; // ignore empty submissions
+  settleQuiz(typedMatches(state.quizTyped, q.answer));
+}
+
+function quizFillCheckType() {
+  if (state.quizChecked) return;
+  const q = state.quizList[state.quizIndex];
+  if (normAnswer(state.quizTyped) === "") return;
+  settleQuiz(typedMatches(state.quizTyped, q.answer));
+}
+
+function quizMatchTap(col, idx) {
+  if (state.quizChecked || state.quizMatchWrong) return;
+  const q = state.quizList[state.quizIndex];
+  const list = col === "left" ? q.left : q.right;
+  const tile = list[idx];
+  if (state.quizMatchDone.includes(tile.id)) return; // already solved
+  const sel = state.quizMatchSel;
+  if (!sel) { state.quizMatchSel = { col, idx }; state._structuralDirty = true; return; }
+  if (sel.col === col) { state.quizMatchSel = { col, idx }; state._structuralDirty = true; return; } // re-arm same column
+  const selTile = (sel.col === "left" ? q.left : q.right)[sel.idx];
+  if (selTile.id === tile.id) {
+    // correct pair
+    state.quizMatchDone.push(tile.id);
+    state.quizMatchSel = null;
+    if (state.quizMatchDone.length === q.pairs.length) settleQuiz(true);
+  } else {
+    // wrong pair — flash both red briefly, then clear
+    state.quizMatchMisses++;
+    const left = sel.col === "left" ? sel : { col, idx };
+    const right = sel.col === "right" ? sel : { col, idx };
+    state.quizMatchWrong = { left: left.idx, right: right.idx };
+    state.quizMatchSel = null;
+    setTimeout(() => { state.quizMatchWrong = null; state._structuralDirty = true; }, CONFIG.quizFeedbackMs);
+  }
+  state._structuralDirty = true;
+}
+
+function quizArrangeAdd(bankId) {
+  if (state.quizChecked || state.quizBuilt.includes(bankId)) return;
+  state.quizBuilt.push(bankId);
+  state._structuralDirty = true;
+}
+function quizArrangeRemove(pos) {
+  if (state.quizChecked) return;
+  state.quizBuilt.splice(pos, 1);
+  state._structuralDirty = true;
+}
+function quizCheckArrange() {
+  if (state.quizChecked) return;
+  const q = state.quizList[state.quizIndex];
+  if (state.quizBuilt.length === 0) return;
+  const byId = Object.fromEntries(q.bank.map((t) => [t.id, t.word]));
+  const built = state.quizBuilt.map((id) => byId[id]).join(" ");
+  settleQuiz(normAnswer(built) === normAnswer(q.answer.join(" ")));
+}
+
 function advanceQuiz() {
-  state.quizPicked = null;
+  resetQuizInput();
   state.quizIndex++;
   if (state.quizIndex >= state.quizList.length) {
     state.screen = "upgrade";
@@ -1713,12 +2077,6 @@ function rafLoop(now) {
     }
   }
 
-  // Quiz: advance to the next question a beat after the player answers
-  if (state.screen === "quiz" && state.quizPicked !== null &&
-      now - state.quizAnsweredAt >= CONFIG.quizFeedbackMs) {
-    advanceQuiz();
-  }
-
   render(now);
   requestAnimationFrame(rafLoop);
 }
@@ -1763,29 +2121,174 @@ function render(now) {
   }
 }
 
-// The post-death vocab quiz — answer to earn gold for upgrades
+// The post-death vocab quiz — a mixed session of Duolingo-style exercises.
+// One dispatcher builds a shared frame (progress + prompt + action bar) and
+// hands the middle off to a per-type body renderer.
+const QUIZ_TITLE = {
+  choose: "Übersetzung wählen",
+  type: "Übersetzung tippen",
+  match: "Passende Paare finden",
+  "fill-choose": "Lücke füllen",
+  "fill-type": "Lücke füllen",
+  arrange: "Satz bilden",
+};
+
+function quizDirLabel(dir) {
+  return dir === "it2de" ? "Italienisch → Deutsch" : "Deutsch → Italienisch";
+}
+
 function renderQuizFull() {
   const q = state.quizList[state.quizIndex];
-  const answered = state.quizPicked !== null;
+  let body;
+  switch (q.type) {
+    case "choose":      body = renderChooseBody(q, `Was bedeutet <span class="quiz-word">${q.prompt}</span>?`); break;
+    case "type":        body = renderTypeBody(q); break;
+    case "match":       body = renderMatchBody(q); break;
+    case "fill-choose": body = renderFillChooseBody(q); break;
+    case "fill-type":   body = renderFillTypeBody(q); break;
+    case "arrange":     body = renderArrangeBody(q); break;
+  }
+  const dir = q.dir ? `<span class="quiz-badge">${quizDirLabel(q.dir)}</span>` : "";
+  app.innerHTML = `
+    <div class="screen quiz-screen">
+      <div class="quiz-progress">Frage ${state.quizIndex + 1} / ${state.quizList.length}
+        &middot; <span class="coin">◈</span> ${state.quizGoldEarned} verdient</div>
+      <div class="quiz-typeline"><span class="quiz-badge kind">${QUIZ_TITLE[q.type]}</span>${dir}</div>
+      ${body}
+      ${renderQuizActions(q)}
+    </div>`;
+
+  // Keep focus in the text field for the typed exercises (only rebuilt on
+  // check/entry, never on keystroke, so the cursor stays put while typing).
+  if ((q.type === "type" || q.type === "fill-type") && !state.quizChecked) {
+    const inp = document.getElementById("quiz-input");
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  }
+}
+
+// Multiple-choice options grid, shared by translation-choose and fill-choose.
+function renderOptions(q) {
   const optsHtml = q.options
     .map((opt, i) => {
       let cls = "quiz-opt";
-      if (answered) {
-        if (opt === q.de) cls += " correct";
+      if (state.quizChecked) {
+        if (opt === q.answer) cls += " correct";
         else if (i === state.quizPicked) cls += " wrong";
         else cls += " faded";
       }
-      return `<button class="${cls}" onclick="answerQuiz(${i})">${opt}</button>`;
+      return `<button class="${cls}" ${state.quizChecked ? "disabled" : ""} onclick="quizChoose(${i})">${opt}</button>`;
     })
     .join("");
-  app.innerHTML = `
-    <div class="screen quiz-screen">
-      <div class="quiz-progress">Question ${state.quizIndex + 1} / ${state.quizList.length}
-        &middot; <span class="coin">◈</span> ${state.quizGoldEarned} earned</div>
-      <h1>Study the runes</h1>
-      <p class="quiz-prompt">What does <span class="quiz-word">${q.it}</span> mean?</p>
-      <div class="quiz-opts">${optsHtml}</div>
+  return `<div class="quiz-opts">${optsHtml}</div>`;
+}
+function renderChooseBody(q, promptHtml) {
+  return `<p class="quiz-prompt">${promptHtml}</p>${renderOptions(q)}`;
+}
+
+function renderTypeBody(q) {
+  return `
+    <p class="quiz-prompt">Übersetze <span class="quiz-word">${q.prompt}</span></p>
+    ${renderTypeInput("quizCheckType")}`;
+}
+
+function renderFillTypeBody(q) {
+  return `
+    ${renderSentence(q, null)}
+    <p class="quiz-hint">${q.de}</p>
+    ${renderTypeInput("quizFillCheckType")}`;
+}
+
+function renderTypeInput(checkFn) {
+  const disabled = state.quizChecked ? "disabled" : "";
+  return `
+    <input id="quiz-input" class="quiz-input" type="text" autocomplete="off"
+      autocapitalize="off" autocorrect="off" spellcheck="false"
+      placeholder="Antwort eingeben" value="${state.quizTyped}" ${disabled}
+      oninput="quizTypeInput(this)"
+      onkeydown="if(event.key==='Enter'){${checkFn}();}">`;
+}
+
+// A sentence with its blank rendered as a slot; `filled` (a word) drops into
+// the slot once answered.
+function renderSentence(q, filled) {
+  const slot = filled
+    ? `<span class="blank filled">${filled}</span>`
+    : `<span class="blank">_____</span>`;
+  const parts = q.tokens.map((t, i) => (i === q.blankIdx ? slot : `<span>${t}</span>`));
+  return `<p class="quiz-sentence">${parts.join(" ")}</p>`;
+}
+
+function renderFillChooseBody(q) {
+  const filled = state.quizChecked
+    ? (state.quizWasCorrect || state.quizRevealed ? q.answer : q.options[state.quizPicked])
+    : null;
+  return `
+    ${renderSentence(q, filled)}
+    <p class="quiz-hint">${q.de}</p>
+    ${renderOptions(q)}`;
+}
+
+function renderMatchBody(q) {
+  const tile = (col, i, t) => {
+    let cls = "match-tile";
+    const sel = state.quizMatchSel;
+    if (state.quizMatchDone.includes(t.id)) cls += " done";
+    else if (sel && sel.col === col && sel.idx === i) cls += " sel";
+    if (state.quizMatchWrong && state.quizMatchWrong[col] === i) cls += " wrong";
+    return `<button class="${cls}" onclick="quizMatchTap('${col}',${i})">${t.word}</button>`;
+  };
+  const left = q.left.map((t, i) => tile("left", i, t)).join("");
+  const right = q.right.map((t, i) => tile("right", i, t)).join("");
+  return `
+    <p class="quiz-prompt">Ordne jedem italienischen Wort seine Bedeutung zu</p>
+    <div class="match-cols">
+      <div class="match-col">${left}</div>
+      <div class="match-col">${right}</div>
     </div>`;
+}
+
+function renderArrangeBody(q) {
+  const byId = Object.fromEntries(q.bank.map((t) => [t.id, t.word]));
+  const builtHtml = state.quizBuilt
+    .map((id, pos) => `<button class="tile built" ${state.quizChecked ? "disabled" : ""} onclick="quizArrangeRemove(${pos})">${byId[id]}</button>`)
+    .join("");
+  const bankHtml = q.bank
+    .map((t) => {
+      if (state.quizBuilt.includes(t.id)) return `<span class="tile spent"></span>`;
+      return `<button class="tile" ${state.quizChecked ? "disabled" : ""} onclick="quizArrangeAdd(${t.id})">${t.word}</button>`;
+    })
+    .join("");
+  return `
+    <p class="quiz-prompt">Übersetze: <span class="quiz-word">${q.de}</span></p>
+    <div class="build-line">${builtHtml || '<span class="build-placeholder">tippe unten auf die Wörter</span>'}</div>
+    <div class="build-bank">${bankHtml}</div>`;
+}
+
+// Bottom action bar: a Check button before answering (for the exercises that
+// need an explicit submit), then the feedback banner + Continue afterwards.
+function renderQuizActions(q) {
+  if (state.quizChecked) {
+    const last = state.quizIndex + 1 >= state.quizList.length;
+    let banner;
+    if (state.quizWasCorrect) {
+      banner = `<div class="quiz-feedback good">Richtig! <span class="coin">◈</span> +${quizReward()}</div>`;
+    } else if (q.type === "match") {
+      // match has no single answer string; it only pays out when self-solved
+      banner = `<div class="quiz-feedback reveal">Paare aufgedeckt — kein Gold verdient</div>`;
+    } else {
+      const answer = q.type === "arrange" ? q.answer.join(" ") : q.answer;
+      const cls = state.quizRevealed ? "reveal" : "bad";
+      const label = state.quizRevealed ? "Lösung" : "Antwort";
+      banner = `<div class="quiz-feedback ${cls}">${label}: <strong>${answer}</strong></div>`;
+    }
+    return `${banner}<button class="fight-btn quiz-continue" onclick="advanceQuiz()">${last ? "Fertig →" : "Weiter →"}</button>`;
+  }
+  // Not yet checked: choose/match resolve on tap, the rest need a Check button.
+  // Every type offers "I don't know" to reveal the solution without earning gold.
+  const checkFn = { type: "quizCheckType", "fill-type": "quizFillCheckType", arrange: "quizCheckArrange" }[q.type];
+  const reveal = `<button class="quiz-reveal" onclick="quizReveal()">Ich weiß es nicht — Lösung zeigen</button>`;
+  const check = checkFn ? `<button class="fight-btn quiz-check" onclick="${checkFn}()">Prüfen</button>` : "";
+  return `${check}${reveal}`;
 }
 
 // Upgrade shop — spend quiz gold on permanent build upgrades, then run again
@@ -1796,22 +2299,22 @@ function renderUpgradeFull() {
   const canHp = state.gold >= hpCost;
   app.innerHTML = `
     <div class="screen upgrade-screen">
-      <h1>Your Arsenal</h1>
-      <p class="gold-big"><span class="coin">◈</span> ${state.gold} gold</p>
+      <h1>Dein Arsenal</h1>
+      <p class="gold-big"><span class="coin">◈</span> ${state.gold} Gold</p>
       <div class="upg-cards">
         <button class="upg-card ${canDmg ? "" : "poor"}" onclick="buyDmg()">
-          <div class="upg-name">⚔ Attack</div>
-          <div class="upg-stat">${state.heroDmg} → ${state.heroDmg + CONFIG.dmgPerLevel} dmg</div>
+          <div class="upg-name">⚔ Angriff</div>
+          <div class="upg-stat">${state.heroDmg} → ${state.heroDmg + CONFIG.dmgPerLevel} Schaden</div>
           <div class="upg-cost"><span class="coin">◈</span> ${dmgCost}</div>
         </button>
         <button class="upg-card ${canHp ? "" : "poor"}" onclick="buyHp()">
-          <div class="upg-name">✚ Vitality</div>
-          <div class="upg-stat">${state.heroMaxHP} → ${state.heroMaxHP + CONFIG.hpPerLevel} max HP</div>
+          <div class="upg-name">✚ Vitalität</div>
+          <div class="upg-stat">${state.heroMaxHP} → ${state.heroMaxHP + CONFIG.hpPerLevel} max. LP</div>
           <div class="upg-cost"><span class="coin">◈</span> ${hpCost}</div>
         </button>
       </div>
-      <p class="upg-hp">Build: ${state.heroMaxHP} HP · ${state.heroDmg} DMG</p>
-      <button class="fight-btn next-wave-btn" onclick="startRun()">Begin Run →</button>
+      <p class="upg-hp">Aufbau: ${state.heroMaxHP} LP · ${state.heroDmg} Schaden</p>
+      <button class="fight-btn next-wave-btn" onclick="startRun()">Lauf starten →</button>
     </div>`;
 }
 
@@ -1960,9 +2463,9 @@ function renderCombatFull() {
       <div class="scene-wrap"><canvas class="scene" id="scene"></canvas></div>
       <div class="hud-under">
         <div class="hero-hud">
-          <div class="bar-label">HERO <span id="hero-hp-text"></span></div>
+          <div class="bar-label">HELD <span id="hero-hp-text"></span></div>
           <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
-          <div class="bar-sub">⚔ ${state.heroDmg} DMG</div>
+          <div class="bar-sub">⚔ ${state.heroDmg} Schaden</div>
         </div>
         <div class="enemy-hud">
           <div class="bar-label" id="wave-label"></div>
@@ -1989,10 +2492,10 @@ function patchCombatContinuous(now) {
   if (!root) return;
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
-  document.getElementById("mode-label").textContent = `MODE: ${MODE_LABELS[state.mode]} — tap to change`;
+  document.getElementById("mode-label").textContent = `MODUS: ${MODE_LABELS[state.mode]} — zum Wechseln tippen`;
   document.getElementById("hero-hp-text").textContent = `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}`;
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
-  document.getElementById("wave-label").innerHTML = `WAVE ${state.wave} · SKELETON <span>${Math.ceil(state.enemyHP)} / ${state.enemyMaxHP}</span>`;
+  document.getElementById("wave-label").innerHTML = `WELLE ${state.wave} · SKELETT <span>${Math.ceil(state.enemyHP)} / ${state.enemyMaxHP}</span>`;
   document.getElementById("enemy-hp-fill").style.width = (100 * state.enemyHP / state.enemyMaxHP).toFixed(1) + "%";
 
   const windupPct = Math.max(0, Math.min(1, state.windup));
@@ -2011,20 +2514,20 @@ function patchCombatContinuous(now) {
   if (selected) {
     if (state.mode === "SLOW_MO") {
       veilClass += " slowmo"; chipClass += " warped"; trackClass += " warp-slow";
-      chipText = `TIME ×${CONFIG.slowMoFactor}`;
+      chipText = `ZEIT ×${CONFIG.slowMoFactor}`;
     } else if (state.mode === "FREEZE") {
       veilClass += " freeze"; chipClass += " warped"; trackClass += " warp-freeze";
-      chipText = "TIME FROZEN";
+      chipText = "ZEIT ANGEHALTEN";
     } else {
       chipClass += " rt";
-      chipText = "TIME ×1 — STILL WINDING UP!";
+      chipText = "ZEIT ×1 — LÄDT WEITER AUF!";
     }
   } else if (state.mode === "SLOW_MO") {
     chipClass += " idle";
-    chipText = "hold a rune to slow time";
+    chipText = "Rune halten, um die Zeit zu verlangsamen";
   } else if (state.mode === "FREEZE") {
     chipClass += " idle";
-    chipText = "hold a rune to freeze time";
+    chipText = "Rune halten, um die Zeit anzuhalten";
   }
   veil.className = veilClass;
   chip.className = chipClass;
@@ -2096,11 +2599,11 @@ function renderEndFull() {
   const elapsed = ((performance.now() - state.runStartMs) / 1000).toFixed(0);
   app.innerHTML = `
     <div class="screen end-screen">
-      <h1 class="defeat">Defeat</h1>
-      <p>The horde overwhelmed you on <strong>Wave ${state.lastWaveReached}</strong></p>
-      <p class="dim">${elapsed}s survived &middot; ${state.wrongMatchCount} mismatches</p>
-      <p class="end-flavor">Study your vocabulary to grow stronger for the next run.</p>
-      <button class="fight-btn study-btn" onclick="goToQuiz()">Study &amp; Earn Gold →</button>
+      <h1 class="defeat">Niederlage</h1>
+      <p>Die Horde hat dich in <strong>Welle ${state.lastWaveReached}</strong> überwältigt</p>
+      <p class="dim">${elapsed}s überlebt &middot; ${state.wrongMatchCount} Fehler</p>
+      <p class="end-flavor">Lerne deine Vokabeln, um für den nächsten Lauf stärker zu werden.</p>
+      <button class="fight-btn study-btn" onclick="goToQuiz()">Lernen &amp; Gold verdienen →</button>
     </div>`;
 }
 
