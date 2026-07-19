@@ -1,0 +1,37 @@
+Italian–German vocabulary pack
+==============================
+
+File: kaikki.org-dictionary-Italienisch.jsonl
+Entries: 17,916 Italian headwords (JSON Lines, one entry per line)
+
+Contents
+--------
+Each line is a JSON object describing one Italian word sense as extracted
+from the GERMAN Wiktionary (de.wiktionary.org). Key fields:
+  - word       Italian headword (e.g. "casa")
+  - lang       "Italienisch"   (source language, German name)
+  - lang_code  "it"
+  - pos        part of speech
+  - senses[].glosses   German-language definition(s) of the word
+
+So each entry maps an Italian word to its German meaning — an
+Italian↔German vocabulary source.
+
+Source
+------
+Downloaded from kaikki.org (Wiktextract project by Tatu Ylonen):
+  https://kaikki.org/dewiktionary/Italienisch/kaikki.org-dictionary-Italienisch.jsonl
+
+Kaikki.org machine-readable dictionaries are generated from Wiktionary dumps
+using wiktextract (https://github.com/tatuylonen/wiktextract).
+
+License
+-------
+The underlying Wiktionary content is dual-licensed under:
+  - Creative Commons Attribution-ShareAlike 4.0 (CC BY-SA 4.0)
+  - GNU Free Documentation License (GFDL)
+Attribution is to the German Wiktionary and its contributors
+(https://de.wiktionary.org). Any redistribution must preserve this notice
+and remain under a compatible license.
+
+Downloaded: 2026-07-19
