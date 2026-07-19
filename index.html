@@ -1497,6 +1497,8 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
 // Smoothed gem position, persisted between frames so the tip eases toward its
 // target instead of snapping — this is what makes the trace read as deliberate.
 let staffTip = null;
+// Smoothed 0..1 "raise" factor: 0 = resting beside the wizard, 1 = aiming at the disc.
+let staffAct = null;
 
 // Compose and draw the staff for the current frame. On standby it stands
 // upright; while the player drags a pair the gem follows the forming line so
@@ -1510,19 +1512,20 @@ function drawWizardStaff(ctx, now) {
   const sway = Math.sin(now / 620);
   const S = 0.64;             // fixed staff scale — never varies with reach
   const totalLen = spr.height * S;      // full staff length in scene px
-  // The staff pivots about its foot, planted beside the wizard at his feet. The
-  // butt never leaves this point, so it can't swing out — only the gem end
-  // rotates toward the target. On standby the gem sits straight up (a grounded
-  // vertical staff); tracing/casting rotates it toward the disc.
+  // Two aim anchors: the planted foot (grounded rest, beside the wizard) and the
+  // chest (aiming — the butt tucks behind his body). We ease between them so the
+  // gem can be pinned to the target and still always reach it.
   const foot = { x: scene.wizard.x + wiz.w, y: scene.wizard.y + wiz.h - 1 };
+  const chest = { x: scene.wizard.x + wiz.w * 0.5, y: scene.wizard.y + 11 };
   const uprightTip = { x: foot.x + sway * 0.5, y: foot.y - totalLen };
 
-  let target = uprightTip, glow = 0, thrust = 0, smooth = 0.25, formA = null;
+  let target = uprightTip, glow = 0, thrust = 0, smooth = 0.25, formA = null, active = 0;
 
   if (state.castAt) {
     const t = now - state.castAt;
     const charge = CONFIG.castChargeMs, puff = CONFIG.runePuffMs;
     const discTop = { x: scene.rune.cx, y: scene.rune.cy - 4 };
+    active = 1;
     if (t < charge) {                       // charge: lift into the disc, wind up
       target = discTop; glow = 0.55 + 0.45 * (t / charge); smooth = 0.4;
     } else if (t < charge + puff) {         // release: jab toward the enemy
@@ -1535,18 +1538,19 @@ function drawWizardStaff(ctx, now) {
     state.screen === "combat" && state.dragActive &&
     state.selectedRuneId !== null && state.dragPointer
   ) {
-    // active trace: the tip rides the drawn line from the held rune toward the
+    // active trace: the gem rides the drawn line from the held rune toward the
     // pointer, so it traces the exact stroke in the direction the player draws
-    const anchor = state.runes.find((r) => r.id === state.selectedRuneId);
-    if (anchor) {
-      formA = runePointXY(anchor.x, anchor.y);
+    const held = state.runes.find((r) => r.id === state.selectedRuneId);
+    if (held) {
+      formA = runePointXY(held.x, held.y);
       target = runePointXY(state.dragPointer.x, state.dragPointer.y);
       const drawn = Math.hypot(target.x - formA.x, target.y - formA.y);
       glow = 0.35 + Math.min(0.55, (drawn / 13) * 0.55);
-      smooth = 0.2; // eased, so the tip trails the pointer for a deliberate trace
+      smooth = 0.2; // eased, so the gem trails the pointer for a deliberate trace
+      active = 1;
     }
   }
-  // else: standby / menus — staff stays upright with a dark gem
+  // else: standby / menus — staff rests grounded beside the wizard
 
   // lunge slides the gem toward the enemy on cast release
   if (thrust) target = { x: target.x + thrust * 7, y: target.y + thrust * 1 };
@@ -1554,17 +1558,21 @@ function drawWizardStaff(ctx, now) {
   if (!staffTip) staffTip = { x: uprightTip.x, y: uprightTip.y };
   staffTip.x += (target.x - staffTip.x) * smooth;
   staffTip.y += (target.y - staffTip.y) * smooth;
+  if (staffAct === null) staffAct = active;
+  staffAct += (active - staffAct) * 0.14;        // eased raise/lower
 
-  // Aim the rigid staff from its foot toward the (smoothed) target and rotate it
-  // fully that way; the gem end swings out on a fixed-length arc, reaching toward
-  // the target as far as it can while the butt stays planted at the foot. The
-  // trace line follows the gem, so a short reach stays consistent.
-  const ax = staffTip.x - foot.x, ay = staffTip.y - foot.y;
-  const dist = Math.hypot(ax, ay) || 1;
-  const dirx = ax / dist, diry = ay / dist;
-  const ang = Math.atan2(diry, dirx);
-  const gemx = foot.x + dirx * totalLen;
-  const gemy = foot.y + diry * totalLen;
+  // The gem is pinned to the (smoothed) target, so it always reaches. The aim
+  // anchor eases foot→chest as the staff raises; the butt is one staff-length
+  // back from the gem along that aim, so at rest it lands on the foot (grounded)
+  // and while aiming it lands behind the chest (hidden by the body, drawn behind).
+  const gemx = staffTip.x, gemy = staffTip.y;
+  const anchorx = foot.x + (chest.x - foot.x) * staffAct;
+  const anchory = foot.y + (chest.y - foot.y) * staffAct;
+  let dx = gemx - anchorx, dy = gemy - anchory;
+  const d = Math.hypot(dx, dy) || 1;
+  const aimx = dx / d, aimy = dy / d;
+  const ang = Math.atan2(aimy, aimx);
+  const buttx = gemx - aimx * totalLen, butty = gemy - aimy * totalLen;
 
   // the stroke being drawn runs from the anchor node to the gem
   if (formA) {
@@ -1574,7 +1582,7 @@ function drawWizardStaff(ctx, now) {
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  ctx.translate(foot.x, foot.y);                 // pivot at the planted foot (the butt)
+  ctx.translate(buttx, butty);                   // pivot at the butt, one staff-length behind the gem
   ctx.rotate(ang + Math.PI / 2);                 // sprite points up (-y); swing its gem onto the aim
   ctx.scale(S, S);
   ctx.drawImage(spr, -Math.round(spr.width / 2), -spr.height);
