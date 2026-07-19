@@ -1512,10 +1512,13 @@ function drawWizardStaff(ctx, now) {
   const S = 0.7;              // fixed staff scale — never varies with reach
   const totalLen = spr.height * S;      // full staff length in scene px
   const upper = GRIP * totalLen;        // gem → grip, constant
-  // The staff is planted beside the wizard, its butt at his feet. Its foot is
-  // the aim origin: on standby the gem sits straight up from it (a grounded
-  // vertical staff); when tracing/casting the gem lifts out toward the disc.
+  const lower = totalLen - upper;       // grip → butt, constant
+  const MAX_REACH = 5;                  // the hand extends at most this far from its rest
+  // The staff is planted beside the wizard, butt at his feet. The hand rests one
+  // butt-length up from there; on standby the gem sits straight up (a grounded
+  // vertical staff), and tracing/casting only nudges the hand toward the disc.
   const base = { x: scene.wizard.x + wiz.w, y: scene.wizard.y + wiz.h - 1 };
+  const restHand = { x: base.x, y: base.y - lower };
   const uprightTip = { x: base.x + sway * 0.5, y: base.y - totalLen };
 
   let target = uprightTip, glow = 0, thrust = 0, smooth = 0.25, formA = null;
@@ -1555,13 +1558,21 @@ function drawWizardStaff(ctx, now) {
   if (!staffTip) staffTip = { x: uprightTip.x, y: uprightTip.y };
   staffTip.x += (target.x - staffTip.x) * smooth;
   staffTip.y += (target.y - staffTip.y) * smooth;
-  const gemx = staffTip.x, gemy = staffTip.y; // the gem sits exactly on the target
 
-  // The staff keeps its size; it pivots about its foot, and the grip (the
-  // wizard's hand) slides along the shaft to wherever puts the gem on the target.
-  const ang = Math.atan2(gemy - base.y, gemx - base.x); // aim: foot → gem
-  const gripx = gemx - Math.cos(ang) * upper;
-  const gripy = gemy - Math.sin(ang) * upper;
+  // Aim the staff from the resting hand toward the (smoothed) target, then let
+  // the hand extend along that aim only up to MAX_REACH — so the hand barely
+  // moves and the staff mostly just rotates. The gem is the fixed distance
+  // `upper` past the hand and may fall short of a far target; the trace line
+  // follows the gem, so it stays consistent.
+  let ax = staffTip.x - restHand.x, ay = staffTip.y - restHand.y;
+  const dist = Math.hypot(ax, ay) || 1;
+  const dirx = ax / dist, diry = ay / dist;
+  const ext = Math.max(0, Math.min(MAX_REACH, dist - upper));
+  const gripx = restHand.x + dirx * ext;
+  const gripy = restHand.y + diry * ext;
+  const gemx = gripx + dirx * upper;
+  const gemy = gripy + diry * upper;
+  const ang = Math.atan2(diry, dirx);
 
   // the stroke being drawn runs from the anchor node to the gem
   if (formA) {
@@ -1571,7 +1582,7 @@ function drawWizardStaff(ctx, now) {
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  ctx.translate(gripx, gripy);                   // pivot at the grip, which moves freely
+  ctx.translate(gripx, gripy);                   // pivot at the grip (near its rest)
   ctx.rotate(ang + Math.PI / 2);                 // sprite points up (-y); swing its gem onto the aim
   ctx.scale(S, S);
   ctx.drawImage(spr, -Math.round(spr.width / 2), -Math.round(GRIP * spr.height));
