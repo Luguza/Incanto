@@ -1505,9 +1505,9 @@ let staffTip = null;
 function drawWizardStaff(ctx, now) {
   if (!scene) return;
   const wiz = SHEET.wizardIdle;
-  // grip on the wizard's front (right) hand, mid-robe; a slow idle sway
+  // grip out at the wizard's right edge so the shaft clears his body; slow sway
   const sway = Math.sin(now / 620);
-  const hx = scene.wizard.x + wiz.w - 4;
+  const hx = scene.wizard.x + wiz.w;
   const hy = scene.wizard.y + 13;
   // standby: the staff stands upright, gem above the hat, drifting with the sway
   const uprightTip = { x: hx + 1 + sway * 0.6, y: hy - 18 };
@@ -1557,7 +1557,7 @@ function drawWizardStaff(ctx, now) {
   // The wizard grips the shaft partway down — not at the butt — so the gem end
   // rises above the hand and a length of shaft trails below it. GRIP is the
   // fraction of the sprite from the gem end to the hand.
-  const GRIP = 0.58;
+  const GRIP = 0.68;
   const ang = Math.atan2(ty - gy, tx - gx);
   const reach = Math.hypot(tx - gx, ty - gy) || 1;
   // scale so the gem reaches toward the aim point, bounded to keep the staff a
