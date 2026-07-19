@@ -351,6 +351,17 @@ const CONFIG = {
       discRGB: "77, 227, 224",
       glowRGB: "77, 227, 224",
     },
+    // The wizard's staff: a wooden shaft with a teal focus-gem at the tip. The
+    // gem shares the rune's cool palette so it reads as the tool tracing it.
+    staff: {
+      shaftDark: "#2c1d10",
+      shaftMid: "#5a3d22",
+      shaftLight: "#8a6a3e",
+      binding: "#c9a24a",
+      gem: "#8ff7f3",
+      gemCore: "#eafffe",
+      glowRGB: "77, 227, 224",
+    },
     fireball: {
       C: "#fff7d9", // core
       Y: "#ffe28a", // inner
@@ -1227,6 +1238,11 @@ function renderScene(now) {
   const sf = Math.floor(now / 160 + 2) % ASSETS.skelet.length;
   ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
 
+  // The staff, drawn over the wizard's body so his grip reads as holding it.
+  // At rest it stands upright; while tracing/casting it rises so the gem hovers
+  // over the rune disc and blazes, then jabs forward as the fireball launches.
+  drawWizardStaff(ctx, now);
+
   // Skeleton: walks in from the right on a new wave, fades out on death
   let exOff = 0, eAlpha = 1;
   if (state.enemyPhase === "enter") {
@@ -1443,6 +1459,121 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
     }
   }
   ctx.restore();
+}
+
+// Compose and draw the staff for the current frame. The pose is derived from
+// the cast/trace state: `raise` swings the gem from upright toward the rune
+// disc, `glow` charges it, and `thrust` lunges it at the enemy on release.
+function drawWizardStaff(ctx, now) {
+  if (!scene) return;
+  const wiz = SHEET.wizardIdle;
+  // grip on the wizard's front (right) hand, mid-robe; a slow idle sway
+  const sway = Math.sin(now / 620);
+  const hx = scene.wizard.x + wiz.w - 4;
+  const hy = scene.wizard.y + 13;
+  // upright rest pose: gem stands above his hat, tip drifting with the sway
+  const restTip = { x: hx + 3 + sway * 0.8, y: hy - 17 };
+  // raised pose: gem hovers just above the rune disc it is tracing
+  const target = { x: scene.rune.cx, y: scene.rune.cy - 4 };
+
+  let raise = 0, glow = 0, thrust = 0, traceTarget = null;
+  if (state.castAt) {
+    const t = now - state.castAt;
+    const charge = CONFIG.castChargeMs, puff = CONFIG.runePuffMs;
+    if (t < charge) {                       // charge: fully raised, gem winds up
+      raise = 1; glow = 0.55 + 0.45 * (t / charge);
+    } else if (t < charge + puff) {         // release: jab toward the enemy
+      const q = (t - charge) / puff;
+      raise = 1; glow = 1 - q * 0.4; thrust = Math.sin(q * Math.PI);
+    } else {                                // recover: settle, gem fades
+      raise = 1; glow = Math.max(0, 1 - (t - charge - puff) / 220);
+    }
+  } else if (state.screen === "combat") {
+    const chords = state.chords || [];
+    const prog = chords.length / CONFIG.pairsPerLoadout;
+    raise = 0.15 + 0.6 * prog;
+    glow = 0.18 + 0.5 * prog;
+    // a freshly traced chord snaps the gem to that stroke and flares it
+    const last = chords[chords.length - 1];
+    if (last && now - last.addedAt < 280) {
+      const q = 1 - (now - last.addedAt) / 280;
+      raise = Math.min(1, raise + 0.35 * q);
+      glow = Math.min(1, glow + 0.55 * q);
+      traceTarget = runePoint((last.x1 + last.x2) / 2, (last.y1 + last.y2) / 2, 1);
+    }
+  } else {
+    raise = 0.05; glow = 0; // menus/idle: staff nearly upright, dark gem
+  }
+
+  let tx = restTip.x + (target.x - restTip.x) * raise;
+  let ty = restTip.y + (target.y - restTip.y) * raise;
+  if (traceTarget) { tx += (traceTarget.x - tx) * 0.6; ty += (traceTarget.y - ty) * 0.6; }
+  // lunge: hand eases forward and the gem drives toward the enemy
+  const gx = hx + thrust * 2;
+  const gy = hy - thrust * 1;
+  tx += thrust * 7; ty += thrust * 1;
+
+  // shaft stops one pixel short so the gem caps it cleanly
+  const dx = tx - gx, dy = ty - gy, len = Math.hypot(dx, dy) || 1;
+  const sx = tx - (dx / len) * 1.5, sy = ty - (dy / len) * 1.5;
+  drawStaffShaft(ctx, gx, gy, sx, sy);
+  drawStaffGem(ctx, now, tx, ty, glow);
+}
+
+// A 2px wooden shaft from the wizard's grip (hx,hy) to just short of the gem
+// (tx,ty), with a lit upper edge and a bright binding below the head.
+function drawStaffShaft(ctx, hx, hy, tx, ty) {
+  const s = CONFIG.colors.staff;
+  hx = Math.round(hx); hy = Math.round(hy); tx = Math.round(tx); ty = Math.round(ty);
+  const dx = tx - hx, dy = ty - hy;
+  const len = Math.hypot(dx, dy) || 1;
+  // unit normal, used to thicken the line and to place the lit edge
+  const nx = -dy / len, ny = dx / len;
+  const ox = Math.round(nx) || (nx > 0 ? 1 : -1);
+  const oy = Math.round(ny) || (ny > 0 ? 1 : -1);
+  // body (2px): dark core plus one offset row so the shaft never breaks apart
+  ctx.fillStyle = s.shaftDark;
+  pixLine(ctx, hx, hy, tx, ty);
+  pixLine(ctx, hx + ox, hy + oy, tx + ox, ty + oy);
+  // lit upper edge, one step off the core toward the light
+  ctx.fillStyle = s.shaftMid;
+  pixLine(ctx, hx - ox, hy - oy, tx - ox, ty - oy);
+  // binding just below the head: a couple of bright pixels across the shaft
+  const bx = Math.round(hx + dx * 0.74), by = Math.round(hy + dy * 0.74);
+  ctx.fillStyle = s.shaftLight;
+  ctx.fillRect(bx, by, 1, 1);
+  ctx.fillStyle = s.binding;
+  ctx.fillRect(bx + ox, by + oy, 1, 1);
+}
+
+// The staff's focus-gem: a small diamond at (tx,ty) with an additive halo whose
+// strength tracks `glow` in [0,1]. A few sparks flick off while it blazes.
+function drawStaffGem(ctx, now, tx, ty, glow) {
+  const s = CONFIG.colors.staff;
+  tx = Math.round(tx); ty = Math.round(ty);
+  if (glow > 0.05) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const halo = 0.18 + 0.55 * glow;
+    for (const [ox, oy, a] of [[0, 0, 1], [1, 0, 0.6], [-1, 0, 0.6], [0, 1, 0.6], [0, -1, 0.6],
+                               [2, 0, 0.3], [-2, 0, 0.3], [0, 2, 0.3], [0, -2, 0.3]]) {
+      ctx.fillStyle = `rgba(${s.glowRGB}, ${(halo * a).toFixed(3)})`;
+      ctx.fillRect(tx + ox, ty + oy, 1, 1);
+    }
+    if (glow > 0.6) {
+      const sp = (Math.floor(now / 90) * 2654435761) >>> 0;
+      const ax = (sp % 5) - 2, ay = ((sp >> 3) % 5) - 2;
+      ctx.fillStyle = `rgba(${s.glowRGB}, ${(0.5 * glow).toFixed(3)})`;
+      ctx.fillRect(tx + ax, ty + ay, 1, 1);
+    }
+    ctx.restore();
+  }
+  // gem body: a 3px diamond, bright core when charged
+  ctx.fillStyle = s.gem;
+  ctx.fillRect(tx, ty - 1, 1, 3);
+  ctx.fillRect(tx - 1, ty, 3, 1);
+  ctx.fillStyle = glow > 0.4 ? s.gemCore : s.gem;
+  ctx.fillRect(tx, ty, 1, 1);
 }
 
 // ---------------------------------------------------------------------------
