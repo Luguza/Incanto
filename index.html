@@ -1551,29 +1551,37 @@ function drawWizardStaff(ctx, now) {
   staffTip.y += (target.y - staffTip.y) * smooth;
   const tx = staffTip.x, ty = staffTip.y;
 
-  // the stroke the tip is drawing: anchor node → current gem position
-  if (formA) {
-    const c = CONFIG.colors.sceneRune;
-    pixLineGlow(ctx, Math.round(formA.x), Math.round(formA.y), Math.round(tx), Math.round(ty), c.line, c.glowRGB);
-  }
-
   const gx = hx + thrust * 2, gy = hy - thrust * 1;
   const spr = ASSETS && ASSETS.staff;
   if (!spr) return;
-  // Aim the sprite from the grip toward the gem tip and scale it so the pixel
-  // gem lands exactly on that point — uniform scale keeps the gem undistorted.
+  // The wizard grips the shaft partway down — not at the butt — so the gem end
+  // rises above the hand and a length of shaft trails below it. GRIP is the
+  // fraction of the sprite from the gem end to the hand.
+  const GRIP = 0.58;
   const ang = Math.atan2(ty - gy, tx - gx);
   const reach = Math.hypot(tx - gx, ty - gy) || 1;
-  const s = Math.max(0.5, Math.min(0.95, reach / spr.height));
+  // scale so the gem reaches toward the aim point, bounded to keep the staff a
+  // believable thickness rather than ballooning on a long reach
+  const s = Math.max(0.5, Math.min(0.9, reach / (GRIP * spr.height)));
+  const upper = GRIP * spr.height * s;          // hand → gem tip, in scene px
+  const gemx = gx + Math.cos(ang) * upper;
+  const gemy = gy + Math.sin(ang) * upper;
+
+  // the stroke being drawn runs from the anchor node to where the gem actually is
+  if (formA) {
+    const c = CONFIG.colors.sceneRune;
+    pixLineGlow(ctx, Math.round(formA.x), Math.round(formA.y), Math.round(gemx), Math.round(gemy), c.line, c.glowRGB);
+  }
+
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  ctx.translate(gx, gy);
-  ctx.rotate(ang + Math.PI / 2); // sprite points up (-y); swing its tip onto the aim
+  ctx.translate(gx, gy);                        // pivot at the hand (the grip)
+  ctx.rotate(ang + Math.PI / 2);                // sprite points up (-y); swing its gem onto the aim
   ctx.scale(s, s);
-  ctx.drawImage(spr, -Math.round(spr.width / 2), -spr.height);
+  ctx.drawImage(spr, -Math.round(spr.width / 2), -Math.round(GRIP * spr.height));
   ctx.restore();
   // the gem blazes with an additive teal halo while tracing/casting
-  drawGemGlow(ctx, now, Math.round(tx), Math.round(ty), glow);
+  drawGemGlow(ctx, now, Math.round(gemx), Math.round(gemy), glow);
 }
 
 // An additive teal halo on the staff's gem at (tx,ty); strength tracks `glow`
