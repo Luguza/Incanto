@@ -309,7 +309,14 @@
   }
   .quiz-feedback.good { background: rgba(31, 109, 67, 0.35); border: 1px solid #5ecf8f; color: #d6ffe6; }
   .quiz-feedback.bad { background: rgba(109, 35, 48, 0.35); border: 1px solid #e5545f; color: #ffe1e5; }
+  .quiz-feedback.reveal { background: rgba(77, 227, 224, 0.12); border: 1px solid #4de3e0; color: #cfeae9; }
   .quiz-feedback strong { color: #ffe9b0; }
+  .quiz-reveal {
+    display: block; margin: 14px auto 0; padding: 6px 4px; width: min(340px, 88vw);
+    background: none; border: none; color: #8a8398; cursor: pointer;
+    font-size: 14px; text-decoration: underline; text-underline-offset: 3px;
+  }
+  .quiz-reveal:active { color: #cfc9de; }
 
   /* Upgrade shop (stage 2) */
   .upgrade-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); text-align: center; }
@@ -877,6 +884,7 @@ function freshState() {
     quizGoldEarned: 0,
     quizChecked: false,      // the current question has been answered/checked
     quizWasCorrect: false,   // result of the checked answer
+    quizRevealed: false,     // solution shown via "I don't know" (checked, but no gold)
     quizPicked: null,        // choose / fill-choose: selected option index
     quizTyped: "",           // type / fill-type: mirror of the text input
     quizBuilt: [],           // arrange: bank tile indices placed, in order
@@ -1807,6 +1815,7 @@ function buildQuiz() {
 function resetQuizInput() {
   state.quizChecked = false;
   state.quizWasCorrect = false;
+  state.quizRevealed = false;
   state.quizPicked = null;
   state.quizTyped = "";
   state.quizBuilt = [];
@@ -1839,6 +1848,34 @@ function settleQuiz(correct) {
     state.quizGoldEarned += reward;
     saveProgress();
   }
+  state.quizAnsweredAt = performance.now();
+  state._structuralDirty = true;
+}
+
+// "I don't know" — reveal the solution in place, mark the question resolved but
+// award no gold. Fills the answer into whatever surface the exercise uses so
+// the learner sees the correct form before continuing.
+function quizReveal() {
+  if (state.quizChecked) return;
+  const q = state.quizList[state.quizIndex];
+  if (q.type === "match") {
+    state.quizMatchDone = q.pairs.map((p) => p.id);
+    state.quizMatchSel = null;
+  } else if (q.type === "arrange") {
+    const built = [];
+    for (const tok of q.answer) {
+      const t = q.bank.find((b) => b.word === tok && !built.includes(b.id));
+      if (t) built.push(t.id);
+    }
+    state.quizBuilt = built;
+  } else if (q.type === "type" || q.type === "fill-type") {
+    state.quizTyped = q.answer;
+  } else {
+    state.quizPicked = null; // choose/fill-choose: highlight only the correct option
+  }
+  state.quizRevealed = true;
+  state.quizChecked = true;
+  state.quizWasCorrect = false;
   state.quizAnsweredAt = performance.now();
   state._structuralDirty = true;
 }
@@ -2183,7 +2220,7 @@ function renderSentence(q, filled) {
 
 function renderFillChooseBody(q) {
   const filled = state.quizChecked
-    ? (state.quizWasCorrect ? q.answer : q.options[state.quizPicked])
+    ? (state.quizWasCorrect || state.quizRevealed ? q.answer : q.options[state.quizPicked])
     : null;
   return `
     ${renderSentence(q, filled)}
@@ -2235,16 +2272,23 @@ function renderQuizActions(q) {
     let banner;
     if (state.quizWasCorrect) {
       banner = `<div class="quiz-feedback good">Correct! <span class="coin">◈</span> +${quizReward()}</div>`;
+    } else if (q.type === "match") {
+      // match has no single answer string; it only pays out when self-solved
+      banner = `<div class="quiz-feedback reveal">Pairs revealed — no gold earned</div>`;
     } else {
       const answer = q.type === "arrange" ? q.answer.join(" ") : q.answer;
-      banner = `<div class="quiz-feedback bad">Answer: <strong>${answer}</strong></div>`;
+      const cls = state.quizRevealed ? "reveal" : "bad";
+      const label = state.quizRevealed ? "Solution" : "Answer";
+      banner = `<div class="quiz-feedback ${cls}">${label}: <strong>${answer}</strong></div>`;
     }
     return `${banner}<button class="fight-btn quiz-continue" onclick="advanceQuiz()">${last ? "Finish →" : "Continue →"}</button>`;
   }
   // Not yet checked: choose/match resolve on tap, the rest need a Check button.
+  // Every type offers "I don't know" to reveal the solution without earning gold.
   const checkFn = { type: "quizCheckType", "fill-type": "quizFillCheckType", arrange: "quizCheckArrange" }[q.type];
-  if (!checkFn) return "";
-  return `<button class="fight-btn quiz-check" onclick="${checkFn}()">Check</button>`;
+  const reveal = `<button class="quiz-reveal" onclick="quizReveal()">I don't know — show the answer</button>`;
+  const check = checkFn ? `<button class="fight-btn quiz-check" onclick="${checkFn}()">Check</button>` : "";
+  return `${check}${reveal}`;
 }
 
 // Upgrade shop — spend quiz gold on permanent build upgrades, then run again
