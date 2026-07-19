@@ -1256,12 +1256,12 @@ function renderScene(now) {
   // Fighters: the sheet's own 4-frame idle animations, out of phase
   const wf = Math.floor(now / 160) % ASSETS.wizard.length;
   const sf = Math.floor(now / 160 + 2) % ASSETS.skelet.length;
-  ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
-
-  // The staff, drawn over the wizard's body so his grip reads as holding it.
-  // At rest it stands upright; while tracing/casting it rises so the gem hovers
-  // over the rune disc and blazes, then jabs forward as the fireball launches.
+  // The staff is drawn BEHIND the wizard so the shaft is occluded by his body
+  // and only the gem end pokes out. At rest it stands upright; while
+  // tracing/casting the gem rides out to the rune disc, then jabs on launch.
   drawWizardStaff(ctx, now);
+
+  ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
 
   // Skeleton: walks in from the right on a new wave, fades out on death
   let exOff = 0, eAlpha = 1;
@@ -1504,13 +1504,16 @@ let staffTip = null;
 // cast it lifts into the rune disc, blazes, then jabs at the enemy on release.
 function drawWizardStaff(ctx, now) {
   if (!scene) return;
+  const spr = ASSETS && ASSETS.staff;
+  if (!spr) return;
   const wiz = SHEET.wizardIdle;
-  // grip out at the wizard's right edge so the shaft clears his body; slow sway
   const sway = Math.sin(now / 620);
-  const hx = scene.wizard.x + wiz.w;
-  const hy = scene.wizard.y + 13;
-  // standby: the staff stands upright, gem above the hat, drifting with the sway
-  const uprightTip = { x: hx + 1 + sway * 0.6, y: hy - 18 };
+  // The staff rises from behind the wizard's right shoulder (it's drawn behind
+  // him, so the shaft never covers his body). The grip slides along the shaft so
+  // the gem reaches the target without the staff ever being resized.
+  const shoulder = { x: scene.wizard.x + wiz.w - 5, y: scene.wizard.y + 11 };
+  // standby: the gem stands above the hat, drifting with the sway
+  const uprightTip = { x: shoulder.x + 3 + sway * 0.6, y: shoulder.y - 20 };
 
   let target = uprightTip, glow = 0, thrust = 0, smooth = 0.25, formA = null;
 
@@ -1543,31 +1546,24 @@ function drawWizardStaff(ctx, now) {
   }
   // else: standby / menus — staff stays upright with a dark gem
 
-  // lunge offsets the reach toward the enemy on cast release
+  // lunge slides the gem toward the enemy on cast release
   if (thrust) target = { x: target.x + thrust * 7, y: target.y + thrust * 1 };
 
   if (!staffTip) staffTip = { x: uprightTip.x, y: uprightTip.y };
   staffTip.x += (target.x - staffTip.x) * smooth;
   staffTip.y += (target.y - staffTip.y) * smooth;
-  const tx = staffTip.x, ty = staffTip.y;
+  const gemx = staffTip.x, gemy = staffTip.y; // the gem sits exactly on the target
 
-  const gx = hx + thrust * 2, gy = hy - thrust * 1;
-  const spr = ASSETS && ASSETS.staff;
-  if (!spr) return;
-  // The wizard grips the shaft partway down — not at the butt — so the gem end
-  // rises above the hand and a length of shaft trails below it. GRIP is the
-  // fraction of the sprite from the gem end to the hand.
+  // Fixed-size staff: the wizard grips it GRIP of the way down from the gem end,
+  // and the grip (his hand) slides to wherever puts the gem on the target.
   const GRIP = 0.68;
-  const ang = Math.atan2(ty - gy, tx - gx);
-  const reach = Math.hypot(tx - gx, ty - gy) || 1;
-  // scale so the gem reaches toward the aim point, bounded to keep the staff a
-  // believable thickness rather than ballooning on a long reach
-  const s = Math.max(0.5, Math.min(0.9, reach / (GRIP * spr.height)));
-  const upper = GRIP * spr.height * s;          // hand → gem tip, in scene px
-  const gemx = gx + Math.cos(ang) * upper;
-  const gemy = gy + Math.sin(ang) * upper;
+  const S = 0.7;                                 // never varies — no resizing
+  const upper = GRIP * spr.height * S;           // gem → grip, constant
+  const ang = Math.atan2(gemy - shoulder.y, gemx - shoulder.x); // aim: shoulder → gem
+  const gripx = gemx - Math.cos(ang) * upper;    // hand slides back along the aim
+  const gripy = gemy - Math.sin(ang) * upper;
 
-  // the stroke being drawn runs from the anchor node to where the gem actually is
+  // the stroke being drawn runs from the anchor node to the gem
   if (formA) {
     const c = CONFIG.colors.sceneRune;
     pixLineGlow(ctx, Math.round(formA.x), Math.round(formA.y), Math.round(gemx), Math.round(gemy), c.line, c.glowRGB);
@@ -1575,9 +1571,9 @@ function drawWizardStaff(ctx, now) {
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  ctx.translate(gx, gy);                        // pivot at the hand (the grip)
-  ctx.rotate(ang + Math.PI / 2);                // sprite points up (-y); swing its gem onto the aim
-  ctx.scale(s, s);
+  ctx.translate(gripx, gripy);                   // pivot at the grip, which moves freely
+  ctx.rotate(ang + Math.PI / 2);                 // sprite points up (-y); swing its gem onto the aim
+  ctx.scale(S, S);
   ctx.drawImage(spr, -Math.round(spr.width / 2), -Math.round(GRIP * spr.height));
   ctx.restore();
   // the gem blazes with an additive teal halo while tracing/casting
