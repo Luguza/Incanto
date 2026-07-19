@@ -351,15 +351,9 @@ const CONFIG = {
       discRGB: "77, 227, 224",
       glowRGB: "77, 227, 224",
     },
-    // The wizard's staff: a wooden shaft with a teal focus-gem at the tip. The
-    // gem shares the rune's cool palette so it reads as the tool tracing it.
+    // The wizard's staff sprite is tinted at load to share the rune's teal;
+    // this is the additive halo its gem throws while tracing/casting.
     staff: {
-      shaftDark: "#2c1d10",
-      shaftMid: "#5a3d22",
-      shaftLight: "#8a6a3e",
-      binding: "#c9a24a",
-      gem: "#8ff7f3",
-      gemCore: "#eafffe",
       glowRGB: "77, 227, 224",
     },
     fireball: {
@@ -924,6 +918,9 @@ const SHEET = {
   crate: { x: 288, y: 298, w: 16, h: 22 },
   wizardIdle: { x: 128, y: 170, w: 16, h: 22, f: 4 },
   skeletIdle: { x: 368, y: 80, w: 16, h: 16, f: 4 },
+  // 0x72 DungeonTileset II magic staff — a wooden shaft capped with a gem; the
+  // gem is recolored teal at load so it matches the rune it traces.
+  staffMagic: { x: 340, y: 145, w: 8, h: 30 },
 };
 
 const FIREBALL_SPRITE = [
@@ -1023,6 +1020,28 @@ function cutFrame(img, rect, frame, { flip = false, silhouette = null } = {}) {
   return cv;
 }
 
+// Shift the staff's green gem to the rune's teal, preserving each pixel's
+// brightness so the shine and shading survive. Wood (red-dominant) and the
+// cream highlight (unsaturated) are left untouched.
+function recolorStaffGem(cv) {
+  const ctx = cv.getContext("2d");
+  const img = ctx.getImageData(0, 0, cv.width, cv.height);
+  const p = img.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const r = p[i], g = p[i + 1], b = p[i + 2];
+    if (p[i + 3] === 0) continue;
+    // green-dominant and reasonably saturated == gem
+    if (g > r + 12 && g > b + 12) {
+      const lum = (r + g + b) / 3;
+      p[i] = Math.round(lum * 0.32);
+      p[i + 1] = Math.round(Math.min(255, lum * 1.02));
+      p[i + 2] = Math.round(Math.min(255, lum * 1.0));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
 const tilesetImg = new Image();
 tilesetImg.src = "assets/dungeon_tiles.png";
 tilesetImg.onload = () => {
@@ -1038,6 +1057,7 @@ function buildAssets() {
     Array.from({ length: rect.f || 1 }, (_, i) => cutFrame(tilesetImg, rect, i, opts));
   ASSETS = {
     wizard: frames(SHEET.wizardIdle),
+    staff: recolorStaffGem(cutFrame(tilesetImg, SHEET.staffMagic, 0)),
     skelet: frames(SHEET.skeletIdle, { flip: true }),
     skeletHit: frames(SHEET.skeletIdle, { flip: true, silhouette: "#fff3d0" }),
     fountainMid: frames(SHEET.fountainMidRed),
@@ -1538,67 +1558,45 @@ function drawWizardStaff(ctx, now) {
   }
 
   const gx = hx + thrust * 2, gy = hy - thrust * 1;
-  // shaft stops just short so the gem caps it cleanly
-  const dx = tx - gx, dy = ty - gy, len = Math.hypot(dx, dy) || 1;
-  const sx = tx - (dx / len) * 1.5, sy = ty - (dy / len) * 1.5;
-  drawStaffShaft(ctx, gx, gy, sx, sy);
-  drawStaffGem(ctx, now, tx, ty, glow);
+  const spr = ASSETS && ASSETS.staff;
+  if (!spr) return;
+  // Aim the sprite from the grip toward the gem tip and scale it so the pixel
+  // gem lands exactly on that point — uniform scale keeps the gem undistorted.
+  const ang = Math.atan2(ty - gy, tx - gx);
+  const reach = Math.hypot(tx - gx, ty - gy) || 1;
+  const s = Math.max(0.5, Math.min(0.95, reach / spr.height));
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(gx, gy);
+  ctx.rotate(ang + Math.PI / 2); // sprite points up (-y); swing its tip onto the aim
+  ctx.scale(s, s);
+  ctx.drawImage(spr, -Math.round(spr.width / 2), -spr.height);
+  ctx.restore();
+  // the gem blazes with an additive teal halo while tracing/casting
+  drawGemGlow(ctx, now, Math.round(tx), Math.round(ty), glow);
 }
 
-// A 2px wooden shaft from the wizard's grip (hx,hy) to just short of the gem
-// (tx,ty), with a lit upper edge and a bright binding below the head.
-function drawStaffShaft(ctx, hx, hy, tx, ty) {
-  const s = CONFIG.colors.staff;
-  hx = Math.round(hx); hy = Math.round(hy); tx = Math.round(tx); ty = Math.round(ty);
-  const dx = tx - hx, dy = ty - hy;
-  const len = Math.hypot(dx, dy) || 1;
-  // unit normal, used to thicken the line and to place the lit edge
-  const nx = -dy / len, ny = dx / len;
-  const ox = Math.round(nx) || (nx > 0 ? 1 : -1);
-  const oy = Math.round(ny) || (ny > 0 ? 1 : -1);
-  // body (2px): dark core plus one offset row so the shaft never breaks apart
-  ctx.fillStyle = s.shaftDark;
-  pixLine(ctx, hx, hy, tx, ty);
-  pixLine(ctx, hx + ox, hy + oy, tx + ox, ty + oy);
-  // lit upper edge, one step off the core toward the light
-  ctx.fillStyle = s.shaftMid;
-  pixLine(ctx, hx - ox, hy - oy, tx - ox, ty - oy);
-  // binding just below the head: a couple of bright pixels across the shaft
-  const bx = Math.round(hx + dx * 0.74), by = Math.round(hy + dy * 0.74);
-  ctx.fillStyle = s.shaftLight;
-  ctx.fillRect(bx, by, 1, 1);
-  ctx.fillStyle = s.binding;
-  ctx.fillRect(bx + ox, by + oy, 1, 1);
-}
-
-// The staff's focus-gem: a small diamond at (tx,ty) with an additive halo whose
-// strength tracks `glow` in [0,1]. A few sparks flick off while it blazes.
-function drawStaffGem(ctx, now, tx, ty, glow) {
-  const s = CONFIG.colors.staff;
-  tx = Math.round(tx); ty = Math.round(ty);
-  if (glow > 0.05) {
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    const halo = 0.18 + 0.55 * glow;
-    for (const [ox, oy, a] of [[0, 0, 1], [1, 0, 0.6], [-1, 0, 0.6], [0, 1, 0.6], [0, -1, 0.6],
-                               [2, 0, 0.3], [-2, 0, 0.3], [0, 2, 0.3], [0, -2, 0.3]]) {
-      ctx.fillStyle = `rgba(${s.glowRGB}, ${(halo * a).toFixed(3)})`;
-      ctx.fillRect(tx + ox, ty + oy, 1, 1);
-    }
-    if (glow > 0.6) {
-      const sp = (Math.floor(now / 90) * 2654435761) >>> 0;
-      const ax = (sp % 5) - 2, ay = ((sp >> 3) % 5) - 2;
-      ctx.fillStyle = `rgba(${s.glowRGB}, ${(0.5 * glow).toFixed(3)})`;
-      ctx.fillRect(tx + ax, ty + ay, 1, 1);
-    }
-    ctx.restore();
+// An additive teal halo on the staff's gem at (tx,ty); strength tracks `glow`
+// in [0,1], with a flicked spark while it blazes. The gem body itself comes
+// from the sprite — this only lights it up.
+function drawGemGlow(ctx, now, tx, ty, glow) {
+  if (glow <= 0.05) return;
+  const rgb = CONFIG.colors.staff.glowRGB;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const halo = 0.18 + 0.55 * glow;
+  for (const [ox, oy, a] of [[0, 0, 1], [1, 0, 0.6], [-1, 0, 0.6], [0, 1, 0.6], [0, -1, 0.6],
+                             [2, 0, 0.3], [-2, 0, 0.3], [0, 2, 0.3], [0, -2, 0.3]]) {
+    ctx.fillStyle = `rgba(${rgb}, ${(halo * a).toFixed(3)})`;
+    ctx.fillRect(tx + ox, ty + oy, 1, 1);
   }
-  // gem body: a 3px diamond, bright core when charged
-  ctx.fillStyle = s.gem;
-  ctx.fillRect(tx, ty - 1, 1, 3);
-  ctx.fillRect(tx - 1, ty, 3, 1);
-  ctx.fillStyle = glow > 0.4 ? s.gemCore : s.gem;
-  ctx.fillRect(tx, ty, 1, 1);
+  if (glow > 0.6) {
+    const sp = (Math.floor(now / 90) * 2654435761) >>> 0;
+    const ax = (sp % 5) - 2, ay = ((sp >> 3) % 5) - 2;
+    ctx.fillStyle = `rgba(${rgb}, ${(0.5 * glow).toFixed(3)})`;
+    ctx.fillRect(tx + ax, ty + ay, 1, 1);
+  }
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
