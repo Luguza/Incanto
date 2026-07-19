@@ -1508,12 +1508,15 @@ function drawWizardStaff(ctx, now) {
   if (!spr) return;
   const wiz = SHEET.wizardIdle;
   const sway = Math.sin(now / 620);
-  // The staff rises from behind the wizard's right shoulder (it's drawn behind
-  // him, so the shaft never covers his body). The grip slides along the shaft so
-  // the gem reaches the target without the staff ever being resized.
-  const shoulder = { x: scene.wizard.x + wiz.w - 5, y: scene.wizard.y + 11 };
-  // standby: the gem stands above the hat, drifting with the sway
-  const uprightTip = { x: shoulder.x + 3 + sway * 0.6, y: shoulder.y - 20 };
+  const GRIP = 0.68;          // grip point as a fraction of the sprite from the gem end
+  const S = 0.7;              // fixed staff scale — never varies with reach
+  const totalLen = spr.height * S;      // full staff length in scene px
+  const upper = GRIP * totalLen;        // gem → grip, constant
+  // The staff is planted beside the wizard, its butt at his feet. Its foot is
+  // the aim origin: on standby the gem sits straight up from it (a grounded
+  // vertical staff); when tracing/casting the gem lifts out toward the disc.
+  const base = { x: scene.wizard.x + wiz.w, y: scene.wizard.y + wiz.h - 1 };
+  const uprightTip = { x: base.x + sway * 0.5, y: base.y - totalLen };
 
   let target = uprightTip, glow = 0, thrust = 0, smooth = 0.25, formA = null;
 
@@ -1554,13 +1557,10 @@ function drawWizardStaff(ctx, now) {
   staffTip.y += (target.y - staffTip.y) * smooth;
   const gemx = staffTip.x, gemy = staffTip.y; // the gem sits exactly on the target
 
-  // Fixed-size staff: the wizard grips it GRIP of the way down from the gem end,
-  // and the grip (his hand) slides to wherever puts the gem on the target.
-  const GRIP = 0.68;
-  const S = 0.7;                                 // never varies — no resizing
-  const upper = GRIP * spr.height * S;           // gem → grip, constant
-  const ang = Math.atan2(gemy - shoulder.y, gemx - shoulder.x); // aim: shoulder → gem
-  const gripx = gemx - Math.cos(ang) * upper;    // hand slides back along the aim
+  // The staff keeps its size; it pivots about its foot, and the grip (the
+  // wizard's hand) slides along the shaft to wherever puts the gem on the target.
+  const ang = Math.atan2(gemy - base.y, gemx - base.x); // aim: foot → gem
+  const gripx = gemx - Math.cos(ang) * upper;
   const gripy = gemy - Math.sin(ang) * upper;
 
   // the stroke being drawn runs from the anchor node to the gem
