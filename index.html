@@ -7,6 +7,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Incanto">
+<meta name="application-name" content="Incanto">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="assets/icon-512.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>Rune Circle Combat — Prototype</title>
 <style>
   @font-face {
@@ -273,8 +279,8 @@
 const CONFIG = {
   windupDurationMs: 8000,
   slowMoFactor: 0.3,
-  // Hero: big HP pool, starts weak, upgrades bought with gold
-  heroBaseHP: 100,
+  // Hero: small HP pool, starts weak, upgrades bought with gold
+  heroBaseHP: 10,
   heroBaseDmg: 3,
   dmgPerLevel: 2,
   hpPerLevel: 25,
@@ -298,7 +304,9 @@ const CONFIG = {
   enemyDeathMs: 600,
   runeCount: 6,
   pairsPerLoadout: 3,
-  staggerOnCast: true,
+  // When false, casting a spell does NOT reset the skeleton's attack windup, so
+  // its attack timer keeps ticking and it lands hits at a steady cadence (constant DPS).
+  staggerOnCast: false,
   wrongFlashDurationMs: 200,
   shapeFlashDurationMs: 500,
   fireballFlightMs: 450,
@@ -740,6 +748,51 @@ function newGame() {
   const preservedMode = state ? state.mode : "REAL_TIME"; // DECISION: mode is a tester tool, preserved across restart
   state = freshState();
   state.mode = preservedMode;
+  applySavedProgress();
+}
+
+// ---------------------------------------------------------------------------
+// Persistence — meta-progression (gold + upgrade levels) survives reloads via
+// localStorage. Only the source-of-truth numbers are stored; hero DMG and max
+// HP are always re-derived from the levels, so tuning CONFIG stays authoritative.
+// ---------------------------------------------------------------------------
+const SAVE_KEY = "incanto.save.v1";
+
+function saveProgress() {
+  if (!state) return;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      gold: state.gold,
+      dmgLevel: state.dmgLevel,
+      hpLevel: state.hpLevel,
+    }));
+  } catch (e) { /* storage unavailable (private mode/quota) — play without saving */ }
+}
+
+function loadProgress() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return (data && typeof data === "object") ? data : null;
+  } catch (e) { return null; }
+}
+
+function clearProgress() {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+}
+
+// Overlay any persisted meta-progression onto a freshly built state.
+function applySavedProgress() {
+  const data = loadProgress();
+  if (!data) return;
+  const asCount = (v) => (Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0);
+  state.gold = asCount(data.gold);
+  state.dmgLevel = asCount(data.dmgLevel);
+  state.hpLevel = asCount(data.hpLevel);
+  state.heroDmg = CONFIG.heroBaseDmg + state.dmgLevel * CONFIG.dmgPerLevel;
+  state.heroMaxHP = CONFIG.heroBaseHP + state.hpLevel * CONFIG.hpPerLevel;
+  state.heroHP = state.heroMaxHP;
 }
 
 // Enemy scaling: each wave's skeleton has more HP and hits harder
@@ -1540,6 +1593,7 @@ function answerQuiz(optIndex) {
     const reward = CONFIG.goldPerCorrect + CONFIG.quizWaveBonus * (state.lastWaveReached - 1);
     state.gold += reward;
     state.quizGoldEarned += reward;
+    saveProgress();
   }
   state.quizAnsweredAt = performance.now();
   state._structuralDirty = true;
@@ -1560,6 +1614,7 @@ function buyDmg() {
   state.gold -= cost;
   state.dmgLevel++;
   state.heroDmg = CONFIG.heroBaseDmg + state.dmgLevel * CONFIG.dmgPerLevel;
+  saveProgress();
   state._structuralDirty = true;
 }
 function buyHp() {
@@ -1568,6 +1623,7 @@ function buyHp() {
   state.gold -= cost;
   state.hpLevel++;
   state.heroMaxHP += CONFIG.hpPerLevel;
+  saveProgress();
   state._structuralDirty = true;
 }
 
@@ -1584,7 +1640,9 @@ function cycleMode() {
 }
 
 function restart() {
-  // Hard reset: wipes meta-progression and starts a fresh run from base build
+  // Hard reset: wipes meta-progression (including the saved game) and starts a
+  // fresh run from the base build
+  clearProgress();
   newGame();
   startRun();
 }
