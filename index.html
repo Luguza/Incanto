@@ -1508,18 +1508,14 @@ function drawWizardStaff(ctx, now) {
   if (!spr) return;
   const wiz = SHEET.wizardIdle;
   const sway = Math.sin(now / 620);
-  const GRIP = 0.68;          // grip point as a fraction of the sprite from the gem end
-  const S = 0.7;              // fixed staff scale — never varies with reach
+  const S = 0.64;             // fixed staff scale — never varies with reach
   const totalLen = spr.height * S;      // full staff length in scene px
-  const upper = GRIP * totalLen;        // gem → grip, constant
-  const lower = totalLen - upper;       // grip → butt, constant
-  const MAX_REACH = 5;                  // the hand extends at most this far from its rest
-  // The staff is planted beside the wizard, butt at his feet. The hand rests one
-  // butt-length up from there; on standby the gem sits straight up (a grounded
-  // vertical staff), and tracing/casting only nudges the hand toward the disc.
-  const base = { x: scene.wizard.x + wiz.w, y: scene.wizard.y + wiz.h - 1 };
-  const restHand = { x: base.x, y: base.y - lower };
-  const uprightTip = { x: base.x + sway * 0.5, y: base.y - totalLen };
+  // The staff pivots about its foot, planted beside the wizard at his feet. The
+  // butt never leaves this point, so it can't swing out — only the gem end
+  // rotates toward the target. On standby the gem sits straight up (a grounded
+  // vertical staff); tracing/casting rotates it toward the disc.
+  const foot = { x: scene.wizard.x + wiz.w, y: scene.wizard.y + wiz.h - 1 };
+  const uprightTip = { x: foot.x + sway * 0.5, y: foot.y - totalLen };
 
   let target = uprightTip, glow = 0, thrust = 0, smooth = 0.25, formA = null;
 
@@ -1559,20 +1555,16 @@ function drawWizardStaff(ctx, now) {
   staffTip.x += (target.x - staffTip.x) * smooth;
   staffTip.y += (target.y - staffTip.y) * smooth;
 
-  // Aim the staff from the resting hand toward the (smoothed) target, then let
-  // the hand extend along that aim only up to MAX_REACH — so the hand barely
-  // moves and the staff mostly just rotates. The gem is the fixed distance
-  // `upper` past the hand and may fall short of a far target; the trace line
-  // follows the gem, so it stays consistent.
-  let ax = staffTip.x - restHand.x, ay = staffTip.y - restHand.y;
+  // Aim the rigid staff from its foot toward the (smoothed) target and rotate it
+  // fully that way; the gem end swings out on a fixed-length arc, reaching toward
+  // the target as far as it can while the butt stays planted at the foot. The
+  // trace line follows the gem, so a short reach stays consistent.
+  const ax = staffTip.x - foot.x, ay = staffTip.y - foot.y;
   const dist = Math.hypot(ax, ay) || 1;
   const dirx = ax / dist, diry = ay / dist;
-  const ext = Math.max(0, Math.min(MAX_REACH, dist - upper));
-  const gripx = restHand.x + dirx * ext;
-  const gripy = restHand.y + diry * ext;
-  const gemx = gripx + dirx * upper;
-  const gemy = gripy + diry * upper;
   const ang = Math.atan2(diry, dirx);
+  const gemx = foot.x + dirx * totalLen;
+  const gemy = foot.y + diry * totalLen;
 
   // the stroke being drawn runs from the anchor node to the gem
   if (formA) {
@@ -1582,10 +1574,10 @@ function drawWizardStaff(ctx, now) {
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  ctx.translate(gripx, gripy);                   // pivot at the grip (near its rest)
+  ctx.translate(foot.x, foot.y);                 // pivot at the planted foot (the butt)
   ctx.rotate(ang + Math.PI / 2);                 // sprite points up (-y); swing its gem onto the aim
   ctx.scale(S, S);
-  ctx.drawImage(spr, -Math.round(spr.width / 2), -Math.round(GRIP * spr.height));
+  ctx.drawImage(spr, -Math.round(spr.width / 2), -spr.height);
   ctx.restore();
   // the gem blazes with an additive teal halo while tracing/casting
   drawGemGlow(ctx, now, Math.round(gemx), Math.round(gemy), glow);
