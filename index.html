@@ -430,6 +430,11 @@ const CONFIG = {
       discRGB: "77, 227, 224",
       glowRGB: "77, 227, 224",
     },
+    // The wizard's staff sprite is tinted at load to share the rune's teal;
+    // this is the additive halo its gem throws while tracing/casting.
+    staff: {
+      glowRGB: "77, 227, 224",
+    },
     fireball: {
       C: "#fff7d9", // core
       Y: "#ffe28a", // inner
@@ -1061,6 +1066,9 @@ const SHEET = {
   crate: { x: 288, y: 298, w: 16, h: 22 },
   wizardIdle: { x: 128, y: 170, w: 16, h: 22, f: 4 },
   skeletIdle: { x: 368, y: 80, w: 16, h: 16, f: 4 },
+  // 0x72 DungeonTileset II magic staff — a wooden shaft capped with a gem; the
+  // gem is recolored teal at load so it matches the rune it traces.
+  staffMagic: { x: 340, y: 145, w: 8, h: 30 },
 };
 
 const FIREBALL_SPRITE = [
@@ -1160,6 +1168,28 @@ function cutFrame(img, rect, frame, { flip = false, silhouette = null } = {}) {
   return cv;
 }
 
+// Shift the staff's green gem to the rune's teal, preserving each pixel's
+// brightness so the shine and shading survive. Wood (red-dominant) and the
+// cream highlight (unsaturated) are left untouched.
+function recolorStaffGem(cv) {
+  const ctx = cv.getContext("2d");
+  const img = ctx.getImageData(0, 0, cv.width, cv.height);
+  const p = img.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const r = p[i], g = p[i + 1], b = p[i + 2];
+    if (p[i + 3] === 0) continue;
+    // green-dominant and reasonably saturated == gem
+    if (g > r + 12 && g > b + 12) {
+      const lum = (r + g + b) / 3;
+      p[i] = Math.round(lum * 0.32);
+      p[i + 1] = Math.round(Math.min(255, lum * 1.02));
+      p[i + 2] = Math.round(Math.min(255, lum * 1.0));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
 const tilesetImg = new Image();
 tilesetImg.src = "assets/dungeon_tiles.png";
 tilesetImg.onload = () => {
@@ -1175,6 +1205,7 @@ function buildAssets() {
     Array.from({ length: rect.f || 1 }, (_, i) => cutFrame(tilesetImg, rect, i, opts));
   ASSETS = {
     wizard: frames(SHEET.wizardIdle),
+    staff: recolorStaffGem(cutFrame(tilesetImg, SHEET.staffMagic, 0)),
     skelet: frames(SHEET.skeletIdle, { flip: true }),
     skeletHit: frames(SHEET.skeletIdle, { flip: true, silhouette: "#fff3d0" }),
     fountainMid: frames(SHEET.fountainMidRed),
@@ -1373,6 +1404,11 @@ function renderScene(now) {
   // Fighters: the sheet's own 4-frame idle animations, out of phase
   const wf = Math.floor(now / 160) % ASSETS.wizard.length;
   const sf = Math.floor(now / 160 + 2) % ASSETS.skelet.length;
+  // The staff is drawn BEHIND the wizard so the shaft is occluded by his body
+  // and only the gem end pokes out. At rest it stands upright; while
+  // tracing/casting the gem rides out to the rune disc, then jabs on launch.
+  drawWizardStaff(ctx, now);
+
   ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
 
   // Skeleton: walks in from the right on a new wave, fades out on death
@@ -1488,6 +1524,19 @@ function runePoint(px, py, scale) {
   return { x: cx + rx * scale * Math.cos(a), y: cy + ry * scale * Math.sin(a) };
 }
 
+// Map an *interior* arena point onto the disc proportionally (radius kept, not
+// just angle) so a line being drawn across the circle mirrors faithfully on the
+// disc. The normalized radius is clamped so a pointer flung past the rim stays
+// on the staff's reach.
+function runePointXY(px, py, scale = 1) {
+  const { cx, cy, rx, ry } = scene.rune;
+  let nx = (px - CONFIG.circleCenter.x) / CONFIG.circleRadius;
+  let ny = (py - CONFIG.circleCenter.y) / CONFIG.circleRadius;
+  const r = Math.hypot(nx, ny);
+  if (r > 1.1) { nx = (nx / r) * 1.1; ny = (ny / r) * 1.1; }
+  return { x: cx + nx * rx * scale, y: cy + ny * ry * scale };
+}
+
 // A 1px line with an additive glow: soft passes offset around the core line
 function pixLineGlow(ctx, x0, y0, x1, y1, core, glowRGB) {
   ctx.save();
@@ -1589,6 +1638,126 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
       ctx.fillStyle = core;
       pixLine(ctx, Math.round(mx - tx * 2), Math.round(my - ty * 2), Math.round(mx + tx * 2), Math.round(my + ty * 2));
     }
+  }
+  ctx.restore();
+}
+
+// Smoothed gem position, persisted between frames so the tip eases toward its
+// target instead of snapping — this is what makes the trace read as deliberate.
+let staffTip = null;
+// Smoothed 0..1 "raise" factor: 0 = resting beside the wizard, 1 = aiming at the disc.
+let staffAct = null;
+
+// Compose and draw the staff for the current frame. On standby it stands
+// upright; while the player drags a pair the gem follows the forming line so
+// the tip literally draws the stroke in the direction being dragged; during a
+// cast it lifts into the rune disc, blazes, then jabs at the enemy on release.
+function drawWizardStaff(ctx, now) {
+  if (!scene) return;
+  const spr = ASSETS && ASSETS.staff;
+  if (!spr) return;
+  const wiz = SHEET.wizardIdle;
+  const sway = Math.sin(now / 620);
+  const S = 0.64;             // fixed staff scale — never varies with reach
+  const totalLen = spr.height * S;      // full staff length in scene px
+  // Two aim anchors: the planted foot (grounded rest, beside the wizard) and the
+  // hand at his waist (aiming — the butt tucks behind his body). We ease between
+  // them so the gem can be pinned to the target and still always reach it.
+  const foot = { x: scene.wizard.x + wiz.w, y: scene.wizard.y + wiz.h - 1 };
+  const hand = { x: scene.wizard.x + wiz.w * 0.5, y: scene.wizard.y + 16 };
+  const uprightTip = { x: foot.x + sway * 0.5, y: foot.y - totalLen };
+
+  let target = uprightTip, glow = 0, thrust = 0, smooth = 0.25, formA = null, active = 0;
+
+  if (state.castAt) {
+    const t = now - state.castAt;
+    const charge = CONFIG.castChargeMs, puff = CONFIG.runePuffMs;
+    const discTop = { x: scene.rune.cx, y: scene.rune.cy - 4 };
+    active = 1;
+    if (t < charge) {                       // charge: lift into the disc, wind up
+      target = discTop; glow = 0.55 + 0.45 * (t / charge); smooth = 0.4;
+    } else if (t < charge + puff) {         // release: jab toward the enemy
+      const q = (t - charge) / puff;
+      target = discTop; glow = 1 - q * 0.4; thrust = Math.sin(q * Math.PI); smooth = 0.6;
+    } else {                                // recover: settle, gem fades
+      target = discTop; glow = Math.max(0, 1 - (t - charge - puff) / 220); smooth = 0.45;
+    }
+  } else if (
+    state.screen === "combat" && state.dragActive &&
+    state.selectedRuneId !== null && state.dragPointer
+  ) {
+    // active trace: the gem rides the drawn line from the held rune toward the
+    // pointer, so it traces the exact stroke in the direction the player draws
+    const held = state.runes.find((r) => r.id === state.selectedRuneId);
+    if (held) {
+      formA = runePointXY(held.x, held.y);
+      target = runePointXY(state.dragPointer.x, state.dragPointer.y);
+      const drawn = Math.hypot(target.x - formA.x, target.y - formA.y);
+      glow = 0.35 + Math.min(0.55, (drawn / 13) * 0.55);
+      smooth = 0.2; // eased, so the gem trails the pointer for a deliberate trace
+      active = 1;
+    }
+  }
+  // else: standby / menus — staff rests grounded beside the wizard
+
+  // lunge slides the gem toward the enemy on cast release
+  if (thrust) target = { x: target.x + thrust * 7, y: target.y + thrust * 1 };
+
+  if (!staffTip) staffTip = { x: uprightTip.x, y: uprightTip.y };
+  staffTip.x += (target.x - staffTip.x) * smooth;
+  staffTip.y += (target.y - staffTip.y) * smooth;
+  if (staffAct === null) staffAct = active;
+  staffAct += (active - staffAct) * 0.14;        // eased raise/lower
+
+  // The gem is pinned to the (smoothed) target, so it always reaches. The aim
+  // anchor eases foot→hand as the staff raises; the butt is one staff-length
+  // back from the gem along that aim, so at rest it lands on the foot (grounded)
+  // and while aiming it lands behind the waist (hidden by the body, drawn behind).
+  const gemx = staffTip.x, gemy = staffTip.y;
+  const anchorx = foot.x + (hand.x - foot.x) * staffAct;
+  const anchory = foot.y + (hand.y - foot.y) * staffAct;
+  let dx = gemx - anchorx, dy = gemy - anchory;
+  const d = Math.hypot(dx, dy) || 1;
+  const aimx = dx / d, aimy = dy / d;
+  const ang = Math.atan2(aimy, aimx);
+  const buttx = gemx - aimx * totalLen, butty = gemy - aimy * totalLen;
+
+  // the stroke being drawn runs from the anchor node to the gem
+  if (formA) {
+    const c = CONFIG.colors.sceneRune;
+    pixLineGlow(ctx, Math.round(formA.x), Math.round(formA.y), Math.round(gemx), Math.round(gemy), c.line, c.glowRGB);
+  }
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(buttx, butty);                   // pivot at the butt, one staff-length behind the gem
+  ctx.rotate(ang + Math.PI / 2);                 // sprite points up (-y); swing its gem onto the aim
+  ctx.scale(S, S);
+  ctx.drawImage(spr, -Math.round(spr.width / 2), -spr.height);
+  ctx.restore();
+  // the gem blazes with an additive teal halo while tracing/casting
+  drawGemGlow(ctx, now, Math.round(gemx), Math.round(gemy), glow);
+}
+
+// An additive teal halo on the staff's gem at (tx,ty); strength tracks `glow`
+// in [0,1], with a flicked spark while it blazes. The gem body itself comes
+// from the sprite — this only lights it up.
+function drawGemGlow(ctx, now, tx, ty, glow) {
+  if (glow <= 0.05) return;
+  const rgb = CONFIG.colors.staff.glowRGB;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const halo = 0.18 + 0.55 * glow;
+  for (const [ox, oy, a] of [[0, 0, 1], [1, 0, 0.6], [-1, 0, 0.6], [0, 1, 0.6], [0, -1, 0.6],
+                             [2, 0, 0.3], [-2, 0, 0.3], [0, 2, 0.3], [0, -2, 0.3]]) {
+    ctx.fillStyle = `rgba(${rgb}, ${(halo * a).toFixed(3)})`;
+    ctx.fillRect(tx + ox, ty + oy, 1, 1);
+  }
+  if (glow > 0.6) {
+    const sp = (Math.floor(now / 90) * 2654435761) >>> 0;
+    const ax = (sp % 5) - 2, ay = ((sp >> 3) % 5) - 2;
+    ctx.fillStyle = `rgba(${rgb}, ${(0.5 * glow).toFixed(3)})`;
+    ctx.fillRect(tx + ax, ty + ay, 1, 1);
   }
   ctx.restore();
 }
