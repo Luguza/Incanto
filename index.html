@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="assets/icon-512.png">
 <link rel="manifest" href="manifest.webmanifest">
-<title>Rune Circle Combat — Prototype</title>
+<title>Runenkreis — Prototyp</title>
 <style>
   @font-face {
     font-family: "RuneDisplay";
@@ -443,7 +443,7 @@ const CONFIG = {
 };
 
 const MODE_ORDER = ["REAL_TIME", "SLOW_MO", "FREEZE"];
-const MODE_LABELS = { REAL_TIME: "REAL-TIME", SLOW_MO: "SLOW-MO", FREEZE: "FREEZE" };
+const MODE_LABELS = { REAL_TIME: "ECHTZEIT", SLOW_MO: "ZEITLUPE", FREEZE: "ZEITSTOPP" };
 
 // ---------------------------------------------------------------------------
 // Word pool — the A1 (beginner) Italian vocabulary, drawn in order and cycled.
@@ -2125,23 +2125,23 @@ function render(now) {
 // One dispatcher builds a shared frame (progress + prompt + action bar) and
 // hands the middle off to a per-type body renderer.
 const QUIZ_TITLE = {
-  choose: "Choose the translation",
-  type: "Type the translation",
-  match: "Tap the matching pairs",
-  "fill-choose": "Fill in the blank",
-  "fill-type": "Fill in the blank",
-  arrange: "Build the sentence",
+  choose: "Übersetzung wählen",
+  type: "Übersetzung tippen",
+  match: "Passende Paare finden",
+  "fill-choose": "Lücke füllen",
+  "fill-type": "Lücke füllen",
+  arrange: "Satz bilden",
 };
 
 function quizDirLabel(dir) {
-  return dir === "it2de" ? "Italian → German" : "German → Italian";
+  return dir === "it2de" ? "Italienisch → Deutsch" : "Deutsch → Italienisch";
 }
 
 function renderQuizFull() {
   const q = state.quizList[state.quizIndex];
   let body;
   switch (q.type) {
-    case "choose":      body = renderChooseBody(q, `What does <span class="quiz-word">${q.prompt}</span> mean?`); break;
+    case "choose":      body = renderChooseBody(q, `Was bedeutet <span class="quiz-word">${q.prompt}</span>?`); break;
     case "type":        body = renderTypeBody(q); break;
     case "match":       body = renderMatchBody(q); break;
     case "fill-choose": body = renderFillChooseBody(q); break;
@@ -2151,8 +2151,8 @@ function renderQuizFull() {
   const dir = q.dir ? `<span class="quiz-badge">${quizDirLabel(q.dir)}</span>` : "";
   app.innerHTML = `
     <div class="screen quiz-screen">
-      <div class="quiz-progress">Question ${state.quizIndex + 1} / ${state.quizList.length}
-        &middot; <span class="coin">◈</span> ${state.quizGoldEarned} earned</div>
+      <div class="quiz-progress">Frage ${state.quizIndex + 1} / ${state.quizList.length}
+        &middot; <span class="coin">◈</span> ${state.quizGoldEarned} verdient</div>
       <div class="quiz-typeline"><span class="quiz-badge kind">${QUIZ_TITLE[q.type]}</span>${dir}</div>
       ${body}
       ${renderQuizActions(q)}
@@ -2187,7 +2187,7 @@ function renderChooseBody(q, promptHtml) {
 
 function renderTypeBody(q) {
   return `
-    <p class="quiz-prompt">Translate <span class="quiz-word">${q.prompt}</span></p>
+    <p class="quiz-prompt">Übersetze <span class="quiz-word">${q.prompt}</span></p>
     ${renderTypeInput("quizCheckType")}`;
 }
 
@@ -2203,7 +2203,7 @@ function renderTypeInput(checkFn) {
   return `
     <input id="quiz-input" class="quiz-input" type="text" autocomplete="off"
       autocapitalize="off" autocorrect="off" spellcheck="false"
-      placeholder="type your answer" value="${state.quizTyped}" ${disabled}
+      placeholder="Antwort eingeben" value="${state.quizTyped}" ${disabled}
       oninput="quizTypeInput(this)"
       onkeydown="if(event.key==='Enter'){${checkFn}();}">`;
 }
@@ -2240,7 +2240,7 @@ function renderMatchBody(q) {
   const left = q.left.map((t, i) => tile("left", i, t)).join("");
   const right = q.right.map((t, i) => tile("right", i, t)).join("");
   return `
-    <p class="quiz-prompt">Match each Italian word to its meaning</p>
+    <p class="quiz-prompt">Ordne jedem italienischen Wort seine Bedeutung zu</p>
     <div class="match-cols">
       <div class="match-col">${left}</div>
       <div class="match-col">${right}</div>
@@ -2259,8 +2259,8 @@ function renderArrangeBody(q) {
     })
     .join("");
   return `
-    <p class="quiz-prompt">Translate: <span class="quiz-word">${q.de}</span></p>
-    <div class="build-line">${builtHtml || '<span class="build-placeholder">tap the words below</span>'}</div>
+    <p class="quiz-prompt">Übersetze: <span class="quiz-word">${q.de}</span></p>
+    <div class="build-line">${builtHtml || '<span class="build-placeholder">tippe unten auf die Wörter</span>'}</div>
     <div class="build-bank">${bankHtml}</div>`;
 }
 
@@ -2271,23 +2271,23 @@ function renderQuizActions(q) {
     const last = state.quizIndex + 1 >= state.quizList.length;
     let banner;
     if (state.quizWasCorrect) {
-      banner = `<div class="quiz-feedback good">Correct! <span class="coin">◈</span> +${quizReward()}</div>`;
+      banner = `<div class="quiz-feedback good">Richtig! <span class="coin">◈</span> +${quizReward()}</div>`;
     } else if (q.type === "match") {
       // match has no single answer string; it only pays out when self-solved
-      banner = `<div class="quiz-feedback reveal">Pairs revealed — no gold earned</div>`;
+      banner = `<div class="quiz-feedback reveal">Paare aufgedeckt — kein Gold verdient</div>`;
     } else {
       const answer = q.type === "arrange" ? q.answer.join(" ") : q.answer;
       const cls = state.quizRevealed ? "reveal" : "bad";
-      const label = state.quizRevealed ? "Solution" : "Answer";
+      const label = state.quizRevealed ? "Lösung" : "Antwort";
       banner = `<div class="quiz-feedback ${cls}">${label}: <strong>${answer}</strong></div>`;
     }
-    return `${banner}<button class="fight-btn quiz-continue" onclick="advanceQuiz()">${last ? "Finish →" : "Continue →"}</button>`;
+    return `${banner}<button class="fight-btn quiz-continue" onclick="advanceQuiz()">${last ? "Fertig →" : "Weiter →"}</button>`;
   }
   // Not yet checked: choose/match resolve on tap, the rest need a Check button.
   // Every type offers "I don't know" to reveal the solution without earning gold.
   const checkFn = { type: "quizCheckType", "fill-type": "quizFillCheckType", arrange: "quizCheckArrange" }[q.type];
-  const reveal = `<button class="quiz-reveal" onclick="quizReveal()">I don't know — show the answer</button>`;
-  const check = checkFn ? `<button class="fight-btn quiz-check" onclick="${checkFn}()">Check</button>` : "";
+  const reveal = `<button class="quiz-reveal" onclick="quizReveal()">Ich weiß es nicht — Lösung zeigen</button>`;
+  const check = checkFn ? `<button class="fight-btn quiz-check" onclick="${checkFn}()">Prüfen</button>` : "";
   return `${check}${reveal}`;
 }
 
@@ -2299,22 +2299,22 @@ function renderUpgradeFull() {
   const canHp = state.gold >= hpCost;
   app.innerHTML = `
     <div class="screen upgrade-screen">
-      <h1>Your Arsenal</h1>
-      <p class="gold-big"><span class="coin">◈</span> ${state.gold} gold</p>
+      <h1>Dein Arsenal</h1>
+      <p class="gold-big"><span class="coin">◈</span> ${state.gold} Gold</p>
       <div class="upg-cards">
         <button class="upg-card ${canDmg ? "" : "poor"}" onclick="buyDmg()">
-          <div class="upg-name">⚔ Attack</div>
-          <div class="upg-stat">${state.heroDmg} → ${state.heroDmg + CONFIG.dmgPerLevel} dmg</div>
+          <div class="upg-name">⚔ Angriff</div>
+          <div class="upg-stat">${state.heroDmg} → ${state.heroDmg + CONFIG.dmgPerLevel} Schaden</div>
           <div class="upg-cost"><span class="coin">◈</span> ${dmgCost}</div>
         </button>
         <button class="upg-card ${canHp ? "" : "poor"}" onclick="buyHp()">
-          <div class="upg-name">✚ Vitality</div>
-          <div class="upg-stat">${state.heroMaxHP} → ${state.heroMaxHP + CONFIG.hpPerLevel} max HP</div>
+          <div class="upg-name">✚ Vitalität</div>
+          <div class="upg-stat">${state.heroMaxHP} → ${state.heroMaxHP + CONFIG.hpPerLevel} max. LP</div>
           <div class="upg-cost"><span class="coin">◈</span> ${hpCost}</div>
         </button>
       </div>
-      <p class="upg-hp">Build: ${state.heroMaxHP} HP · ${state.heroDmg} DMG</p>
-      <button class="fight-btn next-wave-btn" onclick="startRun()">Begin Run →</button>
+      <p class="upg-hp">Aufbau: ${state.heroMaxHP} LP · ${state.heroDmg} Schaden</p>
+      <button class="fight-btn next-wave-btn" onclick="startRun()">Lauf starten →</button>
     </div>`;
 }
 
@@ -2463,9 +2463,9 @@ function renderCombatFull() {
       <div class="scene-wrap"><canvas class="scene" id="scene"></canvas></div>
       <div class="hud-under">
         <div class="hero-hud">
-          <div class="bar-label">HERO <span id="hero-hp-text"></span></div>
+          <div class="bar-label">HELD <span id="hero-hp-text"></span></div>
           <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
-          <div class="bar-sub">⚔ ${state.heroDmg} DMG</div>
+          <div class="bar-sub">⚔ ${state.heroDmg} Schaden</div>
         </div>
         <div class="enemy-hud">
           <div class="bar-label" id="wave-label"></div>
@@ -2492,10 +2492,10 @@ function patchCombatContinuous(now) {
   if (!root) return;
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
-  document.getElementById("mode-label").textContent = `MODE: ${MODE_LABELS[state.mode]} — tap to change`;
+  document.getElementById("mode-label").textContent = `MODUS: ${MODE_LABELS[state.mode]} — zum Wechseln tippen`;
   document.getElementById("hero-hp-text").textContent = `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}`;
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
-  document.getElementById("wave-label").innerHTML = `WAVE ${state.wave} · SKELETON <span>${Math.ceil(state.enemyHP)} / ${state.enemyMaxHP}</span>`;
+  document.getElementById("wave-label").innerHTML = `WELLE ${state.wave} · SKELETT <span>${Math.ceil(state.enemyHP)} / ${state.enemyMaxHP}</span>`;
   document.getElementById("enemy-hp-fill").style.width = (100 * state.enemyHP / state.enemyMaxHP).toFixed(1) + "%";
 
   const windupPct = Math.max(0, Math.min(1, state.windup));
@@ -2514,20 +2514,20 @@ function patchCombatContinuous(now) {
   if (selected) {
     if (state.mode === "SLOW_MO") {
       veilClass += " slowmo"; chipClass += " warped"; trackClass += " warp-slow";
-      chipText = `TIME ×${CONFIG.slowMoFactor}`;
+      chipText = `ZEIT ×${CONFIG.slowMoFactor}`;
     } else if (state.mode === "FREEZE") {
       veilClass += " freeze"; chipClass += " warped"; trackClass += " warp-freeze";
-      chipText = "TIME FROZEN";
+      chipText = "ZEIT ANGEHALTEN";
     } else {
       chipClass += " rt";
-      chipText = "TIME ×1 — STILL WINDING UP!";
+      chipText = "ZEIT ×1 — LÄDT WEITER AUF!";
     }
   } else if (state.mode === "SLOW_MO") {
     chipClass += " idle";
-    chipText = "hold a rune to slow time";
+    chipText = "Rune halten, um die Zeit zu verlangsamen";
   } else if (state.mode === "FREEZE") {
     chipClass += " idle";
-    chipText = "hold a rune to freeze time";
+    chipText = "Rune halten, um die Zeit anzuhalten";
   }
   veil.className = veilClass;
   chip.className = chipClass;
@@ -2599,11 +2599,11 @@ function renderEndFull() {
   const elapsed = ((performance.now() - state.runStartMs) / 1000).toFixed(0);
   app.innerHTML = `
     <div class="screen end-screen">
-      <h1 class="defeat">Defeat</h1>
-      <p>The horde overwhelmed you on <strong>Wave ${state.lastWaveReached}</strong></p>
-      <p class="dim">${elapsed}s survived &middot; ${state.wrongMatchCount} mismatches</p>
-      <p class="end-flavor">Study your vocabulary to grow stronger for the next run.</p>
-      <button class="fight-btn study-btn" onclick="goToQuiz()">Study &amp; Earn Gold →</button>
+      <h1 class="defeat">Niederlage</h1>
+      <p>Die Horde hat dich in <strong>Welle ${state.lastWaveReached}</strong> überwältigt</p>
+      <p class="dim">${elapsed}s überlebt &middot; ${state.wrongMatchCount} Fehler</p>
+      <p class="end-flavor">Lerne deine Vokabeln, um für den nächsten Lauf stärker zu werden.</p>
+      <button class="fight-btn study-btn" onclick="goToQuiz()">Lernen &amp; Gold verdienen →</button>
     </div>`;
 }
 
