@@ -1356,6 +1356,19 @@ function runePoint(px, py, scale) {
   return { x: cx + rx * scale * Math.cos(a), y: cy + ry * scale * Math.sin(a) };
 }
 
+// Map an *interior* arena point onto the disc proportionally (radius kept, not
+// just angle) so a line being drawn across the circle mirrors faithfully on the
+// disc. The normalized radius is clamped so a pointer flung past the rim stays
+// on the staff's reach.
+function runePointXY(px, py, scale = 1) {
+  const { cx, cy, rx, ry } = scene.rune;
+  let nx = (px - CONFIG.circleCenter.x) / CONFIG.circleRadius;
+  let ny = (py - CONFIG.circleCenter.y) / CONFIG.circleRadius;
+  const r = Math.hypot(nx, ny);
+  if (r > 1.1) { nx = (nx / r) * 1.1; ny = (ny / r) * 1.1; }
+  return { x: cx + nx * rx * scale, y: cy + ny * ry * scale };
+}
+
 // A 1px line with an additive glow: soft passes offset around the core line
 function pixLineGlow(ctx, x0, y0, x1, y1, core, glowRGB) {
   ctx.save();
@@ -1461,9 +1474,14 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   ctx.restore();
 }
 
-// Compose and draw the staff for the current frame. The pose is derived from
-// the cast/trace state: `raise` swings the gem from upright toward the rune
-// disc, `glow` charges it, and `thrust` lunges it at the enemy on release.
+// Smoothed gem position, persisted between frames so the tip eases toward its
+// target instead of snapping — this is what makes the trace read as deliberate.
+let staffTip = null;
+
+// Compose and draw the staff for the current frame. On standby it stands
+// upright; while the player drags a pair the gem follows the forming line so
+// the tip literally draws the stroke in the direction being dragged; during a
+// cast it lifts into the rune disc, blazes, then jabs at the enemy on release.
 function drawWizardStaff(ctx, now) {
   if (!scene) return;
   const wiz = SHEET.wizardIdle;
@@ -1471,49 +1489,56 @@ function drawWizardStaff(ctx, now) {
   const sway = Math.sin(now / 620);
   const hx = scene.wizard.x + wiz.w - 4;
   const hy = scene.wizard.y + 13;
-  // upright rest pose: gem stands above his hat, tip drifting with the sway
-  const restTip = { x: hx + 3 + sway * 0.8, y: hy - 17 };
-  // raised pose: gem hovers just above the rune disc it is tracing
-  const target = { x: scene.rune.cx, y: scene.rune.cy - 4 };
+  // standby: the staff stands upright, gem above the hat, drifting with the sway
+  const uprightTip = { x: hx + 1 + sway * 0.6, y: hy - 18 };
 
-  let raise = 0, glow = 0, thrust = 0, traceTarget = null;
+  let target = uprightTip, glow = 0, thrust = 0, smooth = 0.25, formA = null;
+
   if (state.castAt) {
     const t = now - state.castAt;
     const charge = CONFIG.castChargeMs, puff = CONFIG.runePuffMs;
-    if (t < charge) {                       // charge: fully raised, gem winds up
-      raise = 1; glow = 0.55 + 0.45 * (t / charge);
+    const discTop = { x: scene.rune.cx, y: scene.rune.cy - 4 };
+    if (t < charge) {                       // charge: lift into the disc, wind up
+      target = discTop; glow = 0.55 + 0.45 * (t / charge); smooth = 0.4;
     } else if (t < charge + puff) {         // release: jab toward the enemy
       const q = (t - charge) / puff;
-      raise = 1; glow = 1 - q * 0.4; thrust = Math.sin(q * Math.PI);
+      target = discTop; glow = 1 - q * 0.4; thrust = Math.sin(q * Math.PI); smooth = 0.6;
     } else {                                // recover: settle, gem fades
-      raise = 1; glow = Math.max(0, 1 - (t - charge - puff) / 220);
+      target = discTop; glow = Math.max(0, 1 - (t - charge - puff) / 220); smooth = 0.45;
     }
-  } else if (state.screen === "combat") {
-    const chords = state.chords || [];
-    const prog = chords.length / CONFIG.pairsPerLoadout;
-    raise = 0.15 + 0.6 * prog;
-    glow = 0.18 + 0.5 * prog;
-    // a freshly traced chord snaps the gem to that stroke and flares it
-    const last = chords[chords.length - 1];
-    if (last && now - last.addedAt < 280) {
-      const q = 1 - (now - last.addedAt) / 280;
-      raise = Math.min(1, raise + 0.35 * q);
-      glow = Math.min(1, glow + 0.55 * q);
-      traceTarget = runePoint((last.x1 + last.x2) / 2, (last.y1 + last.y2) / 2, 1);
+  } else if (
+    state.screen === "combat" && state.dragActive &&
+    state.selectedRuneId !== null && state.dragPointer
+  ) {
+    // active trace: the tip rides the drawn line from the held rune toward the
+    // pointer, so it traces the exact stroke in the direction the player draws
+    const anchor = state.runes.find((r) => r.id === state.selectedRuneId);
+    if (anchor) {
+      formA = runePointXY(anchor.x, anchor.y);
+      target = runePointXY(state.dragPointer.x, state.dragPointer.y);
+      const drawn = Math.hypot(target.x - formA.x, target.y - formA.y);
+      glow = 0.35 + Math.min(0.55, (drawn / 13) * 0.55);
+      smooth = 0.2; // eased, so the tip trails the pointer for a deliberate trace
     }
-  } else {
-    raise = 0.05; glow = 0; // menus/idle: staff nearly upright, dark gem
+  }
+  // else: standby / menus — staff stays upright with a dark gem
+
+  // lunge offsets the reach toward the enemy on cast release
+  if (thrust) target = { x: target.x + thrust * 7, y: target.y + thrust * 1 };
+
+  if (!staffTip) staffTip = { x: uprightTip.x, y: uprightTip.y };
+  staffTip.x += (target.x - staffTip.x) * smooth;
+  staffTip.y += (target.y - staffTip.y) * smooth;
+  const tx = staffTip.x, ty = staffTip.y;
+
+  // the stroke the tip is drawing: anchor node → current gem position
+  if (formA) {
+    const c = CONFIG.colors.sceneRune;
+    pixLineGlow(ctx, Math.round(formA.x), Math.round(formA.y), Math.round(tx), Math.round(ty), c.line, c.glowRGB);
   }
 
-  let tx = restTip.x + (target.x - restTip.x) * raise;
-  let ty = restTip.y + (target.y - restTip.y) * raise;
-  if (traceTarget) { tx += (traceTarget.x - tx) * 0.6; ty += (traceTarget.y - ty) * 0.6; }
-  // lunge: hand eases forward and the gem drives toward the enemy
-  const gx = hx + thrust * 2;
-  const gy = hy - thrust * 1;
-  tx += thrust * 7; ty += thrust * 1;
-
-  // shaft stops one pixel short so the gem caps it cleanly
+  const gx = hx + thrust * 2, gy = hy - thrust * 1;
+  // shaft stops just short so the gem caps it cleanly
   const dx = tx - gx, dy = ty - gy, len = Math.hypot(dx, dy) || 1;
   const sx = tx - (dx / len) * 1.5, sy = ty - (dy / len) * 1.5;
   drawStaffShaft(ctx, gx, gy, sx, sy);
