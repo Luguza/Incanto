@@ -7,7 +7,8 @@ of runes to cast fireballs at an endless horde of skeletons.
 arrive in waves, each stronger than the last, until you inevitably die. Then
 you study a short vocabulary quiz to earn gold, spend it on permanent Attack
 and Vitality upgrades, and begin a stronger run. Build and gold persist
-between runs (a session only — there is no saved data).
+between runs and are saved to the browser's `localStorage`, so progress
+carries across reloads and sessions (a hard reset with `R` wipes it).
 
 **Play:** https://luguza.github.io/Incanto/
 
