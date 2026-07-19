@@ -167,6 +167,9 @@
     min-height: 0;
     width: 100%;
     display: block;
+    /* Runes are dragged with the pointer — don't let a drag scroll/pan the page */
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
   }
   /* The static arcane wheel is a baked high-fidelity image; live SVG on top
      draws only what changes: word bubbles, chords, filigree, sparks, and the
@@ -195,6 +198,13 @@
   }
   .rune.selected text { fill: #ffe9b0; }
   .rune.matched text { fill: #b9f2d2; }
+  /* The line trailing from a held rune to the pointer while dragging a pair */
+  .drag-line {
+    stroke: #ffe9b0; stroke-width: 3; stroke-linecap: round;
+    stroke-dasharray: 6 8; opacity: 0; pointer-events: none;
+    filter: url(#softGlow);
+  }
+  .drag-line.active { opacity: 0.85; }
   .chord-glow { stroke: #4de3e0; stroke-width: 9; stroke-linecap: round; opacity: 0.3; }
   .chord { stroke: #8ff7f3; stroke-width: 3.5; stroke-linecap: round; }
   .chord.flash { stroke: #ffffff; stroke-width: 6; }
@@ -704,6 +714,10 @@ function freshState() {
     mode: "REAL_TIME",
     runes: [],               // {id, pairId, lang, word, x, y, matchState}
     selectedRuneId: null,
+    // Drag-to-connect: press a rune, drag to its pair, release to match.
+    dragActive: false,       // a pointer drag is in progress
+    dragMoved: false,        // the pointer moved past the tap threshold since pressing
+    dragPointer: null,       // {x, y} pointer position in SVG (viewBox) coords, for the live line
     chords: [],              // {x1,y1,x2,y2,pairId}
     currentPairs: [],
     // Hero: an HP pool (no discrete hearts) that upgrades persist across waves
@@ -1902,13 +1916,16 @@ function renderCombatFull() {
   const runesHtml = state.runes
     .map(
       (r) => `
-    <g class="rune ${r.matchState}" onclick="handleRuneClick(${r.id})">
+    <g class="rune ${r.matchState}" data-id="${r.id}">
       <circle class="halo" cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius + 7}" filter="url(#glow)"></circle>
       <circle class="body" cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius}"></circle>
       <text x="${r.x}" y="${r.y}">${r.word}</text>
     </g>`
     )
     .join("");
+
+  // Live line that follows the pointer while dragging a rune toward its pair.
+  const dragLineHtml = `<line id="drag-line" class="drag-line" x1="0" y1="0" x2="0" y2="0"></line>`;
 
   const arenaDefs = `
     <defs>
@@ -1961,6 +1978,7 @@ function renderCombatFull() {
       <svg class="arena" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
         ${arenaDefs}
         ${chordsHtml}
+        ${dragLineHtml}
         ${runesHtml}
       </svg>
     </div>`;
@@ -2018,6 +2036,23 @@ function patchCombatContinuous(now) {
   const shapeFlashActive = now < state.shapeFlashUntil;
   document.querySelectorAll(".chord, .chord-glow").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
 
+  // Drag-to-connect: while a rune is held, draw a line from it to the pointer.
+  const dragLine = document.getElementById("drag-line");
+  if (dragLine) {
+    const anchor = state.dragActive && state.selectedRuneId !== null
+      ? state.runes.find((r) => r.id === state.selectedRuneId)
+      : null;
+    if (anchor && state.dragPointer) {
+      dragLine.setAttribute("x1", anchor.x);
+      dragLine.setAttribute("y1", anchor.y);
+      dragLine.setAttribute("x2", state.dragPointer.x.toFixed(1));
+      dragLine.setAttribute("y2", state.dragPointer.y.toFixed(1));
+      dragLine.classList.add("active");
+    } else {
+      dragLine.classList.remove("active");
+    }
+  }
+
   // Background hum: the cyan glow behind the circle breathes slowly, and the
   // band's glow layers breathe with it
   const hum = 0.72 + 0.28 * Math.sin(now / 900);
@@ -2072,6 +2107,97 @@ function renderEndFull() {
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
+
+// Rune input — the primary gesture is drag-to-connect: press a rune, drag the
+// glowing thread onto its pair, release to attempt the match. Tapping still
+// arms a rune, so the older two-tap flow keeps working as a fallback. Handlers
+// are delegated off document/window so they survive the SVG being rebuilt.
+const DRAG_MOVE_THRESHOLD = 6; // px of pointer travel before a press counts as a drag
+let dragStartClient = null;
+
+function clientToArena(clientX, clientY) {
+  const svg = document.querySelector("svg.arena");
+  const ctm = svg && svg.getScreenCTM ? svg.getScreenCTM() : null;
+  if (!ctm) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = clientX; pt.y = clientY;
+  const p = pt.matrixTransform(ctm.inverse());
+  return { x: p.x, y: p.y };
+}
+
+function runeIdAtPoint(clientX, clientY) {
+  const el = document.elementFromPoint(clientX, clientY);
+  const g = el && el.closest ? el.closest(".rune") : null;
+  if (!g || g.dataset.id === undefined) return null;
+  return Number(g.dataset.id);
+}
+
+function onRunePointerDown(e) {
+  if (state.screen !== "combat") return;
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  const id = runeIdAtPoint(e.clientX, e.clientY);
+  if (id === null) return;
+  const rune = state.runes.find((r) => r.id === id);
+  if (!rune || rune.matchState === "matched") return;
+
+  e.preventDefault();
+
+  // A different rune is already armed → this press is the second selection;
+  // resolve the match immediately (classic two-tap) without starting a drag.
+  if (state.selectedRuneId !== null && state.selectedRuneId !== id) {
+    handleRuneClick(id);
+    return;
+  }
+
+  // Otherwise begin dragging from this rune, arming it first if needed.
+  if (state.selectedRuneId === null) handleRuneClick(id);
+  state.dragActive = true;
+  state.dragMoved = false;
+  state.dragPointer = { x: rune.x, y: rune.y };
+  dragStartClient = { x: e.clientX, y: e.clientY };
+  const svg = document.querySelector("svg.arena");
+  if (svg && svg.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch (_) {} }
+}
+
+function onRunePointerMove(e) {
+  if (!state.dragActive) return;
+  if (dragStartClient) {
+    const dx = e.clientX - dragStartClient.x;
+    const dy = e.clientY - dragStartClient.y;
+    if (dx * dx + dy * dy > DRAG_MOVE_THRESHOLD * DRAG_MOVE_THRESHOLD) state.dragMoved = true;
+  }
+  const p = clientToArena(e.clientX, e.clientY);
+  if (p) state.dragPointer = p;
+}
+
+function onRunePointerUp(e) {
+  if (!state.dragActive) return;
+  state.dragActive = false;
+  state.dragPointer = null;
+  const from = state.selectedRuneId;
+  if (from === null) return;
+
+  const target = runeIdAtPoint(e.clientX, e.clientY);
+  if (target !== null && target !== from) {
+    handleRuneClick(target);            // resolve the match against the armed rune
+  } else if (state.dragMoved) {
+    handleRuneClick(from);              // dragged off and released → cancel the arm
+  }
+  // A tap with no real movement leaves the rune armed so a second tap can match.
+}
+
+function onRunePointerCancel() {
+  if (!state.dragActive) return;
+  state.dragActive = false;
+  state.dragPointer = null;
+  if (state.dragMoved && state.selectedRuneId !== null) handleRuneClick(state.selectedRuneId);
+}
+
+document.addEventListener("pointerdown", onRunePointerDown);
+window.addEventListener("pointermove", onRunePointerMove);
+window.addEventListener("pointerup", onRunePointerUp);
+window.addEventListener("pointercancel", onRunePointerCancel);
+
 window.addEventListener("resize", () => {
   scene = null; // re-measure and rebuild the scene at the new integer scale
 });
