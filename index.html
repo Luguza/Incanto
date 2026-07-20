@@ -1549,6 +1549,16 @@ function drawWizardStaff(ctx, now) {
       smooth = 0.2; // eased, so the gem trails the pointer for a deliberate trace
       active = 1;
     }
+  } else if (state.screen === "combat" && state.selectedRuneId !== null) {
+    // tap-tap mode: a rune is armed but there's no drag — point the staff at the
+    // armed rune, gem lit, waiting for the second tap to complete the pair
+    const held = state.runes.find((r) => r.id === state.selectedRuneId);
+    if (held) {
+      target = runePointXY(held.x, held.y);
+      glow = 0.5;
+      smooth = 0.22;
+      active = 1;
+    }
   }
   // else: standby / menus — staff rests grounded beside the wizard
 
