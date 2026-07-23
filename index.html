@@ -41,7 +41,10 @@
     overscroll-behavior: none;
     touch-action: manipulation;
   }
-  #app { width: 100%; height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center; }
+  /* The viewport is split vertically: the active phase fills #app, the phase
+     switcher (.bottom-nav) is a fixed-height panel pinned under it. */
+  body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+  #app { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
   .screen { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
 
   /* Loadout screen */
@@ -333,10 +336,43 @@
   .end-screen .end-flavor { color: #b9b3c8; margin: 18px auto 24px; max-width: 320px; }
   .study-btn { background: linear-gradient(180deg, #7ff0ed, #4de3e0); box-shadow: 0 0 24px rgba(77, 227, 224, 0.3); }
   .end-screen .hint { margin-top: 24px; color: #8a8398; }
+
+  /* Bottom phase-switcher: one flush panel across the whole bottom edge with
+     three equal, text-free pixel-art buttons — study · forge · combat. */
+  .bottom-nav {
+    flex: 0 0 auto;
+    display: flex; width: 100%;
+    background: #17131e;
+    border-top: 1px solid #3a3550;
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    z-index: 5;
+  }
+  .nav-btn {
+    flex: 1 1 0; min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: none; outline: none;
+    padding: 9px 0; min-height: 58px; cursor: pointer;
+    border-right: 1px solid #2a2436;
+    transition: background 120ms linear;
+  }
+  .nav-btn:last-child { border-right: none; }
+  .nav-btn:active { background: #2a2138; }
+  .nav-btn.active { background: #211a2e; box-shadow: inset 0 2px 0 #4de3e0; }
+  .nav-icon {
+    width: 32px; height: 32px; display: block;
+    image-rendering: pixelated;
+    opacity: 0.45;
+    transition: opacity 120ms linear, filter 120ms linear;
+  }
+  .nav-btn:active .nav-icon { opacity: 0.8; }
+  .nav-btn.active .nav-icon { opacity: 1; filter: drop-shadow(0 0 5px rgba(127, 244, 241, 0.55)); }
 </style>
 </head>
 <body>
 <div id="app"></div>
+<nav id="bottom-nav" class="bottom-nav" aria-label="Phasenwechsel"></nav>
 <script>
 "use strict";
 
@@ -835,6 +871,7 @@ let state = null;
 function freshState() {
   return {
     screen: "combat",       // combat | quiz | upgrade | defeat
+    runActive: false,       // a combat run is live (used by the bottom nav to resume vs. restart)
     runes: [],               // {id, pairId, lang, word, x, y, matchState}
     selectedRuneId: null,
     // Drag-to-connect: press a rune, drag to its pair, release to match.
@@ -987,6 +1024,7 @@ function startRun() {
   state.heroHP = state.heroMaxHP;
   state.wrongMatchCount = 0;
   state.runStartMs = performance.now();
+  state.runActive = true;
   state.screen = "combat";
   startWave(1);
 }
@@ -2026,6 +2064,7 @@ function hitPlayer(n) {
   state.heroHP = Math.max(0, state.heroHP - n);
   if (state.heroHP <= 0 && state.screen === "combat") {
     state.lastWaveReached = state.wave;
+    state.runActive = false;   // run is over — the combat nav will start a fresh one
     state.screen = "defeat";
   }
 }
@@ -2427,6 +2466,7 @@ function render(now) {
       builtScreen = state.screen;
     }
   }
+  updateNav();
 }
 
 // The post-death vocab quiz — a mixed session of Duolingo-style exercises.
@@ -2879,6 +2919,149 @@ function renderEndFull() {
 }
 
 // ---------------------------------------------------------------------------
+// Bottom phase-switcher — a persistent, text-free panel of three pixel-art
+// buttons (study · forge · combat) that lets the player jump between the three
+// phases at will. Icons are hand-placed pixel grids rendered as crisp <rect>
+// cells so no fonts or glyphs are involved.
+// ---------------------------------------------------------------------------
+const NAV_PIX = {
+  o: "#10151a", // outline / spine
+  p: "#f2ead0", // book parchment
+  g: "#c9a24a", // gold (book line, sword fittings)
+  c: "#4de3e0", // book teal cover
+  s: "#b8c0cc", // anvil steel
+  h: "#e6ecf3", // anvil top highlight
+  d: "#6f7a88", // anvil dark steel
+  b: "#e4ebf3", // sword blade
+  w: "#8a5a2b", // staff wood
+  t: "#7ff0ed", // staff gem
+};
+
+// Open book — the "study" phase.
+const NAV_BOOK = [
+  "................",
+  "................",
+  "..oooooooooooo..",
+  "..oppppooppppo..",
+  "..opggpoopggpo..",
+  "..oppppooppppo..",
+  "..opggpoopggpo..",
+  "..oppppooppppo..",
+  "..opggpoopggpo..",
+  "..oppppooppppo..",
+  "..oooooooooooo..",
+  "..cccccccccccc..",
+  "...cccccccccc...",
+  "................",
+  "................",
+  "................",
+];
+
+// Anvil (Amboss) — the "upgrade / forge" phase.
+const NAV_ANVIL = [
+  "................",
+  "................",
+  "................",
+  "...hhhhhhhhhh...",
+  "...ssssssssss...",
+  ".ssssssssssss...",
+  "....dddddddd....",
+  ".......sss......",
+  ".......sss......",
+  ".......sss......",
+  "....ssssssss....",
+  "..ssssssssssss..",
+  "..dddddddddddd..",
+  "................",
+  "................",
+  "................",
+];
+
+// Staff crossed with a sword — the "combat" phase. Built on a grid so the two
+// diagonals can overlap cleanly (the sword is drawn over the staff).
+function navWeaponRows() {
+  const N = 16;
+  const g = Array.from({ length: N }, () => Array(N).fill("."));
+  const set = (x, y, ch) => { if (x >= 0 && x < N && y >= 0 && y < N) g[y][x] = ch; };
+  // Staff: wooden shaft running top-left → bottom-right, 2px thick.
+  for (let y = 4; y <= 13; y++) { set(y, y, "w"); set(y + 1, y, "w"); }
+  // Gem crowning the staff head.
+  set(2, 2, "t"); set(3, 2, "t"); set(2, 3, "t"); set(3, 3, "t");
+  // Sword blade: top-right → centre, 2px thick, laid over the staff at the cross.
+  for (let y = 2; y <= 10; y++) { set(14 - y, y, "b"); set(15 - y, y, "b"); }
+  // Sword guard, grip and pommel (gold) toward the bottom-left.
+  set(3, 10, "g");
+  set(3, 11, "g"); set(4, 11, "g");
+  set(2, 12, "g"); set(3, 12, "g");
+  set(2, 13, "g");
+  return g.map((row) => row.join(""));
+}
+
+function navPixSvg(rows) {
+  let cells = "";
+  for (let y = 0; y < rows.length; y++) {
+    const row = rows[y];
+    for (let x = 0; x < row.length; x++) {
+      const col = NAV_PIX[row[x]];
+      if (!col) continue;
+      cells += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col}"/>`;
+    }
+  }
+  return `<svg class="nav-icon" viewBox="0 0 ${rows[0].length} ${rows.length}" ` +
+    `xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" aria-hidden="true">${cells}</svg>`;
+}
+
+function renderNav() {
+  const nav = document.getElementById("bottom-nav");
+  if (!nav) return;
+  nav.innerHTML = `
+    <button class="nav-btn" data-phase="study" onclick="navTo('study')" aria-label="Studieren">${navPixSvg(NAV_BOOK)}</button>
+    <button class="nav-btn" data-phase="upgrade" onclick="navTo('upgrade')" aria-label="Schmiede">${navPixSvg(NAV_ANVIL)}</button>
+    <button class="nav-btn" data-phase="combat" onclick="navTo('combat')" aria-label="Kampf">${navPixSvg(navWeaponRows())}</button>`;
+}
+
+// Map the internal screen name to the phase the nav highlights.
+const NAV_PHASE_FOR_SCREEN = { quiz: "study", upgrade: "upgrade", combat: "combat" };
+
+let lastNavPhase = null;
+function updateNav() {
+  const phase = NAV_PHASE_FOR_SCREEN[state.screen] || null; // "defeat" highlights nothing
+  if (phase === lastNavPhase) return;
+  lastNavPhase = phase;
+  document.querySelectorAll("#bottom-nav .nav-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.phase === phase);
+  });
+}
+
+// Jump to a phase. Combat and study resume an in-progress session rather than
+// wiping it, so hopping away and back never costs the player their progress.
+function navTo(phase) {
+  if (!state) return;
+  if (phase === "study") {
+    if (state.screen === "quiz") return;
+    const quizInProgress = state.quizList.length > 0 && state.quizIndex < state.quizList.length;
+    if (quizInProgress) {
+      state.screen = "quiz";
+      state._structuralDirty = true;
+    } else {
+      goToQuiz();
+    }
+  } else if (phase === "upgrade") {
+    if (state.screen === "upgrade") return;
+    state.screen = "upgrade";
+    state._structuralDirty = true;
+  } else if (phase === "combat") {
+    if (state.screen === "combat") return;
+    if (state.runActive && state.heroHP > 0) {
+      state.screen = "combat";        // resume the live run right where it paused
+      state._structuralDirty = true;
+    } else {
+      startRun();                     // no run to resume → begin a fresh one
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
 
@@ -2987,6 +3170,7 @@ window.addEventListener("keydown", (e) => {
 // Bootstrap — you start straight in combat with the base build
 // ---------------------------------------------------------------------------
 newGame();
+renderNav();
 startRun();
 requestAnimationFrame(rafLoop);
 </script>
