@@ -72,14 +72,6 @@
     box-shadow: 0 0 24px rgba(242, 193, 78, 0.25);
   }
   .fight-btn:active { background: #ffd571; }
-  .mode-btn {
-    background: rgba(242, 193, 78, 0.07);
-    border: 1px solid rgba(242, 193, 78, 0.65); color: #f2c14e;
-    border-radius: 9px; padding: 10px 16px; font-weight: 700;
-    font-size: clamp(13px, 3.5vw, 16px); letter-spacing: 1px; cursor: pointer;
-  }
-  .mode-btn:active { background: rgba(242, 193, 78, 0.15); }
-  .loadout-screen .mode-btn { margin-top: 20px; }
 
   /* Combat screen — banner (fight) on top, rune circle filling the rest */
   .combat-screen {
@@ -116,11 +108,6 @@
   }
   .hero-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 40%; }
   .enemy-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; min-width: 40%; }
-  .combat-mode-row {
-    flex: 0 0 auto;
-    display: flex; justify-content: center;
-    padding: 8px 0;
-  }
   .bar-label {
     font-size: clamp(10px, 2.7vw, 13px); letter-spacing: 0.5px; color: #b9b3c8; font-weight: 700;
   }
@@ -144,23 +131,6 @@
     height: 100%; width: 0%;
     background: linear-gradient(90deg, #a83a49, #e5484d, #f2784e);
   }
-  .windup-track.warp-slow .windup-fill { background: linear-gradient(90deg, #3d6fb8, #4d9fff); }
-  .windup-track.warp-freeze .windup-fill { background: #4d9fff; }
-
-  /* Time-warp feedback while a rune is selected */
-  .time-veil {
-    position: absolute; inset: 0; pointer-events: none; z-index: 1;
-    opacity: 0; transition: opacity 120ms linear;
-  }
-  .time-veil.slowmo { opacity: 1; background: radial-gradient(ellipse at center, rgba(77, 159, 255, 0.05), rgba(77, 159, 255, 0.16)); }
-  .time-veil.freeze { opacity: 1; background: radial-gradient(ellipse at center, rgba(77, 159, 255, 0.10), rgba(77, 159, 255, 0.26)); }
-  .time-chip {
-    font-size: clamp(11px, 3vw, 13px); font-weight: 700; letter-spacing: 0.5px;
-    visibility: hidden; min-height: 1.2em;
-  }
-  .time-chip.rt { visibility: visible; color: #e5484d; }
-  .time-chip.warped { visibility: visible; color: #8fc2ff; }
-  .time-chip.idle { visibility: visible; color: #6d6684; font-weight: 600; }
 
   svg.arena {
     flex: 1 1 auto;
@@ -366,7 +336,6 @@
 // ---------------------------------------------------------------------------
 const CONFIG = {
   windupDurationMs: 8000,
-  slowMoFactor: 0.3,
   // Hero: small HP pool, starts weak, upgrades bought with gold
   heroBaseHP: 10,
   heroBaseDmg: 3,
@@ -447,8 +416,6 @@ const CONFIG = {
   },
 };
 
-const MODE_ORDER = ["REAL_TIME", "SLOW_MO", "FREEZE"];
-const MODE_LABELS = { REAL_TIME: "ECHTZEIT", SLOW_MO: "ZEITLUPE", FREEZE: "ZEITSTOPP" };
 
 // ---------------------------------------------------------------------------
 // Word pool — the A1 (beginner) Italian vocabulary, drawn in order and cycled.
@@ -855,7 +822,6 @@ let state = null;
 function freshState() {
   return {
     screen: "combat",       // combat | quiz | upgrade | defeat
-    mode: "REAL_TIME",
     runes: [],               // {id, pairId, lang, word, x, y, matchState}
     selectedRuneId: null,
     // Drag-to-connect: press a rune, drag to its pair, release to match.
@@ -918,9 +884,7 @@ function freshState() {
 }
 
 function newGame() {
-  const preservedMode = state ? state.mode : "REAL_TIME"; // DECISION: mode is a tester tool, preserved across restart
   state = freshState();
-  state.mode = preservedMode;
   applySavedProgress();
 }
 
@@ -2217,14 +2181,9 @@ function buyHp() {
 
 function logAttempt(correct, first, second, secondsAvailable) {
   console.log(
-    `[${new Date().toISOString()}] mode=${state.mode} pair="${first.word} / ${second.word}" ` +
+    `[${new Date().toISOString()}] pair="${first.word} / ${second.word}" ` +
     `result=${correct ? "correct" : "wrong"} availableFor=${secondsAvailable}s`
   );
-}
-
-function cycleMode() {
-  const idx = (MODE_ORDER.indexOf(state.mode) + 1) % MODE_ORDER.length;
-  state.mode = MODE_ORDER[idx];
 }
 
 function restart() {
@@ -2236,16 +2195,10 @@ function restart() {
 }
 
 // ---------------------------------------------------------------------------
-// Game loop — the only place mode/selection-dependent timing branches exist.
+// Game loop — combat always runs in real time.
 // ---------------------------------------------------------------------------
 function getEffectiveDt(rawDt) {
-  if (state.selectedRuneId === null) return rawDt; // idle time always runs at full speed, in all 3 modes
-  switch (state.mode) {
-    case "REAL_TIME": return rawDt;
-    case "SLOW_MO": return rawDt * CONFIG.slowMoFactor;
-    case "FREEZE": return 0;
-    default: return rawDt;
-  }
+  return rawDt;
 }
 
 let lastRafNow = null;
@@ -2687,12 +2640,7 @@ function renderCombatFull() {
           <div class="bar-label" id="wave-label"></div>
           <div class="hp-track enemy"><div class="hp-fill" id="enemy-hp-fill"></div></div>
           <div class="windup-track" id="windup-track"><div class="windup-fill" id="windup-fill"></div></div>
-          <div class="time-chip" id="time-chip"></div>
         </div>
-      </div>
-      <div class="time-veil" id="time-veil"></div>
-      <div class="combat-mode-row">
-        <button class="mode-btn" id="mode-label" onclick="cycleMode()"></button>
       </div>
       <svg class="arena" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
         ${arenaDefs}
@@ -2708,7 +2656,6 @@ function patchCombatContinuous(now) {
   if (!root) return;
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
-  document.getElementById("mode-label").textContent = `MODUS: ${MODE_LABELS[state.mode]} — zum Wechseln tippen`;
   document.getElementById("hero-hp-text").textContent = `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}`;
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
   document.getElementById("wave-label").innerHTML = `WELLE ${state.wave} · SKELETT <span>${Math.ceil(state.enemyHP)} / ${state.enemyMaxHP}</span>`;
@@ -2717,38 +2664,6 @@ function patchCombatContinuous(now) {
   const windupPct = Math.max(0, Math.min(1, state.windup));
   const fillEl = document.getElementById("windup-fill");
   if (fillEl) fillEl.style.width = (windupPct * 100).toFixed(2) + "%";
-
-  // Time-warp feedback: while a rune is selected, show what time is doing.
-  const selected = state.selectedRuneId !== null;
-  const veil = document.getElementById("time-veil");
-  const chip = document.getElementById("time-chip");
-  const track = document.getElementById("windup-track");
-  let veilClass = "time-veil";
-  let chipClass = "time-chip";
-  let chipText = "";
-  let trackClass = "windup-track";
-  if (selected) {
-    if (state.mode === "SLOW_MO") {
-      veilClass += " slowmo"; chipClass += " warped"; trackClass += " warp-slow";
-      chipText = `ZEIT ×${CONFIG.slowMoFactor}`;
-    } else if (state.mode === "FREEZE") {
-      veilClass += " freeze"; chipClass += " warped"; trackClass += " warp-freeze";
-      chipText = "ZEIT ANGEHALTEN";
-    } else {
-      chipClass += " rt";
-      chipText = "ZEIT ×1 — LÄDT WEITER AUF!";
-    }
-  } else if (state.mode === "SLOW_MO") {
-    chipClass += " idle";
-    chipText = "Rune halten, um die Zeit zu verlangsamen";
-  } else if (state.mode === "FREEZE") {
-    chipClass += " idle";
-    chipText = "Rune halten, um die Zeit anzuhalten";
-  }
-  veil.className = veilClass;
-  chip.className = chipClass;
-  chip.textContent = chipText;
-  track.className = trackClass;
 
   renderScene(now);
 
@@ -2922,9 +2837,7 @@ window.addEventListener("resize", () => {
 });
 
 window.addEventListener("keydown", (e) => {
-  if (e.key === "m" || e.key === "M") {
-    cycleMode();
-  } else if (e.key === "r" || e.key === "R") {
+  if (e.key === "r" || e.key === "R") {
     // Hard reset (wipes upgrades) — only from menus, never mid-combat
     if (state.screen !== "combat") restart();
   }
