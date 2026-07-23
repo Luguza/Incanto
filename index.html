@@ -406,8 +406,9 @@ const CONFIG = {
   // its attack timer keeps ticking and it lands hits at a steady cadence (constant DPS).
   staggerOnCast: false,
   wrongFlashDurationMs: 200,
-  runeFlashDurationMs: 460,  // how long the rune circle glows red before it dissolves + re-deals
-  heroBlastMs: 520,          // duration of the harmful explosion that bursts around the hero
+  runeFlashDurationMs: 820,  // how long the rune circle glows red before it dissolves + re-deals
+  heroBlastMs: 820,          // duration of the harmful explosion that bursts around the hero
+  heroKnockback: 13,         // px the hero is shoved back (toward the wall) at the blast's peak
   shapeFlashDurationMs: 500,
   fireballFlightMs: 450,
   fireballImpactMs: 280,
@@ -1427,12 +1428,28 @@ function renderScene(now) {
   // Fighters: the sheet's own 4-frame idle animations, out of phase
   const wf = Math.floor(now / 160) % ASSETS.wizard.length;
   const sf = Math.floor(now / 160 + 2) % ASSETS.skelet.length;
+
+  // Blast recoil: a mis-cast explosion shoves the hero back toward the wall and
+  // lifts them off their feet, then they spring home. The grounding shadow above
+  // stays planted so the hop reads as leaving the floor. Staff + body move as one.
+  let hkx = 0, hky = 0;
+  if (now < state.heroBlastUntil) {
+    const q = 1 - (state.heroBlastUntil - now) / CONFIG.heroBlastMs; // 0 → 1
+    // snap back hard, then ease home (eased return so the spring feels weighty)
+    const recoil = q < 0.16 ? q / 0.16 : Math.pow(1 - (q - 0.16) / 0.84, 1.7);
+    hkx = -recoil * CONFIG.heroKnockback;                 // shoved toward the wall
+    hky = -recoil * CONFIG.heroKnockback * 0.45;           // and briefly off the ground
+  }
+
+  ctx.save();
+  ctx.translate(Math.round(hkx), Math.round(hky));
   // The staff is drawn BEHIND the wizard so the shaft is occluded by his body
   // and only the gem end pokes out. At rest it stands upright; while
   // tracing/casting the gem rides out to the rune disc, then jabs on launch.
   drawWizardStaff(ctx, now);
 
   ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
+  ctx.restore();
 
   // Skeleton: walks in from the right on a new wave, fades out on death
   let exOff = 0, eAlpha = 1;
@@ -1543,28 +1560,28 @@ function drawHeroBackfire(ctx, now) {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
 
-  // --- 1. The disc shatters (first ~60%): a red flash, then the six nodes fly
-  //        apart with cracks snapping between them as the magic comes undone. ---
-  const shatter = Math.min(1, q / 0.6);
+  // --- 1. The disc shatters (first ~55%): a red flash, then the six nodes are
+  //        hurled apart with cracks snapping between them as the magic tears. ---
+  const shatter = Math.min(1, q / 0.55);
   if (shatter < 1) {
     const fade = 1 - shatter;
-    // red flash filling the disc, swelling as it lets go
-    ctx.fillStyle = `rgba(255, 74, 80, ${(fade * 0.5).toFixed(3)})`;
-    const RY = Math.round(ry * 1.4 * (1 + shatter * 0.5));
-    const RX = rx * 1.4 * (1 + shatter * 0.5);
+    // red flash filling the disc, swelling hard as it lets go
+    ctx.fillStyle = `rgba(255, 74, 80, ${(fade * 0.6).toFixed(3)})`;
+    const RY = Math.round(ry * 1.6 * (1 + shatter));
+    const RX = rx * 1.6 * (1 + shatter);
     for (let dy = -RY; dy <= RY; dy++) {
       const s = dy / (RY + 0.5);
       const hw = Math.round(RX * Math.sqrt(Math.max(0, 1 - s * s)));
       ctx.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2, 1);
     }
-    // the six nodes explode outward and rain down over the wizard
+    // the six nodes explode outward and rain down over the hero
     const nodes = [];
     for (let i = 0; i < CONFIG.runeCount; i++) {
       const a = -Math.PI / 2 + (i * 2 * Math.PI) / CONFIG.runeCount;
-      const spread = shatter * 20;
+      const spread = shatter * 34;
       nodes.push({
         x: cx + (rx + spread) * Math.cos(a),
-        y: cy + (ry + spread) * Math.sin(a) + shatter * shatter * 10, // gravity toward him
+        y: cy + (ry + spread) * Math.sin(a) + shatter * shatter * 16, // gravity toward them
       });
     }
     // jagged red cracks between neighbours, snapping as they separate
@@ -1573,29 +1590,38 @@ function drawHeroBackfire(ctx, now) {
       const p1 = nodes[i], p2 = nodes[(i + 1) % nodes.length];
       pixLine(ctx, Math.round(p1.x), Math.round(p1.y), Math.round(p2.x), Math.round(p2.y));
     }
-    // bright shards at each node
-    ctx.fillStyle = `rgba(255, 200, 150, ${fade.toFixed(3)})`;
-    for (const p of nodes) ctx.fillRect(Math.round(p.x) - 1, Math.round(p.y) - 1, 3, 3);
+    // bright shards flung off each node
+    ctx.fillStyle = `rgba(255, 210, 160, ${fade.toFixed(3)})`;
+    for (const p of nodes) ctx.fillRect(Math.round(p.x) - 2, Math.round(p.y) - 2, 4, 4);
   }
 
-  // --- 2. The blast blooms around the hero (from ~20% on): a hot core, an
-  //        expanding red shock ring, and embers flung outward. ---
-  const blast = Math.max(0, (q - 0.2) / 0.8);
+  // --- 2. The blast blooms around the hero (from ~15% on): a white-hot core,
+  //        two expanding red shock rings, and a spray of embers. ---
+  const blast = Math.max(0, (q - 0.15) / 0.85);
   if (blast > 0) {
-    ctx.fillStyle = `rgba(255, 176, 120, ${((1 - blast) * 0.5).toFixed(2)})`;
+    // white-hot core flash
+    ctx.fillStyle = `rgba(255, 236, 200, ${((1 - blast) * 0.7).toFixed(2)})`;
     ctx.beginPath();
-    ctx.arc(hx, hy, Math.max(0, 13 * (1 - blast)), 0, Math.PI * 2);
+    ctx.arc(hx, hy, Math.max(0, 22 * (1 - blast)), 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = `rgba(255, 68, 74, ${((1 - blast) * 0.9).toFixed(2)})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(hx, hy, 4 + blast * 26, 0, Math.PI * 2);
-    ctx.stroke();
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2 + blast * 1.2;
-      const d = blast * (14 + (i % 3) * 8);
-      ctx.fillStyle = `rgba(255, ${90 + (i % 4) * 28}, 60, ${((1 - blast) * 0.9).toFixed(2)})`;
-      ctx.fillRect(Math.round(hx + Math.cos(a) * d), Math.round(hy + Math.sin(a) * d), 2, 2);
+    // two shock rings, the second trailing the first
+    for (const [off, w, aMul] of [[0, 3, 1], [-0.22, 2, 0.6]]) {
+      const b = blast + off;
+      if (b <= 0 || b >= 1) continue;
+      ctx.strokeStyle = `rgba(255, 68, 74, ${((1 - b) * 0.9 * aMul).toFixed(2)})`;
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 5 + b * 46, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // embers flung outward, some larger
+    const N = 18;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + blast * 1.4;
+      const d = blast * (24 + (i % 4) * 11);
+      ctx.fillStyle = `rgba(255, ${90 + (i % 4) * 30}, 60, ${((1 - blast) * 0.95).toFixed(2)})`;
+      const s = i % 3 === 0 ? 3 : 2;
+      ctx.fillRect(Math.round(hx + Math.cos(a) * d), Math.round(hy + Math.sin(a) * d), s, s);
     }
   }
 
