@@ -168,6 +168,15 @@
   }
   .rune.selected text { fill: #ffe9b0; }
   .rune.matched text { fill: #b9f2d2; }
+  /* Wrong pair: the whole rune circle flares red for a beat before it re-deals.
+     Higher specificity than the per-state rules above so every rune goes red. */
+  #wheel-img { transition: filter 120ms linear; }
+  .combat-screen.rune-flash #wheel-img { filter: sepia(1) saturate(7) hue-rotate(-22deg) brightness(1.05); }
+  .combat-screen.rune-flash .rune .body { fill: rgba(229, 72, 77, 0.34); stroke: #ff6470; stroke-width: 2.5; }
+  .combat-screen.rune-flash .rune text { fill: #ffdadf; }
+  .combat-screen.rune-flash .rune .halo { opacity: 0.55; fill: #ff5560; }
+  .combat-screen.rune-flash .chord,
+  .combat-screen.rune-flash .chord-glow { stroke: #ff6470; }
   /* The line trailing from a held rune to the pointer while dragging a pair */
   .drag-line {
     stroke: #ffe9b0; stroke-width: 3; stroke-linecap: round;
@@ -357,7 +366,7 @@ const CONFIG = {
   enemyHPGrowth: 1.45,
   enemyBaseDmg: 6,
   enemyDmgGrowth: 1.3,
-  wrongMatchDmgFactor: 0.5, // wrong match costs this fraction of enemy damage
+  wrongPenaltyFraction: 0.2, // a wrong match backfires for this fraction of the hero's MAX HP
   enemyEnterMs: 900,
   enemyDeathMs: 600,
   runeCount: 6,
@@ -366,6 +375,10 @@ const CONFIG = {
   // its attack timer keeps ticking and it lands hits at a steady cadence (constant DPS).
   staggerOnCast: false,
   wrongFlashDurationMs: 200,
+  runeFlashDurationMs: 820,  // how long the rune circle glows red before it dissolves + re-deals
+  heroBlastMs: 820,          // total length of the mis-cast backfire (break + explosion)
+  heroBlastBreakFrac: 0.30,  // first this fraction is the rune shattering; the rest is the explosion
+  heroKnockback: 13,         // px the hero is shoved back (toward the wall) when the blast hits
   shapeFlashDurationMs: 500,
   fireballFlightMs: 450,
   fireballImpactMs: 280,
@@ -869,6 +882,8 @@ function freshState() {
     runStartMs: 0,            // wall-clock start of the run, for the end-screen summary
     pairAvailableAtClockMs: {},
     wrongFlashUntil: 0,
+    runeFlashUntil: 0,   // combat: rune circle glowing red after a wrong pair
+    heroBlastUntil: 0,   // combat: harmful explosion bursting around the hero
     shapeFlashUntil: 0,
     castAt: 0,
     castChords: null, // snapshot of the completed chords for the cast animation
@@ -1378,12 +1393,32 @@ function renderScene(now) {
   // Fighters: the sheet's own 4-frame idle animations, out of phase
   const wf = Math.floor(now / 160) % ASSETS.wizard.length;
   const sf = Math.floor(now / 160 + 2) % ASSETS.skelet.length;
+
+  // Blast recoil: a mis-cast explosion shoves the hero back toward the wall and
+  // lifts them off their feet, then they spring home. The grounding shadow above
+  // stays planted so the hop reads as leaving the floor. Staff + body move as one.
+  let hkx = 0, hky = 0;
+  if (now < state.heroBlastUntil) {
+    const q = 1 - (state.heroBlastUntil - now) / CONFIG.heroBlastMs; // 0 → 1
+    const brk = CONFIG.heroBlastBreakFrac;
+    if (q > brk) {
+      // the explosion has reached the hero — recoil only now, not during the break
+      const bq = (q - brk) / (1 - brk);                    // 0 → 1 across the explosion
+      const recoil = bq < 0.16 ? bq / 0.16 : Math.pow(1 - (bq - 0.16) / 0.84, 1.7);
+      hkx = -recoil * CONFIG.heroKnockback;                // snap back toward the wall, then spring home
+      hky = -recoil * CONFIG.heroKnockback * 0.45;         // briefly off the ground
+    }
+  }
+
+  ctx.save();
+  ctx.translate(Math.round(hkx), Math.round(hky));
   // The staff is drawn BEHIND the wizard so the shaft is occluded by his body
   // and only the gem end pokes out. At rest it stands upright; while
   // tracing/casting the gem rides out to the rune disc, then jabs on launch.
   drawWizardStaff(ctx, now);
 
   ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
+  ctx.restore();
 
   // Skeleton: walks in from the right on a new wave, fades out on death
   let exOff = 0, eAlpha = 1;
@@ -1470,10 +1505,105 @@ function renderScene(now) {
       state.castAt = 0;
       state.castChords = null;
     }
-  } else if (state.screen === "combat") {
-    // tracing: live mirror of the chords drawn so far
+  } else if (state.screen === "combat" && now >= state.heroBlastUntil) {
+    // tracing: live mirror of the chords drawn so far — suppressed while a
+    // mis-cast is backfiring, since the disc is shattering in red instead.
     drawSceneRune(ctx, now, state.chords, { disc: 0, bright: 0, scale: 1 });
   }
+
+  // Mis-cast backfire: the traced rune shatters in red over the wizard and its
+  // broken magic detonates around him.
+  if (now < state.heroBlastUntil) drawHeroBackfire(ctx, now);
+}
+
+// A wrong pair backfires: the rune the wizard was tracing tears apart in red
+// over his head and the loose magic detonates around him. Timeline runs off
+// state.heroBlastUntil: the disc shatters first, the blast blooms underneath.
+function drawHeroBackfire(ctx, now) {
+  const q = Math.max(0, Math.min(1, 1 - (state.heroBlastUntil - now) / CONFIG.heroBlastMs)); // 0 → 1
+  const { cx, cy, rx, ry } = scene.rune;
+  const wiz = SHEET.wizardIdle;
+  const hx = scene.wizard.x + wiz.w / 2;
+  const hy = scene.wizard.y + wiz.h / 2;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  const brk = CONFIG.heroBlastBreakFrac;
+
+  // --- 1. BREAK first: the rune the hero was tracing tears apart in red over
+  //        their head — a flash, then the six nodes hurled out with cracks
+  //        snapping between them. Fully done before the explosion begins. ---
+  if (q < brk) {
+    const shatter = q / brk;      // 0 → 1 across the break
+    const fade = 1 - shatter;
+    // the whole disc drifts from its resting spot into the hero as it comes
+    // apart, so the magic reads as breaking *into* him
+    const dcx = cx + (hx - cx) * shatter;
+    const dcy = cy + (hy - cy) * shatter;
+    // red flash filling the disc, swelling hard as it lets go
+    ctx.fillStyle = `rgba(255, 74, 80, ${(fade * 0.6).toFixed(3)})`;
+    const RY = Math.round(ry * 1.6 * (1 + shatter));
+    const RX = rx * 1.6 * (1 + shatter);
+    for (let dy = -RY; dy <= RY; dy++) {
+      const s = dy / (RY + 0.5);
+      const hw = Math.round(RX * Math.sqrt(Math.max(0, 1 - s * s)));
+      ctx.fillRect(Math.round(dcx - hw), Math.round(dcy + dy), hw * 2, 1);
+    }
+    // the six nodes fling outward around the drifting centre as it sinks into him
+    const nodes = [];
+    for (let i = 0; i < CONFIG.runeCount; i++) {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / CONFIG.runeCount;
+      const spread = shatter * 30;
+      nodes.push({
+        x: dcx + (rx + spread) * Math.cos(a),
+        y: dcy + (ry + spread) * Math.sin(a),
+      });
+    }
+    // jagged red cracks between neighbours, snapping as they separate
+    ctx.fillStyle = `rgba(255, 90, 96, ${(fade * 0.9).toFixed(3)})`;
+    for (let i = 0; i < nodes.length; i++) {
+      const p1 = nodes[i], p2 = nodes[(i + 1) % nodes.length];
+      pixLine(ctx, Math.round(p1.x), Math.round(p1.y), Math.round(p2.x), Math.round(p2.y));
+    }
+    // bright shards flung off each node
+    ctx.fillStyle = `rgba(255, 210, 160, ${fade.toFixed(3)})`;
+    for (const p of nodes) ctx.fillRect(Math.round(p.x) - 2, Math.round(p.y) - 2, 4, 4);
+  }
+
+  // --- 2. THEN the explosion: only once the rune has finished breaking does the
+  //        loose magic detonate on the hero — a white-hot core, two expanding
+  //        red shock rings, and a spray of embers. The knockback (drawn with the
+  //        wizard) fires on this phase's first frame, when the blast lands. ---
+  if (q >= brk) {
+    const blast = (q - brk) / (1 - brk); // 0 → 1 across the explosion
+    // white-hot core flash
+    ctx.fillStyle = `rgba(255, 236, 200, ${((1 - blast) * 0.7).toFixed(2)})`;
+    ctx.beginPath();
+    ctx.arc(hx, hy, Math.max(0, 22 * (1 - blast)), 0, Math.PI * 2);
+    ctx.fill();
+    // two shock rings, the second trailing the first
+    for (const [off, w, aMul] of [[0, 3, 1], [-0.22, 2, 0.6]]) {
+      const b = blast + off;
+      if (b <= 0 || b >= 1) continue;
+      ctx.strokeStyle = `rgba(255, 68, 74, ${((1 - b) * 0.9 * aMul).toFixed(2)})`;
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 5 + b * 46, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // embers flung outward, some larger
+    const N = 18;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + blast * 1.4;
+      const d = blast * (24 + (i % 4) * 11);
+      ctx.fillStyle = `rgba(255, ${90 + (i % 4) * 30}, 60, ${((1 - blast) * 0.95).toFixed(2)})`;
+      const s = i % 3 === 0 ? 3 : 2;
+      ctx.fillRect(Math.round(hx + Math.cos(a) * d), Math.round(hy + Math.sin(a) * d), s, s);
+    }
+  }
+
+  ctx.restore();
 }
 
 // Crisp 1px Bresenham line (canvas stroke() would anti-alias)
@@ -1856,9 +1986,18 @@ function handleRuneClick(id, viaTap = false) {
   } else {
     state.wrongMatchCount++;
     first.matchState = "unmatched";
+    rune.matchState = "unmatched";
     state.selectedRuneId = null;
+    // A wrong pair backfires: the whole circle flares red, a harmful blast bursts
+    // around the hero for a fifth of his MAX HP, then the board dissolves and
+    // re-deals a fresh set of words — any pairs solved this loadout are lost.
     state.wrongFlashUntil = now + CONFIG.wrongFlashDurationMs;
-    hitPlayer(Math.max(1, Math.round(state.enemyDmg * CONFIG.wrongMatchDmgFactor)));
+    state.runeFlashUntil = now + CONFIG.runeFlashDurationMs;
+    state.heroBlastUntil = now + CONFIG.heroBlastMs;
+    hitPlayer(Math.max(1, Math.round(state.heroMaxHP * CONFIG.wrongPenaltyFraction)));
+    setTimeout(() => {
+      if (state.screen === "combat") populateCircle(drawLoadout());
+    }, CONFIG.runeFlashDurationMs);
   }
 }
 
@@ -2656,6 +2795,7 @@ function patchCombatContinuous(now) {
   if (!root) return;
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
+  root.classList.toggle("rune-flash", now < state.runeFlashUntil);
   document.getElementById("hero-hp-text").textContent = `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}`;
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
   document.getElementById("wave-label").innerHTML = `WELLE ${state.wave} · SKELETT <span>${Math.ceil(state.enemyHP)} / ${state.enemyMaxHP}</span>`;
