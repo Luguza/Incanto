@@ -408,7 +408,7 @@ const CONFIG = {
   wrongFlashDurationMs: 200,
   runeFlashDurationMs: 820,  // how long the rune circle glows red before it dissolves + re-deals
   heroBlastMs: 820,          // total length of the mis-cast backfire (break + explosion)
-  heroBlastBreakFrac: 0.42,  // first this fraction is the rune shattering; the rest is the explosion
+  heroBlastBreakFrac: 0.30,  // first this fraction is the rune shattering; the rest is the explosion
   heroKnockback: 13,         // px the hero is shoved back (toward the wall) when the blast hits
   shapeFlashDurationMs: 500,
   fireballFlightMs: 450,
@@ -1573,6 +1573,10 @@ function drawHeroBackfire(ctx, now) {
   if (q < brk) {
     const shatter = q / brk;      // 0 → 1 across the break
     const fade = 1 - shatter;
+    // the whole disc drifts from its resting spot into the hero as it comes
+    // apart, so the magic reads as breaking *into* him
+    const dcx = cx + (hx - cx) * shatter;
+    const dcy = cy + (hy - cy) * shatter;
     // red flash filling the disc, swelling hard as it lets go
     ctx.fillStyle = `rgba(255, 74, 80, ${(fade * 0.6).toFixed(3)})`;
     const RY = Math.round(ry * 1.6 * (1 + shatter));
@@ -1580,16 +1584,16 @@ function drawHeroBackfire(ctx, now) {
     for (let dy = -RY; dy <= RY; dy++) {
       const s = dy / (RY + 0.5);
       const hw = Math.round(RX * Math.sqrt(Math.max(0, 1 - s * s)));
-      ctx.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2, 1);
+      ctx.fillRect(Math.round(dcx - hw), Math.round(dcy + dy), hw * 2, 1);
     }
-    // the six nodes explode outward and rain down over the hero
+    // the six nodes fling outward around the drifting centre as it sinks into him
     const nodes = [];
     for (let i = 0; i < CONFIG.runeCount; i++) {
       const a = -Math.PI / 2 + (i * 2 * Math.PI) / CONFIG.runeCount;
-      const spread = shatter * 34;
+      const spread = shatter * 30;
       nodes.push({
-        x: cx + (rx + spread) * Math.cos(a),
-        y: cy + (ry + spread) * Math.sin(a) + shatter * shatter * 16, // gravity toward them
+        x: dcx + (rx + spread) * Math.cos(a),
+        y: dcy + (ry + spread) * Math.sin(a),
       });
     }
     // jagged red cracks between neighbours, snapping as they separate
