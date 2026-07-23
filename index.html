@@ -198,6 +198,13 @@
   }
   .rune.selected text { fill: #ffe9b0; }
   .rune.matched text { fill: #b9f2d2; }
+  /* Wrong pair: the whole rune circle flares red for a beat before it re-deals.
+     Higher specificity than the per-state rules above so every rune goes red. */
+  .combat-screen.rune-flash .rune .body { fill: rgba(229, 72, 77, 0.34); stroke: #ff6470; stroke-width: 2.5; }
+  .combat-screen.rune-flash .rune text { fill: #ffdadf; }
+  .combat-screen.rune-flash .rune .halo { opacity: 0.55; fill: #ff5560; }
+  .combat-screen.rune-flash .chord,
+  .combat-screen.rune-flash .chord-glow { stroke: #ff6470; }
   /* The line trailing from a held rune to the pointer while dragging a pair */
   .drag-line {
     stroke: #ffe9b0; stroke-width: 3; stroke-linecap: round;
@@ -388,7 +395,7 @@ const CONFIG = {
   enemyHPGrowth: 1.45,
   enemyBaseDmg: 6,
   enemyDmgGrowth: 1.3,
-  wrongMatchDmgFactor: 0.5, // wrong match costs this fraction of enemy damage
+  wrongPenaltyFraction: 0.2, // a wrong match backfires for this fraction of the hero's MAX HP
   enemyEnterMs: 900,
   enemyDeathMs: 600,
   runeCount: 6,
@@ -397,6 +404,8 @@ const CONFIG = {
   // its attack timer keeps ticking and it lands hits at a steady cadence (constant DPS).
   staggerOnCast: false,
   wrongFlashDurationMs: 200,
+  runeFlashDurationMs: 460,  // how long the rune circle glows red before it dissolves + re-deals
+  heroBlastMs: 520,          // duration of the harmful explosion that bursts around the hero
   shapeFlashDurationMs: 500,
   fireballFlightMs: 450,
   fireballImpactMs: 280,
@@ -903,6 +912,8 @@ function freshState() {
     runStartMs: 0,            // wall-clock start of the run, for the end-screen summary
     pairAvailableAtClockMs: {},
     wrongFlashUntil: 0,
+    runeFlashUntil: 0,   // combat: rune circle glowing red after a wrong pair
+    heroBlastUntil: 0,   // combat: harmful explosion bursting around the hero
     shapeFlashUntil: 0,
     castAt: 0,
     castChords: null, // snapshot of the completed chords for the cast animation
@@ -1421,6 +1432,35 @@ function renderScene(now) {
 
   ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
 
+  // Mis-cast backfire: a wrong pair detonates a harmful red blast around the
+  // hero — an expanding shock ring, a hot inner flash, and embers flung outward.
+  if (now < state.heroBlastUntil) {
+    const q = 1 - (state.heroBlastUntil - now) / CONFIG.heroBlastMs; // 0 → 1
+    const hx = scene.wizard.x + SHEET.wizardIdle.w / 2;
+    const hy = scene.wizard.y + SHEET.wizardIdle.h / 2;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    // hot inner flash, brightest at the start
+    ctx.fillStyle = `rgba(255, 176, 120, ${((1 - q) * 0.55).toFixed(2)})`;
+    ctx.beginPath();
+    ctx.arc(hx, hy, Math.max(0, 12 * (1 - q)), 0, Math.PI * 2);
+    ctx.fill();
+    // expanding shock ring
+    ctx.strokeStyle = `rgba(255, 68, 74, ${((1 - q) * 0.9).toFixed(2)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(hx, hy, 4 + q * 22, 0, Math.PI * 2);
+    ctx.stroke();
+    // embers flung radially outward
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + q * 1.2;
+      const d = q * (12 + (i % 3) * 7);
+      ctx.fillStyle = `rgba(255, ${90 + (i % 4) * 28}, 60, ${((1 - q) * 0.9).toFixed(2)})`;
+      ctx.fillRect(Math.round(hx + Math.cos(a) * d), Math.round(hy + Math.sin(a) * d), 2, 2);
+    }
+    ctx.restore();
+  }
+
   // Skeleton: walks in from the right on a new wave, fades out on death
   let exOff = 0, eAlpha = 1;
   if (state.enemyPhase === "enter") {
@@ -1892,9 +1932,18 @@ function handleRuneClick(id, viaTap = false) {
   } else {
     state.wrongMatchCount++;
     first.matchState = "unmatched";
+    rune.matchState = "unmatched";
     state.selectedRuneId = null;
+    // A wrong pair backfires: the whole circle flares red, a harmful blast bursts
+    // around the hero for a fifth of his MAX HP, then the board dissolves and
+    // re-deals a fresh set of words — any pairs solved this loadout are lost.
     state.wrongFlashUntil = now + CONFIG.wrongFlashDurationMs;
-    hitPlayer(Math.max(1, Math.round(state.enemyDmg * CONFIG.wrongMatchDmgFactor)));
+    state.runeFlashUntil = now + CONFIG.runeFlashDurationMs;
+    state.heroBlastUntil = now + CONFIG.heroBlastMs;
+    hitPlayer(Math.max(1, Math.round(state.heroMaxHP * CONFIG.wrongPenaltyFraction)));
+    setTimeout(() => {
+      if (state.screen === "combat") populateCircle(drawLoadout());
+    }, CONFIG.runeFlashDurationMs);
   }
 }
 
@@ -2708,6 +2757,7 @@ function patchCombatContinuous(now) {
   if (!root) return;
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
+  root.classList.toggle("rune-flash", now < state.runeFlashUntil);
   document.getElementById("mode-label").textContent = `MODUS: ${MODE_LABELS[state.mode]} — zum Wechseln tippen`;
   document.getElementById("hero-hp-text").textContent = `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}`;
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
