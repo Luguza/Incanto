@@ -31,11 +31,10 @@ function setupScene(cv) {
   const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
   const wizard = { x: margin, y: feetY - wiz.h };
   const skelet = { x: artW - margin - skl.w, y: feetY - skl.h };
-  // The traced rune is a "magic shield" hovering in front of the wizard, facing
-  // the enemy: a circle foreshortened to a tall, narrow ellipse (rx < ry). Its
-  // shared centre sits on the floor tile just in front of the wizard, midway up
-  // the floor, so the whole concentric wheel reads as centred on that tile.
-  const runeCx = Math.ceil((wizard.x + wiz.w) / TILE) * TILE + TILE / 2;
+  // The traced rune is a "magic shield" hovering just in front of the wizard,
+  // facing the enemy: a circle foreshortened to a tall, narrow ellipse (rx < ry).
+  // Its centre sits ~0.8 tiles ahead of the wizard, midway up the floor.
+  const runeCx = Math.round(wizard.x + wiz.w / 2 + 0.8 * TILE);
   const runeCy = Math.round((FLOOR_Y + SCENE_H) / 2);
   scene = {
     cv,
@@ -43,7 +42,7 @@ function setupScene(cv) {
     wizard,
     skelet,
     fountains: [Math.round(artW * 0.32 / TILE) * TILE, Math.round(artW * 0.68 / TILE) * TILE],
-    rune: { cx: runeCx, cy: runeCy, rx: 9, ry: 14 },
+    rune: { cx: runeCx, cy: runeCy, rx: 8, ry: 12 },
     skelChest: { x: skelet.x + skl.w / 2, y: skelet.y + 9 },
     bg: null,
   };
@@ -431,7 +430,8 @@ function pixLine(ctx, x0, y0, x1, y1) {
 // ring (rr = 1); the crystal sockets exactly span its width, tangent to both
 // edge rings.
 const RUNE_DISC = (() => {
-  const bandInner = 0.76, bandOuter = 1.24;
+  const bandInner = 0.82, bandOuter = 1.18;
+  const socketR = 0.15; // small, round sockets that sit within the band
   // Convex perspective: the disc bulges toward the viewer, turned slightly about
   // its vertical axis so the near point (apex) sits a touch RIGHT of centre. Each
   // interior ring therefore shifts progressively rightward — their centres are
@@ -439,7 +439,7 @@ const RUNE_DISC = (() => {
   // the outline stays put and there's no vertical lean.
   const turn = 0.34, bulge = 0.8;
   return {
-    bandInner, bandOuter, crystalR: (bandOuter - bandInner) / 2,
+    bandInner, bandOuter, socketR,
     turn, bulge, cosT: Math.cos(turn), sinT: Math.sin(turn),
   };
 })();
@@ -506,43 +506,28 @@ function domeChord(ctx, x1, y1, x2, y2, scale, core, glowRGB, seg = 7) {
   }
 }
 
-// A small circle in flat-disc space, centred at (cu,cv) with flat radius r,
-// projected over the dome — appears as a foreshortened socket ellipse. Outlined
-// by default; filled when `fill` is set.
-function domeCircleAt(ctx, cu, cv, r, scale, fill = false, seg = 20) {
-  if (fill) ctx.beginPath();
-  let prev = domeProject(cu + r, cv, scale);
-  if (fill) ctx.moveTo(prev.x, prev.y);
-  for (let i = 1; i <= seg; i++) {
-    const a = (i / seg) * Math.PI * 2;
-    const p = domeProject(cu + r * Math.cos(a), cv + r * Math.sin(a), scale);
-    if (fill) ctx.lineTo(p.x, p.y);
-    else pixLine(ctx, Math.round(prev.x), Math.round(prev.y), Math.round(p.x), Math.round(p.y));
-    prev = p;
-  }
-  if (fill) { ctx.closePath(); ctx.fill(); }
-}
-
-// A rune crystal socket seated in the band: it's a circle sized to span the
-// full band width (tangent to both edge rings), with a dark well and a glowing
-// gem core — matching the word sockets on the big arena wheel. (cu,cv) is the
-// slot on the unit node ring; `r` is the socket radius. `bright` is the cast glow.
+// A rune crystal socket seated in the band: a small, round gem well with a
+// glowing rim and a bright core. Drawn as a smooth foreshortened ellipse (rw x
+// rh) rather than a stepped polygon, so it stays cleanly round at this size and
+// the dome skew doesn't fleck it with straight edges. (cu,cv) is the slot on the
+// unit node ring; `r` is the socket radius; `bright` is the cast glow.
 function drawRuneCrystal(ctx, cu, cv, r, scale, bright, c) {
-  ctx.fillStyle = "rgba(4, 16, 16, 0.55)";           // dark socket well
-  domeCircleAt(ctx, cu, cv, r * 0.9, scale, true);
-  ctx.save();
+  const { rx, ry } = scene.rune;
+  const p = domeProject(cu, cv, scale);
+  const rw = r * rx * scale, rh = r * ry * scale;
+  ctx.fillStyle = "rgba(4, 16, 16, 0.6)";            // dark gem well
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, rw * 0.9, rh * 0.9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();                                        // glowing rim
   ctx.globalCompositeOperation = "lighter";
-  ctx.fillStyle = `rgba(${c.glowRGB}, ${(0.42 + bright * 0.4).toFixed(3)})`;
-  domeCircleAt(ctx, cu, cv, r, scale);               // bright socket ring
+  ctx.strokeStyle = `rgba(${c.glowRGB}, ${(0.5 + bright * 0.4).toFixed(3)})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.restore();
-  const p = domeProject(cu, cv, scale);              // glowing gem core
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  ctx.fillStyle = `rgba(${c.discRGB}, ${(0.5 + bright * 0.4).toFixed(3)})`;
-  ctx.fillRect(Math.round(p.x) - 1, Math.round(p.y), 3, 1);
-  ctx.fillRect(Math.round(p.x), Math.round(p.y) - 1, 1, 3);
-  ctx.restore();
-  ctx.fillStyle = c.dot;
+  ctx.fillStyle = c.dot;                             // bright core
   ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
 }
 
@@ -679,7 +664,7 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   //        span the band width exactly (tangent to both edge rings). ---
   for (let i = 0; i < CONFIG.runeCount; i++) {
     const s = slotUV(i);
-    drawRuneCrystal(ctx, s.u, s.v, R.crystalR, scale, bright, c);
+    drawRuneCrystal(ctx, s.u, s.v, R.socketR, scale, bright, c);
   }
 
   // --- 6. Center hub: a small ring + core at the apex ---
