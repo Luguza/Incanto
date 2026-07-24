@@ -26,14 +26,24 @@ function setupScene(cv) {
 
   const margin = Math.max(10, Math.round(artW * 0.08));
   const wiz = SHEET.wizardIdle;
-  // Fighters stand in the middle of the floor, not right up against the wall
-  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
+  // Lanes: parallel depth rows across the floor the mob marches in on. Feet
+  // lines run from near the back wall to the front of the floor; the hero holds
+  // the middle lane.
+  const laneCount = Math.max(1, CONFIG.enemyLanes);
+  const laneY = [];
+  for (let i = 0; i < laneCount; i++) {
+    const frac = laneCount <= 1 ? 0.66 : 0.40 + (0.92 - 0.40) * (i / (laneCount - 1));
+    laneY.push(FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * frac));
+  }
+  const heroLane = Math.floor(laneCount / 2);
+  const feetY = laneY[heroLane];
   const wizard = { x: margin, y: feetY - wiz.h };
   scene = {
     cv,
     artW,
     wizard,
     feetY,
+    laneY,
     // Enemy march track: a skeleton's `pos` is in tiles to the right of the
     // hero's front edge, so one pos-unit is exactly one 16px floor tile.
     enemyLineX: wizard.x + wiz.w,
@@ -154,7 +164,7 @@ function renderScene(now) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(scene.bg, 0, 0);
 
-  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
+  const feetY = scene.feetY;        // the hero's lane
   const fountainBasinY = FLOOR_Y;   // basin on the first floor row
 
   // Lava fountains: 3-frame animation, stream + basin. Drawn BEFORE the warm
@@ -223,9 +233,15 @@ function renderScene(now) {
   // jab on every strike while attacking.
   const skl = SHEET.skeletIdle;
   const sceneX = (pos) => scene.enemyLineX + pos * TILE;
-  const skelY = feetY - skl.h;
-  const ordered = state.enemies.slice().sort((a, b) => b.pos - a.pos);
+  const laneFeetY = (e) => scene.laneY[e.lane] ?? feetY;
+  // Draw back lanes (higher up the floor) first, and within a lane the nearer
+  // ones last, so closer skeletons overlap the ranks behind them.
+  const ordered = state.enemies.slice().sort(
+    (a, b) => (laneFeetY(a) - laneFeetY(b)) || (b.pos - a.pos)
+  );
   for (const e of ordered) {
+    const ly = laneFeetY(e);
+    const skelY = ly - skl.h;
     const walking = e.phase === "walk";
     const frameSet = walking ? ASSETS.skeletRun : ASSETS.skelet;
     // Frame cadence sets the three moods apart: a brisk run cycle, a calm idle,
@@ -260,7 +276,7 @@ function renderScene(now) {
     }
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.drawImage(ASSETS.shadowSm, cx - 8, feetY - 2);
+    ctx.drawImage(ASSETS.shadowSm, cx - 8, ly - 2);
     ctx.drawImage(frameSet[ef], sx, skelY);
     ctx.restore();
   }
@@ -281,10 +297,11 @@ function renderScene(now) {
     const target = state.enemies.find((e) => e.id === state.castTargetId);
     let chest;
     if (target) {
-      chest = { x: Math.round(sceneX(target.pos)), y: skelY + 9 };
+      const ty = (scene.laneY[target.lane] ?? feetY) - skl.h;
+      chest = { x: Math.round(sceneX(target.pos)), y: ty + 9 };
       scene.castChest = chest;
     } else {
-      chest = scene.castChest || { x: scene.enemyLineX, y: skelY + 9 };
+      chest = scene.castChest || { x: scene.enemyLineX, y: (feetY - skl.h) + 9 };
     }
 
     if (t < charge) {
@@ -314,7 +331,8 @@ function renderScene(now) {
     } else if (t > charge + flight && t <= charge + flight + impact) {
       const q = (t - charge - flight) / impact;
       if (target && Math.floor((t - charge - flight) / 70) % 2 === 0) {
-        ctx.drawImage(ASSETS.skeletHit[sf], Math.round(sceneX(target.pos)) - Math.round(skl.w / 2), skelY);
+        const ty = (scene.laneY[target.lane] ?? feetY) - skl.h;
+        ctx.drawImage(ASSETS.skeletHit[sf], Math.round(sceneX(target.pos)) - Math.round(skl.w / 2), ty);
       }
       const r = Math.round(2 + q * 10);
       ctx.fillStyle = f.y;

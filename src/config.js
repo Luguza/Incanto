@@ -35,8 +35,9 @@ const CONFIG = {
   // Mob size per wave: starts at a few, grows slowly, capped so the arena
   // never overflows.
   enemiesBaseCount: 3,
-  enemyMaxCount: 8,
+  enemyMaxCount: 9,
   enemyCountEveryWaves: 2,   // +1 skeleton every this many waves
+  enemyLanes: 3,             // parallel depth rows the mob streams in on
   // March + melee. A skeleton's `pos` is measured in TILES to the right of the
   // hero's front edge (0 = touching the hero). One pos-unit maps to exactly one
   // 16px floor tile on screen, and the queue keeps > 1 tile between neighbours,

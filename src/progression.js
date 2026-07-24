@@ -31,15 +31,21 @@ function startWave(w) {
   const count = enemyCountForWave(w);
   const maxHP = enemyHPForWave(w);
   const dmg = enemyDmgForWave(w);
+  // Spread the mob across every lane (round-robin), so a full rank streams in
+  // abreast; each lane trails its own column behind that.
   state.enemies = [];
+  const laneFill = new Array(CONFIG.enemyLanes).fill(0);
   for (let i = 0; i < count; i++) {
+    const lane = i % CONFIG.enemyLanes;
+    const rank = laneFill[lane]++;
     state.enemies.push({
       id: state.nextEnemyId++,
       maxHP,
       hp: maxHP,
       dmg,
       slot: i,
-      pos: CONFIG.enemySpawnTiles + i * CONFIG.enemySpawnGapTiles, // tiles out, trailing column
+      lane,
+      pos: CONFIG.enemySpawnTiles + rank * CONFIG.enemySpawnGapTiles, // tiles out, per-lane column
       phase: "walk",              // walk | idle | attack | dying
       phaseAt: now,
       attackAt: 0,                // next time this skeleton lands a hit
