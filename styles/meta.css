@@ -1,0 +1,68 @@
+/* meta.css — menu/meta screens: loadout, upgrade shop, end screens. */
+
+  /* Loadout screen */
+  .loadout-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
+  .loadout-screen h1 {
+    font-family: var(--display-font);
+    font-size: clamp(22px, 6vw, 28px); margin-bottom: 20px; text-align: center;
+    letter-spacing: 1px;
+  }
+  .cards { display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; width: min(320px, 85vw); }
+  .card {
+    background: linear-gradient(160deg, #262033, #1d1827);
+    border: 1px solid #3a3550; border-radius: 12px;
+    padding: 14px 20px; text-align: center;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  }
+  .card .it {
+    font-family: var(--display-font);
+    font-size: 21px; font-weight: 600; color: #f2c14e; letter-spacing: 1px;
+  }
+  .card .dash { color: rgba(242, 193, 78, 0.45); margin: 4px 0; font-size: 12px; }
+  .card .de { font-size: 18px; color: #eae6f5; }
+  .fight-btn {
+    font-size: 22px; padding: 16px 0; width: min(320px, 85vw);
+    border-radius: 12px; border: none;
+    background: linear-gradient(180deg, #ffd571, #f2c14e);
+    color: #141018; font-weight: 700; letter-spacing: 1px; cursor: pointer;
+    box-shadow: 0 0 24px rgba(242, 193, 78, 0.25);
+  }
+  .fight-btn:active { background: #ffd571; }
+
+
+  /* Upgrade shop (stage 2) */
+  .upgrade-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); text-align: center; }
+  .upgrade-screen h1 {
+    font-family: var(--display-font);
+    font-size: clamp(26px, 7vw, 36px); letter-spacing: 2px; color: #7ff0ed;
+    text-shadow: 0 0 22px rgba(77, 227, 224, 0.5); margin-bottom: 6px;
+  }
+  .gold-big { font-size: clamp(18px, 5vw, 24px); color: #f2c14e; font-weight: 700; margin-bottom: 22px; }
+  .upg-cards { display: flex; flex-direction: column; gap: 14px; width: min(340px, 88vw); margin-bottom: 18px; }
+  .upg-card {
+    display: flex; flex-direction: column; gap: 6px; align-items: center;
+    background: linear-gradient(160deg, #241d33, #1a1526);
+    border: 1px solid #4de3e0; border-radius: 12px; padding: 14px 18px;
+    color: #efeaff; cursor: pointer; box-shadow: 0 0 18px rgba(77, 227, 224, 0.12);
+  }
+  .upg-card:active { background: #2a2340; }
+  .upg-card.poor { opacity: 0.5; border-color: #3a3550; box-shadow: none; }
+  .upg-name { font-size: 20px; font-weight: 700; color: #7ff0ed; letter-spacing: 0.5px; }
+  .upg-stat { font-size: 15px; color: #cfc9de; }
+  .upg-cost { font-size: 16px; font-weight: 700; color: #f2c14e; }
+  .upg-hp { font-size: 13px; color: #8a8398; margin-bottom: 18px; letter-spacing: 0.5px; }
+  .next-wave-btn { background: linear-gradient(180deg, #7ff0ed, #4de3e0); box-shadow: 0 0 24px rgba(77, 227, 224, 0.3); }
+
+  /* End screens */
+  .end-screen { cursor: pointer; padding: 16px; text-align: center; }
+  .end-screen h1 {
+    font-family: var(--display-font);
+    font-size: clamp(32px, 9vw, 44px); margin-bottom: 12px; letter-spacing: 2px;
+  }
+  .end-screen h1.victory { color: #f2c14e; text-shadow: 0 0 28px rgba(242, 193, 78, 0.45); }
+  .end-screen h1.defeat { color: #e5484d; text-shadow: 0 0 28px rgba(229, 72, 77, 0.4); }
+  .end-screen p { font-size: clamp(15px, 4.5vw, 18px); color: #cfc9de; margin: 4px 0; }
+  .end-screen .dim { color: #8a8398; font-size: clamp(13px, 3.6vw, 15px); }
+  .end-screen .end-flavor { color: #b9b3c8; margin: 18px auto 24px; max-width: 320px; }
+  .study-btn { background: linear-gradient(180deg, #7ff0ed, #4de3e0); box-shadow: 0 0 24px rgba(77, 227, 224, 0.3); }
+  .end-screen .hint { margin-top: 24px; color: #8a8398; }

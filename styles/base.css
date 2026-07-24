@@ -1,0 +1,66 @@
+/* base.css — @font-face, :root tokens, #app + .screen shell. Shared by all screens. */
+
+  @font-face {
+    font-family: "RuneDisplay";
+    src: url("../assets/rune_font.otf") format("opentype");
+    font-display: swap;
+  }
+  :root {
+    color-scheme: dark;
+    /* Display face for spell words, titles and rune labels. Readability comes
+       first: a widely-available classical serif renders on essentially every
+       device. The runic "RuneDisplay" stays in the stack as a deliberately
+       low-priority fallback — it only surfaces where none of the readable
+       serifs exist. */
+    --display-font: "Palatino Linotype", "Book Antiqua", Georgia, "RuneDisplay", serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #141018;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #f5f2ff;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+  }
+  /* The viewport is split vertically: the active phase fills #app, the phase
+     switcher (.bottom-nav) is a fixed-height panel pinned under it. */
+  body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+  #app { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+  .screen { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+
+  /* Bottom phase-switcher: one flush panel across the whole bottom edge with
+     three equal, text-free pixel-art buttons — study · forge · combat. */
+  .bottom-nav {
+    flex: 0 0 auto;
+    display: flex; width: 100%;
+    background: #17131e;
+    border-top: 1px solid #3a3550;
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    z-index: 5;
+  }
+  .nav-btn {
+    flex: 1 1 0; min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: none; outline: none;
+    padding: 9px 0; min-height: 58px; cursor: pointer;
+    border-right: 1px solid #2a2436;
+    transition: background 120ms linear;
+  }
+  .nav-btn:last-child { border-right: none; }
+  .nav-btn:active { background: #2a2138; }
+  .nav-btn.active { background: #211a2e; box-shadow: inset 0 2px 0 #4de3e0; }
+  .nav-icon {
+    width: 32px; height: 32px; display: block;
+    image-rendering: pixelated;
+    opacity: 0.45;
+    transition: opacity 120ms linear, filter 120ms linear;
+  }
+  .nav-btn:active .nav-icon { opacity: 0.8; }
+  .nav-btn.active .nav-icon { opacity: 1; filter: drop-shadow(0 0 5px rgba(127, 244, 241, 0.55)); }
+
