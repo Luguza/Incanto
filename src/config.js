@@ -7,7 +7,6 @@
 // CONFIG — every gameplay number, flag, and color lives here.
 // ---------------------------------------------------------------------------
 const CONFIG = {
-  windupDurationMs: 8000,
   // Hero: small HP pool, starts weak, upgrades bought with gold
   heroBaseHP: 10,
   heroBaseDmg: 3,
@@ -24,19 +23,32 @@ const CONFIG = {
   goldPerCorrect: 12,
   quizWaveBonus: 5, // bonus gold per question, scaled by how far you got
   quizFeedbackMs: 650,   // how long a wrong match flashes red before clearing
-  // Endless skeleton waves, scaling in HP and damage
+  // Endless skeleton waves, scaling in HP and damage. A wave now sends in a
+  // whole mob that walks in from the right toward the hero; each skeleton only
+  // attacks once it reaches melee range, at its own steady cadence.
   enemyBaseHP: 10,
   enemyHPGrowth: 1.45,
   enemyBaseDmg: 6,
   enemyDmgGrowth: 1.3,
   wrongPenaltyFraction: 0.2, // a wrong match backfires for this fraction of the hero's MAX HP
-  enemyEnterMs: 900,
   enemyDeathMs: 600,
+  // Mob size per wave: starts at a few, grows slowly, capped so the arena
+  // never overflows.
+  enemiesBaseCount: 3,
+  enemyMaxCount: 8,
+  enemyCountEveryWaves: 2,   // +1 skeleton every this many waves
+  // March + melee. Positions are normalized: 1 = spawn edge (far right),
+  // 0 = right at the hero (far left). Enemies walk left until they reach their
+  // stop slot, then attack. Slots stagger so the mob queues up instead of
+  // stacking on one tile.
+  enemyWalkSpeed: 0.00024,   // normalized units per ms
+  enemySpawnGap: 0.18,       // extra spawn offset per queue slot (trailing column)
+  enemyStandoff: 0.10,       // stop position of the frontmost skeleton
+  enemySlotSpacing: 0.09,    // gap between queued skeletons' stop positions
+  enemyFirstAttackMs: 1400,  // windup before a skeleton's first hit after arriving
+  enemyAttackIntervalMs: 3400, // steady cadence between a skeleton's hits
   runeCount: 6,
   pairsPerLoadout: 3,
-  // When false, casting a spell does NOT reset the skeleton's attack windup, so
-  // its attack timer keeps ticking and it lands hits at a steady cadence (constant DPS).
-  staggerOnCast: false,
   wrongFlashDurationMs: 200,
   runeFlashDurationMs: 820,  // how long the rune circle glows red before it dissolves + re-deals
   heroBlastMs: 820,          // total length of the mis-cast backfire (break + explosion)
@@ -60,7 +72,6 @@ const CONFIG = {
     wrongFlash: "rgba(229,72,77,0.35)",
     heartFull: "#e5484d",
     heartEmpty: "#3a3540",
-    windupFill: "#e5484d",
     // Dungeon scene effect colors (sprites come from assets/dungeon_tiles.png)
     dungeon: {
       background: "#17131e",

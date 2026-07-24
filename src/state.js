@@ -28,15 +28,15 @@ function freshState() {
     dmgLevel: 0,
     hpLevel: 0,
     gold: 0,
-    // Endless waves
+    // Endless waves — each wave sends a mob of skeletons that walk in from the
+    // right. An enemy: {id, maxHP, hp, dmg, slot, pos, stopPos, phase, phaseAt,
+    // attackAt}. `pos` is normalized (1 = spawn edge, 0 = at the hero); `phase`
+    // is walk | fight | dying.
     wave: 1,
-    enemyMaxHP: CONFIG.enemyBaseHP,
-    enemyHP: CONFIG.enemyBaseHP,
-    enemyDmg: CONFIG.enemyBaseDmg,
-    enemyPhase: "enter",      // enter | alive | dying
-    enemyPhaseAt: 0,
-    pendingWaveEnd: false,    // set when a lethal cast lands; ends the wave after the cast anim
-    windup: 0,
+    enemies: [],
+    nextEnemyId: 1,
+    castTargetId: null,       // which enemy the in-flight fireball is aimed at
+    pendingWaveEnd: false,    // set when the last skeleton falls; ends the wave after the cast anim
     poolIndex: 0,
     wrongMatchCount: 0,
     // Post-death vocab quiz — a mixed Duolingo-style session

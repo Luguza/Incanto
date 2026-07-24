@@ -49,15 +49,6 @@
   .hp-track.enemy .hp-fill { background: linear-gradient(90deg, #9a3550, #e5545f); }
   .coin { color: #f2c14e; }
   .gold-line { font-size: clamp(13px, 3.6vw, 17px); color: #f2c14e; font-weight: 700; }
-  .windup-track {
-    width: clamp(90px, 26vw, 280px); height: 14px;
-    background: #241f2f; border: 1px solid #3a3550; border-radius: 7px;
-    overflow: hidden;
-  }
-  .windup-fill {
-    height: 100%; width: 0%;
-    background: linear-gradient(90deg, #a83a49, #e5484d, #f2784e);
-  }
 
   svg.arena {
     flex: 1 1 auto;

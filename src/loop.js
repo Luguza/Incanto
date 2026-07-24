@@ -26,6 +26,31 @@ function getEffectiveDt(rawDt) {
   return rawDt;
 }
 
+// March the mob one frame: walkers close on their stop slot, then switch to
+// fighting and hit the hero on a steady cadence; finished death animations are
+// culled. No shared windup bar — each skeleton keeps its own attack timer.
+function updateEnemies(now, dt) {
+  for (const e of state.enemies) {
+    if (e.phase === "walk") {
+      e.pos -= CONFIG.enemyWalkSpeed * dt;
+      if (e.pos <= e.stopPos) {
+        e.pos = e.stopPos;
+        e.phase = "fight";                       // arrived → in range
+        e.attackAt = now + CONFIG.enemyFirstAttackMs;
+      }
+    } else if (e.phase === "fight") {
+      if (now >= e.attackAt) {
+        hitPlayer(e.dmg);
+        e.attackAt = now + CONFIG.enemyAttackIntervalMs;
+      }
+    }
+  }
+  // Drop skeletons whose death animation has played out.
+  state.enemies = state.enemies.filter(
+    (e) => !(e.phase === "dying" && now - e.phaseAt >= CONFIG.enemyDeathMs)
+  );
+}
+
 let lastRafNow = null;
 function rafLoop(now) {
   if (lastRafNow === null) lastRafNow = now;
@@ -35,28 +60,11 @@ function rafLoop(now) {
   if (state.screen === "combat") {
     const effectiveDt = getEffectiveDt(rawDt);
     state.clockMs += effectiveDt;
-    // The skeleton only winds up its attack once it has fully entered and is
-    // still alive — not while walking in or dying.
-    if (state.enemyPhase === "alive") {
-      state.windup += effectiveDt / CONFIG.windupDurationMs;
-      if (state.windup >= 1) {
-        state.windup = 0;
-        hitPlayer(state.enemyDmg);
-      }
-    }
-    // Enemy finished walking in → it's now active
-    if (state.enemyPhase === "enter" && now - state.enemyPhaseAt >= CONFIG.enemyEnterMs) {
-      state.enemyPhase = "alive";
-    }
-    // A lethal cast has finished animating → play the skeleton's death
-    if (state.pendingWaveEnd && state.castAt === 0 && state.enemyPhase !== "dying") {
-      state.pendingWaveEnd = false;
-      state.enemyPhase = "dying";
-      state.enemyPhaseAt = now;
-    }
-    // Death animation done → the next, stronger skeleton walks in. The build
-    // stays fixed for the whole run; upgrades only happen between runs.
-    if (state.enemyPhase === "dying" && now - state.enemyPhaseAt >= CONFIG.enemyDeathMs) {
+    updateEnemies(now, effectiveDt);
+    // The last skeleton fell and its death + the killing cast have finished
+    // animating → the next, stronger mob walks in. The build stays fixed for the
+    // whole run; upgrades only happen between runs.
+    if (state.pendingWaveEnd && state.castAt === 0 && state.enemies.length === 0) {
       startWave(state.wave + 1);
     }
     if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {

@@ -11,6 +11,10 @@ function enemyHPForWave(w) {
 function enemyDmgForWave(w) {
   return Math.round(CONFIG.enemyBaseDmg * Math.pow(CONFIG.enemyDmgGrowth, w - 1));
 }
+function enemyCountForWave(w) {
+  const extra = Math.floor((w - 1) / CONFIG.enemyCountEveryWaves);
+  return Math.min(CONFIG.enemyMaxCount, CONFIG.enemiesBaseCount + extra);
+}
 function dmgUpgradeCost() {
   return Math.round(CONFIG.dmgUpgradeBaseCost * Math.pow(CONFIG.upgradeCostGrowth, state.dmgLevel));
 }
@@ -18,16 +22,32 @@ function hpUpgradeCost() {
   return Math.round(CONFIG.hpUpgradeBaseCost * Math.pow(CONFIG.upgradeCostGrowth, state.hpLevel));
 }
 
-// Send in a skeleton for wave `w`, with fresh words to trace.
+// Send in a mob for wave `w`, with fresh words to trace. Every skeleton shares
+// the wave's HP/damage; they spawn off the right edge in a trailing column and
+// each walks to its own stop slot before it starts attacking.
 function startWave(w) {
   state.wave = w;
-  state.enemyMaxHP = enemyHPForWave(w);
-  state.enemyHP = state.enemyMaxHP;
-  state.enemyDmg = enemyDmgForWave(w);
-  state.enemyPhase = "enter";
-  state.enemyPhaseAt = performance.now();
+  const now = performance.now();
+  const count = enemyCountForWave(w);
+  const maxHP = enemyHPForWave(w);
+  const dmg = enemyDmgForWave(w);
+  state.enemies = [];
+  for (let i = 0; i < count; i++) {
+    state.enemies.push({
+      id: state.nextEnemyId++,
+      maxHP,
+      hp: maxHP,
+      dmg,
+      slot: i,
+      pos: 1.15 + i * CONFIG.enemySpawnGap,          // offscreen right, staggered
+      stopPos: CONFIG.enemyStandoff + i * CONFIG.enemySlotSpacing,
+      phase: "walk",                                  // walk | fight | dying
+      phaseAt: now,
+      attackAt: 0,
+    });
+  }
+  state.castTargetId = null;
   state.pendingWaveEnd = false;
-  state.windup = 0;
   state.castAt = 0;
   state.castChords = null;
   state.tapTraceUntil = 0;
@@ -93,4 +113,4 @@ function buyHp() {
   state._structuralDirty = true;
 }
 
-window.Incanto.progression = { enemyHPForWave, enemyDmgForWave, dmgUpgradeCost, hpUpgradeCost, startWave, startRun, layoutCircle, shuffleArray, buyDmg, buyHp };
+window.Incanto.progression = { enemyHPForWave, enemyDmgForWave, enemyCountForWave, dmgUpgradeCost, hpUpgradeCost, startWave, startRun, layoutCircle, shuffleArray, buyDmg, buyHp };

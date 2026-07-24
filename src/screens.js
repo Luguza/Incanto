@@ -333,7 +333,6 @@ function renderCombatFull() {
         <div class="enemy-hud">
           <div class="bar-label" id="wave-label"></div>
           <div class="hp-track enemy"><div class="hp-fill" id="enemy-hp-fill"></div></div>
-          <div class="windup-track" id="windup-track"><div class="windup-fill" id="windup-fill"></div></div>
         </div>
       </div>
       <svg class="arena" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
@@ -353,12 +352,15 @@ function patchCombatContinuous(now) {
   root.classList.toggle("rune-flash", now < state.runeFlashUntil);
   document.getElementById("hero-hp-text").textContent = `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}`;
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
-  document.getElementById("wave-label").innerHTML = `WELLE ${state.wave} · SKELETT <span>${Math.ceil(state.enemyHP)} / ${state.enemyMaxHP}</span>`;
-  document.getElementById("enemy-hp-fill").style.width = (100 * state.enemyHP / state.enemyMaxHP).toFixed(1) + "%";
-
-  const windupPct = Math.max(0, Math.min(1, state.windup));
-  const fillEl = document.getElementById("windup-fill");
-  if (fillEl) fillEl.style.width = (windupPct * 100).toFixed(2) + "%";
+  // With a whole mob on screen, the enemy bar tracks the frontmost skeleton —
+  // the one the next spell will hit — and the label shows how many remain.
+  const remaining = livingEnemies();
+  const front = frontEnemy();
+  const count = remaining.length;
+  document.getElementById("wave-label").innerHTML =
+    `WELLE ${state.wave} · ${count} SKELETT${count === 1 ? "" : "E"}`;
+  const enemyPct = front ? (100 * front.hp / front.maxHP) : 0;
+  document.getElementById("enemy-hp-fill").style.width = enemyPct.toFixed(1) + "%";
 
   renderScene(now);
 

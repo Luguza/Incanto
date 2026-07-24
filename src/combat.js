@@ -11,6 +11,20 @@
 // (before it rests, or before the third pair releases the spell).
 const TAP_TRACE_MS = 240;
 
+// Enemies still marching or fighting (not mid-death). These are the ones a
+// spell can hit and the ones that keep a wave alive.
+function livingEnemies() {
+  return state.enemies.filter((e) => e.phase === "walk" || e.phase === "fight");
+}
+
+// The skeleton closest to the hero (smallest pos) — the spell's target and the
+// one whose HP the HUD tracks.
+function frontEnemy() {
+  const alive = livingEnemies();
+  if (!alive.length) return null;
+  return alive.reduce((a, b) => (b.pos < a.pos ? b : a));
+}
+
 function handleRuneClick(id, viaTap = false) {
   if (state.screen !== "combat") return;
   const rune = state.runes.find((r) => r.id === id);
@@ -82,21 +96,26 @@ function handleRuneClick(id, viaTap = false) {
 
 function onShapeComplete(now) {
   // The three completed chords lighting up together *is* the cast. Fire the
-  // spell animation, then resolve damage — unless the enemy is already dying.
+  // spell animation, then resolve damage against the frontmost skeleton.
   state.shapeFlashUntil = now + CONFIG.shapeFlashDurationMs;
   state.castAt = now;
   state.castChords = state.chords.map((c) => ({ ...c })); // survives the refill
 
-  if (state.enemyPhase === "dying") return; // spell already landed the kill
+  const target = frontEnemy();
+  state.castTargetId = target ? target.id : null;
+  if (!target) return; // nothing left to hit
 
-  // The spell hits the skeleton (no gold in combat — currency is quiz-only)
-  hitEnemy(state.heroDmg);
+  // The spell hits the target (no gold in combat — currency is quiz-only)
+  hitEnemy(target, state.heroDmg);
+  if (target.hp <= 0) {
+    target.phase = "dying";
+    target.phaseAt = now;
+  }
 
-  if (state.enemyHP <= 0) {
-    // lethal: end the wave once the cast animation finishes (see rafLoop)
+  if (livingEnemies().length === 0) {
+    // that was the last one: end the wave once the cast animation finishes (see rafLoop)
     state.pendingWaveEnd = true;
   } else {
-    if (CONFIG.staggerOnCast) state.windup = 0;
     state.pendingRefill = true;
   }
 }
@@ -110,8 +129,8 @@ function hitPlayer(n) {
   }
 }
 
-function hitEnemy(n) {
-  state.enemyHP = Math.max(0, state.enemyHP - n);
+function hitEnemy(enemy, n) {
+  enemy.hp = Math.max(0, enemy.hp - n);
 }
 
-window.Incanto.combat = { handleRuneClick, onShapeComplete, hitPlayer, hitEnemy };
+window.Incanto.combat = { handleRuneClick, onShapeComplete, hitPlayer, hitEnemy, livingEnemies, frontEnemy };
