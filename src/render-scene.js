@@ -581,28 +581,29 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   silhouette(R.bandOuter);
   ctx.clip();
   const bx = apex.x - RXo - 12, by = apex.y - RYo - 6, bw = RXo * 2 + 24, bh = RYo * 2 + 12;
-  // base wash, lit a little above centre
+  // Keep the glass mostly see-through so the wizard reads through it — just a
+  // faint wash lit a little above centre.
   const g = ctx.createRadialGradient(apex.x, apex.y - RYo * 0.28, 0, apex.x, apex.y, Math.max(RXo, RYo));
-  g.addColorStop(0, `rgba(${c.discRGB}, ${(discNow + 0.12).toFixed(3)})`);
-  g.addColorStop(0.55, `rgba(${c.discRGB}, ${(discNow * 0.7).toFixed(3)})`);
-  g.addColorStop(1, `rgba(${c.discRGB}, ${(discNow * 0.18).toFixed(3)})`);
+  g.addColorStop(0, `rgba(${c.discRGB}, ${(discNow * 0.5 + 0.04).toFixed(3)})`);
+  g.addColorStop(0.55, `rgba(${c.discRGB}, ${(discNow * 0.32).toFixed(3)})`);
+  g.addColorStop(1, `rgba(${c.discRGB}, ${(discNow * 0.06).toFixed(3)})`);
   ctx.fillStyle = g;
   ctx.fillRect(bx, by, bw, bh);
-  // the lower rim curves away from the light: shade it into a dark terminator
+  // the lower rim curves away from the light: a light shade, not a heavy one, so
+  // it doesn't darken what shows through
   const d = ctx.createLinearGradient(0, apex.y - RYo * 0.25, 0, apex.y + RYo);
   d.addColorStop(0, "rgba(3, 12, 16, 0)");
-  d.addColorStop(0.6, "rgba(3, 12, 16, 0.28)");
-  d.addColorStop(1, "rgba(3, 12, 16, 0.62)");
+  d.addColorStop(1, "rgba(3, 12, 16, 0.24)");
   ctx.fillStyle = d;
   ctx.fillRect(bx, by, bw, bh);
-  // glossy specular cap near the top of the bulge
+  // glossy specular cap near the top of the bulge (faint at rest, blooms on cast)
   ctx.globalCompositeOperation = "lighter";
   const hy = apex.y - RYo * 0.5;
   const sMax = Math.max(RXo, RYo) * 0.62;
   const s = ctx.createRadialGradient(apex.x, hy, 0, apex.x, hy, sMax);
-  const specA = Math.min(0.72, 0.24 + disc * 0.28 + bright * 0.3);
+  const specA = Math.min(0.6, 0.1 + disc * 0.28 + bright * 0.32);
   s.addColorStop(0, `rgba(216, 253, 251, ${specA.toFixed(3)})`);
-  s.addColorStop(0.6, `rgba(120, 240, 236, ${(specA * 0.32).toFixed(3)})`);
+  s.addColorStop(0.6, `rgba(120, 240, 236, ${(specA * 0.3).toFixed(3)})`);
   s.addColorStop(1, "rgba(120, 240, 236, 0)");
   ctx.fillStyle = s;
   ctx.fillRect(bx, by, bw, bh);
@@ -636,9 +637,9 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   }
   ctx.restore();
 
-  // --- 4. The outer band: a filled ring straddling the node circle, where the
-  //        crystals sit (the filled band from the big arena wheel). ---
-  ctx.fillStyle = `rgba(${c.discRGB}, ${(0.16 + bright * 0.20 + 0.03 * Math.sin(now / 900)).toFixed(3)})`;
+  // --- 4. The outer band: a faint filled ring straddling the node circle, where
+  //        the crystals sit; kept translucent so only its edge rings read hard. ---
+  ctx.fillStyle = `rgba(${c.discRGB}, ${(0.07 + bright * 0.16 + 0.02 * Math.sin(now / 900)).toFixed(3)})`;
   ctx.beginPath();                                  // outer edge, then inner hole
   const bseg = 46;
   for (let i = 0; i <= bseg; i++) {
