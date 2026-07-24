@@ -37,12 +37,12 @@ function setupScene(cv) {
     wizard,
     skelet,
     fountains: [Math.round(artW * 0.32 / TILE) * TILE, Math.round(artW * 0.68 / TILE) * TILE],
-    // The traced rune is a shallow "magic shield" — the cut-off tip of a large
-    // sphere — conjured at arm's reach in front of the wizard, facing the enemy.
-    // Our camera sees it from the side, so it foreshortens horizontally (rx < ry);
-    // domeProject() then curves its grid over the sphere for the 3D read. rx/ry
-    // size the node ring; the crystal band + glass reach a little past it.
-    rune: { cx: wizard.x + wiz.w + 10, cy: wizard.y + 9, rx: 8, ry: 14 },
+    // The traced rune is a shallow "magic shield" — a contact-lens-shaped cap,
+    // wide and low, tilted back toward the viewer so it foreshortens vertically
+    // (rx > ry). domeProject() then curves its grid over the lens for the 3D
+    // read. rx/ry size the node ring; the crystal band + glass reach a little
+    // past it.
+    rune: { cx: wizard.x + wiz.w + 14, cy: wizard.y + 12, rx: 15, ry: 8 },
     skelChest: { x: skelet.x + skl.w / 2, y: skelet.y + 9 },
     bg: null,
   };
@@ -428,7 +428,7 @@ function pixLine(ctx, x0, y0, x1, y1) {
 // tilts it so we look down onto it; the band straddles the node ring so the
 // crystals sit in a filled ring, like the sockets on the big arena wheel.
 const RUNE3D = (() => {
-  const turn = 0.30, tilt = 0.42, bulge = 0.55;
+  const turn = 0.16, tilt = 0.55, bulge = 0.62;
   return {
     turn, tilt, bulge,
     cosT: Math.cos(turn), sinT: Math.sin(turn),
