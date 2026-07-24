@@ -437,7 +437,7 @@ const RUNE_DISC = (() => {
   // interior ring therefore shifts progressively rightward — their centres are
   // NOT shared — and the radial lines curve. Rim points (rr >= 1) don't move, so
   // the outline stays put and there's no vertical lean.
-  const turn = 0.40, bulge = 0.8;
+  const turn = 0.34, bulge = 0.8;
   return {
     bandInner, bandOuter, socketR,
     turn, bulge, cosT: Math.cos(turn), sinT: Math.sin(turn),
@@ -570,9 +570,10 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   };
 
   ctx.save();
-  // The whole wheel breathes: a calm ~2.5s alpha pulse dips the entire disc
-  // (lines included) so the hero behind it periodically shows through.
-  const pulse = 0.68 + 0.32 * Math.sin(now * (2 * Math.PI / 2500));
+  // The whole wheel breathes: a calm ~3.5s alpha pulse gently dips the entire
+  // disc (lines included) so the hero behind it shows through a little more at
+  // the trough. Shallow — peaks at full, only eases back to 0.85.
+  const pulse = 0.925 + 0.075 * Math.sin(now * (2 * Math.PI / 3500));
   ctx.globalAlpha = alpha * pulse;
 
   // --- 1. Glass shield backing: a convex lens sheen. The wheel stays perfectly
