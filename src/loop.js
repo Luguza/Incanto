@@ -113,5 +113,6 @@ function render(now) {
       builtScreen = state.screen;
     }
   }
+  updateNav();
 }
 window.Incanto.loop = { rafLoop, render, logAttempt };

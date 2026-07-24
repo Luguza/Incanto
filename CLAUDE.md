@@ -25,6 +25,7 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 | `src/combat.js` | rune matching + spell resolution (`handleRuneClick`, `hitEnemy`) |
 | `src/quiz.js` | vocab-quiz logic + exercise handlers (`quizChoose`, `buildQuiz`, …) |
 | `src/screens.js` | full-screen DOM renderers (innerHTML into `#app`) |
+| `src/nav.js` | bottom phase-switcher nav (`navTo`, pixel-art icons) — renders into `<nav id="bottom-nav">` |
 | `src/input.js` | pointer/drag handling for the rune circle |
 | `src/loop.js` | rAF loop + screen router (`rafLoop`, `render`, `app`) |
 | `src/main.js` | event wiring + delegated UI dispatch + bootstrap (loads last) |

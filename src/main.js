@@ -23,15 +23,16 @@ window.addEventListener("keydown", (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Delegated UI actions. Screen templates carry `data-act` (+ optional
-// `data-args` as a JSON array) instead of inline on* handlers, so markup holds
-// no JS identifiers. Listeners live on the stable #app root and survive the
-// innerHTML rebuilds. The action name resolves to a global function (module
-// functions are declared at top level, so they're callable by name here).
+// Delegated UI actions. Screen templates and the bottom nav carry `data-act`
+// (+ optional `data-args` as a JSON array) instead of inline on* handlers, so
+// markup holds no JS identifiers. The click listener is on `document` because
+// the phase nav lives outside #app; input/Enter are quiz-only so they stay on
+// #app. The action name resolves to a global function (module functions are
+// declared at top level, so they're callable by name here).
 // ---------------------------------------------------------------------------
-app.addEventListener("click", (e) => {
+document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-act]");
-  if (!el || !app.contains(el)) return;
+  if (!el) return;
   const fn = window[el.dataset.act];
   if (typeof fn === "function") fn(...JSON.parse(el.dataset.args || "[]"));
 });
@@ -55,5 +56,6 @@ app.addEventListener("keydown", (e) => {
 // Bootstrap — you start straight in combat with the base build.
 // ---------------------------------------------------------------------------
 newGame();
+renderNav();
 startRun();
 requestAnimationFrame(rafLoop);

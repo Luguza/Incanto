@@ -12,6 +12,7 @@ let state = null;
 function freshState() {
   return {
     screen: "combat",       // combat | quiz | upgrade | defeat
+    runActive: false,       // a combat run is live (used by the bottom nav to resume vs. restart)
     runes: [],               // {id, pairId, lang, word, x, y, matchState}
     selectedRuneId: null,
     // Drag-to-connect: press a rune, drag to its pair, release to match.

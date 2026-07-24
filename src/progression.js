@@ -44,6 +44,7 @@ function startRun() {
   state.heroHP = state.heroMaxHP;
   state.wrongMatchCount = 0;
   state.runStartMs = performance.now();
+  state.runActive = true;
   state.screen = "combat";
   startWave(1);
 }

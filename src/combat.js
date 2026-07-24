@@ -105,6 +105,7 @@ function hitPlayer(n) {
   state.heroHP = Math.max(0, state.heroHP - n);
   if (state.heroHP <= 0 && state.screen === "combat") {
     state.lastWaveReached = state.wave;
+    state.runActive = false;   // run is over — the combat nav will start a fresh one
     state.screen = "defeat";
   }
 }
