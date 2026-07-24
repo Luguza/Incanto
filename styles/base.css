@@ -1,0 +1,31 @@
+/* base.css — @font-face, :root tokens, #app + .screen shell. Shared by all screens. */
+
+  @font-face {
+    font-family: "RuneDisplay";
+    src: url("../assets/rune_font.otf") format("opentype");
+    font-display: swap;
+  }
+  :root {
+    color-scheme: dark;
+    /* Display face for spell words, titles and rune labels. Readability comes
+       first: a widely-available classical serif renders on essentially every
+       device. The runic "RuneDisplay" stays in the stack as a deliberately
+       low-priority fallback — it only surfaces where none of the readable
+       serifs exist. */
+    --display-font: "Palatino Linotype", "Book Antiqua", Georgia, "RuneDisplay", serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #141018;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #f5f2ff;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+  }
+  #app { width: 100%; height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center; }
+  .screen { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+

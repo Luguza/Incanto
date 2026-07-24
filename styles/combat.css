@@ -1,0 +1,123 @@
+/* combat.css — combat screen: scene, HUD, rune circle, chords, flashes. */
+
+  /* Combat screen — banner (fight) on top, rune circle filling the rest */
+  .combat-screen {
+    position: relative;
+    display: flex; flex-direction: column;
+    justify-content: flex-start;
+    width: 100%; height: 100%;
+  }
+  .combat-screen::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: rgba(229, 72, 77, 0); transition: none;
+  }
+  .combat-screen.wrong-flash::after { background: rgba(229, 72, 77, 0.35); }
+
+  .scene-wrap {
+    flex: 0 0 auto;
+    width: 100%;
+    overflow: hidden;
+    background: #17131e;
+    line-height: 0;
+  }
+  canvas.scene {
+    display: block;
+    image-rendering: pixelated;
+  }
+  .hud-under {
+    flex: 0 0 auto;
+    width: 100%;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px max(3vw, env(safe-area-inset-left)) 8px max(3vw, env(safe-area-inset-right));
+    background: #1b1624;
+    border-top: 1px solid #3a3550;
+    border-bottom: 1px solid #3a3550;
+  }
+  .hero-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 40%; }
+  .enemy-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; min-width: 40%; }
+  .bar-label {
+    font-size: clamp(10px, 2.7vw, 13px); letter-spacing: 0.5px; color: #b9b3c8; font-weight: 700;
+  }
+  .bar-label span { color: #efeaff; font-weight: 400; }
+  .bar-sub { font-size: clamp(11px, 3vw, 14px); color: #f2c14e; font-weight: 700; }
+  .hp-track {
+    width: clamp(120px, 40vw, 300px); height: 12px;
+    background: #241f2f; border: 1px solid #3a3550; border-radius: 6px; overflow: hidden;
+  }
+  .hp-fill { height: 100%; transition: width 180ms linear; }
+  .hp-track.hero .hp-fill { background: linear-gradient(90deg, #2f9e57, #5ecf8f); }
+  .hp-track.enemy .hp-fill { background: linear-gradient(90deg, #9a3550, #e5545f); }
+  .coin { color: #f2c14e; }
+  .gold-line { font-size: clamp(13px, 3.6vw, 17px); color: #f2c14e; font-weight: 700; }
+  .windup-track {
+    width: clamp(90px, 26vw, 280px); height: 14px;
+    background: #241f2f; border: 1px solid #3a3550; border-radius: 7px;
+    overflow: hidden;
+  }
+  .windup-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #a83a49, #e5484d, #f2784e);
+  }
+
+  svg.arena {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    display: block;
+    /* Runes are dragged with the pointer — don't let a drag scroll/pan the page */
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  /* The static arcane wheel is a baked high-fidelity image; live SVG on top
+     draws only what changes: word bubbles, chords, filigree, sparks, and the
+     rotating inner script ring */
+  .glyph {
+    fill: none; stroke: #7ff0ed; stroke-width: 1.7; opacity: 0.6;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .inner-band .glyph { stroke-width: 1.4; }
+  .spark { fill: url(#sparkGrad); }
+  .rune .halo { opacity: 0; fill: #f2c14e; transition: opacity 150ms linear; pointer-events: none; }
+  .rune.selected .halo { opacity: 0.4; }
+  .rune.matched .halo { opacity: 0.22; fill: #5ecf8f; }
+  /* Word bubbles are transparent wells over the baked sockets: a whisper of
+     dark fill for legibility, state shown by ring tint */
+  .rune .body { stroke-width: 1.5; cursor: pointer; transition: fill 100ms linear, stroke 100ms linear; }
+  .rune.unmatched .body { fill: rgba(8, 13, 18, 0.30); stroke: rgba(127, 244, 241, 0.35); }
+  .rune.selected .body { fill: rgba(242, 193, 78, 0.16); stroke: #ffe9b0; stroke-width: 2.5; }
+  .rune.matched .body { fill: rgba(94, 207, 143, 0.14); stroke: rgba(143, 231, 180, 0.8); }
+  .rune text {
+    font-family: var(--display-font);
+    fill: #e8fffe; font-size: 19px; letter-spacing: 0.5px; font-weight: 700;
+    paint-order: stroke; stroke: rgba(8, 13, 18, 0.9); stroke-width: 3px;
+    text-anchor: middle; dominant-baseline: central;
+    pointer-events: none;
+  }
+  .rune.selected text { fill: #ffe9b0; }
+  .rune.matched text { fill: #b9f2d2; }
+  /* Wrong pair: the whole rune circle flares red for a beat before it re-deals.
+     Higher specificity than the per-state rules above so every rune goes red. */
+  #wheel-img { transition: filter 120ms linear; }
+  .combat-screen.rune-flash #wheel-img { filter: sepia(1) saturate(7) hue-rotate(-22deg) brightness(1.05); }
+  .combat-screen.rune-flash .rune .body { fill: rgba(229, 72, 77, 0.34); stroke: #ff6470; stroke-width: 2.5; }
+  .combat-screen.rune-flash .rune text { fill: #ffdadf; }
+  .combat-screen.rune-flash .rune .halo { opacity: 0.55; fill: #ff5560; }
+  .combat-screen.rune-flash .chord,
+  .combat-screen.rune-flash .chord-glow { stroke: #ff6470; }
+  /* The line trailing from a held rune to the pointer while dragging a pair */
+  .drag-line {
+    stroke: #ffe9b0; stroke-width: 3; stroke-linecap: round;
+    stroke-dasharray: 6 8; opacity: 0; pointer-events: none;
+    filter: url(#softGlow);
+  }
+  .drag-line.active { opacity: 0.85; }
+  .chord-glow { stroke: #4de3e0; stroke-width: 9; stroke-linecap: round; opacity: 0.3; }
+  .chord { stroke: #8ff7f3; stroke-width: 3.5; stroke-linecap: round; }
+  .chord.flash { stroke: #ffffff; stroke-width: 6; }
+  .chord-glow.flash { stroke: #ffffff; opacity: 0.6; }
+  /* Filigree sub-lines for every possible chord: pulse faintly, burst white
+     on a correct match, then stay lit alongside their main line */
+  .sub-group { stroke: #4de3e0; }
+  .sub-group.burst { stroke: #ffffff; }
+  .sub-group * { fill: none; stroke-linecap: round; }
+

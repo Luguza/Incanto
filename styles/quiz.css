@@ -1,0 +1,105 @@
+/* quiz.css — post-death vocab quiz: options, typed input, match board, sentence build, action bar. */
+
+  /* Post-death vocab quiz */
+  .quiz-screen { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); text-align: center; }
+  .quiz-progress { font-size: 13px; color: #8a8398; letter-spacing: 0.5px; margin-bottom: 14px; }
+  .quiz-screen h1 {
+    font-family: var(--display-font);
+    font-size: clamp(24px, 6.5vw, 32px); letter-spacing: 2px; color: #7ff0ed;
+    text-shadow: 0 0 22px rgba(77, 227, 224, 0.45); margin-bottom: 18px;
+  }
+  .quiz-prompt { font-size: clamp(17px, 5vw, 22px); color: #cfc9de; margin-bottom: 26px; }
+  .quiz-word {
+    font-family: var(--display-font);
+    color: #f2c14e; font-weight: 700; letter-spacing: 1px;
+  }
+  .quiz-opts { display: flex; flex-direction: column; gap: 12px; width: min(340px, 88vw); margin: 0 auto; }
+  .quiz-opt {
+    font-size: 19px; padding: 15px; border-radius: 11px;
+    background: linear-gradient(160deg, #241d33, #1a1526);
+    border: 1px solid #4de3e0; color: #efeaff; cursor: pointer;
+    transition: background 120ms, border-color 120ms;
+  }
+  .quiz-opt:active { background: #2a2340; }
+  .quiz-opt.correct { background: #1f6d43; border-color: #5ecf8f; color: #eafff2; }
+  .quiz-opt.wrong { background: #6d2330; border-color: #e5545f; color: #ffe9ec; }
+  .quiz-opt.faded { opacity: 0.4; }
+  .quiz-opt:disabled { cursor: default; }
+
+  /* Quiz — shared chrome across the Duolingo-style exercise types */
+  .quiz-typeline { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
+  .quiz-badge {
+    font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;
+    color: #9fd8d6; background: rgba(77, 227, 224, 0.1);
+    border: 1px solid rgba(77, 227, 224, 0.35); border-radius: 999px; padding: 4px 11px;
+  }
+  .quiz-badge.kind { color: #cfeae9; }
+  .quiz-hint { font-size: 14px; color: #8a8398; font-style: italic; margin: 4px 0 20px; }
+  .quiz-sentence {
+    font-size: clamp(18px, 5.2vw, 24px); color: #efeaff; line-height: 1.7;
+    max-width: min(420px, 90vw); margin: 6px auto 4px;
+  }
+  .quiz-sentence .blank {
+    color: #f2c14e; font-weight: 700; border-bottom: 2px dashed #f2c14e; padding: 0 6px;
+  }
+  .quiz-sentence .blank.filled { border-bottom-style: solid; }
+
+  /* Typed exercises */
+  .quiz-input {
+    font-size: 20px; padding: 13px 16px; width: min(340px, 88vw); margin: 4px auto 0;
+    display: block; text-align: center; color: #efeaff;
+    background: #14101d; border: 2px solid #4de3e0; border-radius: 11px; outline: none;
+  }
+  .quiz-input::placeholder { color: #6b6580; }
+  .quiz-input:disabled { opacity: 0.75; }
+
+  /* Match-pairs board */
+  .match-cols { display: flex; gap: 12px; justify-content: center; width: min(420px, 92vw); margin: 4px auto 0; }
+  .match-col { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .match-tile {
+    font-size: 17px; padding: 13px 8px; border-radius: 10px;
+    background: linear-gradient(160deg, #241d33, #1a1526);
+    border: 1px solid #4de3e0; color: #efeaff; cursor: pointer;
+    transition: background 120ms, border-color 120ms, opacity 200ms, transform 120ms;
+  }
+  .match-tile.sel { background: #2a3a52; border-color: #f2c14e; transform: scale(1.03); }
+  .match-tile.done { opacity: 0.25; border-color: #5ecf8f; cursor: default; }
+  .match-tile.wrong { background: #6d2330; border-color: #e5545f; color: #ffe9ec; }
+
+  /* Build-the-sentence word bank */
+  .build-line {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center;
+    min-height: 52px; width: min(440px, 92vw); margin: 6px auto 14px; padding: 8px;
+    border-bottom: 2px solid #2f2942;
+  }
+  .build-placeholder { color: #6b6580; font-style: italic; }
+  .build-bank {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    width: min(440px, 92vw); margin: 0 auto;
+  }
+  .tile {
+    font-size: 17px; padding: 10px 14px; border-radius: 10px;
+    background: linear-gradient(160deg, #241d33, #1a1526);
+    border: 1px solid #4de3e0; color: #efeaff; cursor: pointer;
+  }
+  .tile.built { border-color: #f2c14e; }
+  .tile.spent { visibility: hidden; } /* keeps the bank from reflowing as tiles are used */
+
+  /* Check / Continue action bar + feedback banner */
+  .quiz-check, .quiz-continue { margin: 22px auto 0; width: min(340px, 88vw); }
+  .quiz-continue { background: linear-gradient(180deg, #7ff0ed, #4de3e0); box-shadow: 0 0 24px rgba(77, 227, 224, 0.3); }
+  .quiz-feedback {
+    font-size: 16px; margin: 20px auto 0; width: min(340px, 88vw);
+    padding: 12px; border-radius: 11px;
+  }
+  .quiz-feedback.good { background: rgba(31, 109, 67, 0.35); border: 1px solid #5ecf8f; color: #d6ffe6; }
+  .quiz-feedback.bad { background: rgba(109, 35, 48, 0.35); border: 1px solid #e5545f; color: #ffe1e5; }
+  .quiz-feedback.reveal { background: rgba(77, 227, 224, 0.12); border: 1px solid #4de3e0; color: #cfeae9; }
+  .quiz-feedback strong { color: #ffe9b0; }
+  .quiz-reveal {
+    display: block; margin: 14px auto 0; padding: 6px 4px; width: min(340px, 88vw);
+    background: none; border: none; color: #8a8398; cursor: pointer;
+    font-size: 14px; text-decoration: underline; text-underline-offset: 3px;
+  }
+  .quiz-reveal:active { color: #cfc9de; }
+
