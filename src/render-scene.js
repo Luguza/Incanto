@@ -34,7 +34,7 @@ function setupScene(cv) {
   // The traced rune is a "magic shield" hovering just in front of the wizard,
   // facing the enemy: a circle foreshortened to a tall, narrow ellipse (rx < ry).
   // Its centre sits ~0.8 tiles ahead of the wizard, midway up the floor.
-  const runeCx = Math.round(wizard.x + wiz.w / 2 + 0.8 * TILE);
+  const runeCx = Math.round(wizard.x + wiz.w / 2 + 0.9 * TILE);
   const runeCy = Math.round((FLOOR_Y + SCENE_H) / 2);
   scene = {
     cv,
@@ -437,7 +437,7 @@ const RUNE_DISC = (() => {
   // interior ring therefore shifts progressively rightward — their centres are
   // NOT shared — and the radial lines curve. Rim points (rr >= 1) don't move, so
   // the outline stays put and there's no vertical lean.
-  const turn = 0.34, bulge = 0.8;
+  const turn = 0.40, bulge = 0.8;
   return {
     bandInner, bandOuter, socketR,
     turn, bulge, cosT: Math.cos(turn), sinT: Math.sin(turn),
@@ -570,7 +570,10 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   };
 
   ctx.save();
-  ctx.globalAlpha = alpha;
+  // The whole wheel breathes: a calm ~2.5s alpha pulse dips the entire disc
+  // (lines included) so the hero behind it periodically shows through.
+  const pulse = 0.68 + 0.32 * Math.sin(now * (2 * Math.PI / 2500));
+  ctx.globalAlpha = alpha * pulse;
 
   // --- 1. Glass shield backing: a convex lens sheen. The wheel stays perfectly
   //        round and concentric, but a bright highlight up top fading to a
@@ -582,11 +585,12 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   ctx.clip();
   const bx = apex.x - RXo - 12, by = apex.y - RYo - 6, bw = RXo * 2 + 24, bh = RYo * 2 + 12;
   // Keep the glass mostly see-through so the wizard reads through it — just a
-  // faint wash lit a little above centre.
+  // faint blue wash lit a little above centre.
+  const glassBlue = "96, 158, 236";
   const g = ctx.createRadialGradient(apex.x, apex.y - RYo * 0.28, 0, apex.x, apex.y, Math.max(RXo, RYo));
-  g.addColorStop(0, `rgba(${c.discRGB}, ${(discNow * 0.5 + 0.04).toFixed(3)})`);
-  g.addColorStop(0.55, `rgba(${c.discRGB}, ${(discNow * 0.32).toFixed(3)})`);
-  g.addColorStop(1, `rgba(${c.discRGB}, ${(discNow * 0.06).toFixed(3)})`);
+  g.addColorStop(0, `rgba(${glassBlue}, ${(discNow * 0.45 + 0.035).toFixed(3)})`);
+  g.addColorStop(0.55, `rgba(${glassBlue}, ${(discNow * 0.28 + 0.015).toFixed(3)})`);
+  g.addColorStop(1, `rgba(${glassBlue}, ${(discNow * 0.05).toFixed(3)})`);
   ctx.fillStyle = g;
   ctx.fillRect(bx, by, bw, bh);
   // the lower rim curves away from the light: a light shade, not a heavy one, so
