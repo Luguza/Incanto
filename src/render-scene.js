@@ -432,31 +432,30 @@ function pixLine(ctx, x0, y0, x1, y1) {
 // edge rings.
 const RUNE_DISC = (() => {
   const bandInner = 0.76, bandOuter = 1.24;
+  // Convex perspective: the disc bulges toward the viewer, turned slightly about
+  // its vertical axis so the near point (apex) sits a touch RIGHT of centre. Each
+  // interior ring therefore shifts progressively rightward — their centres are
+  // NOT shared — and the radial lines curve. Rim points (rr >= 1) don't move, so
+  // the outline stays put and there's no vertical lean.
+  const turn = 0.34, bulge = 0.8;
   return {
     bandInner, bandOuter, crystalR: (bandOuter - bandInner) / 2,
-    // Convexity of the lens: 0 = flat, ~0.5 = a bulging cap. It's a symmetric
-    // radial doming (a sphere seen head-on) — rings stay concentric and nothing
-    // shears, they just bunch toward the rim like the latitudes of a dome.
-    dome: 0.6,
+    turn, bulge, cosT: Math.cos(turn), sinT: Math.sin(turn),
   };
 })();
 
 // Project a point on the flat rune disc (unit coords u,v; the rim is |(u,v)| = 1)
-// to screen. A symmetric, radial-only convex doming pushes inner points outward
-// (so concentric rings bunch toward the rim, reading as a bulge) while the rim
-// stays put; then a clean foreshortening — u by rx, v by ry about the shared
-// centre. Circles stay concentric ellipses; nothing shears or tilts.
+// to screen. The disc bulges toward the viewer (height z, max at the centre) and
+// is turned slightly about its vertical axis, which slides interior points to the
+// right by z — so concentric input circles come out as rings whose centres step
+// rightward, and straight radial lines bow. Vertical (v) stays clean, so nothing
+// leans up or down.
 function domeProject(u, v, scale = 1) {
   const { cx, cy, rx, ry } = scene.rune;
   const rr = Math.hypot(u, v);
-  let k = 1;
-  if (RUNE_DISC.dome > 0 && rr > 1e-4) {
-    const RIM = RUNE_DISC.bandOuter;
-    const a = RUNE_DISC.dome * Math.PI / 2;             // surface angle at the rim
-    const domed = Math.sin(Math.min(rr, RIM) / RIM * a) / Math.sin(a) * RIM;
-    k = domed / rr;                                     // radial stretch at this point
-  }
-  return { x: cx + u * k * rx * scale, y: cy + v * k * ry * scale };
+  const z = rr < 1 ? RUNE_DISC.bulge * Math.sqrt(1 - rr * rr) : 0; // bulge toward viewer
+  const x = u * RUNE_DISC.cosT + z * RUNE_DISC.sinT;              // turn slides inner points right
+  return { x: cx + x * rx * scale, y: cy + v * ry * scale };
 }
 
 // Map a big-arena point onto the disc, proportionally (radius kept, not just
@@ -596,7 +595,7 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   ctx.save();
   silhouette(R.bandOuter);
   ctx.clip();
-  const bx = apex.x - RXo - 2, by = apex.y - RYo - 2, bw = RXo * 2 + 4, bh = RYo * 2 + 4;
+  const bx = apex.x - RXo - 12, by = apex.y - RYo - 6, bw = RXo * 2 + 24, bh = RYo * 2 + 12;
   // base wash, lit a little above centre
   const g = ctx.createRadialGradient(apex.x, apex.y - RYo * 0.28, 0, apex.x, apex.y, Math.max(RXo, RYo));
   g.addColorStop(0, `rgba(${c.discRGB}, ${(discNow + 0.12).toFixed(3)})`);
