@@ -37,16 +37,21 @@ const CONFIG = {
   enemiesBaseCount: 3,
   enemyMaxCount: 8,
   enemyCountEveryWaves: 2,   // +1 skeleton every this many waves
-  // March + melee. Positions are normalized: 1 = spawn edge (far right),
-  // 0 = right at the hero (far left). Enemies walk left until they reach their
-  // stop slot, then attack. Slots stagger so the mob queues up instead of
-  // stacking on one tile.
-  enemyWalkSpeed: 0.00024,   // normalized units per ms
-  enemySpawnGap: 0.18,       // extra spawn offset per queue slot (trailing column)
-  enemyStandoff: 0.10,       // stop position of the frontmost skeleton
-  enemySlotSpacing: 0.09,    // gap between queued skeletons' stop positions
-  enemyFirstAttackMs: 1400,  // windup before a skeleton's first hit after arriving
-  enemyAttackIntervalMs: 3400, // steady cadence between a skeleton's hits
+  // March + melee. A skeleton's `pos` is measured in TILES to the right of the
+  // hero's front edge (0 = touching the hero). One pos-unit maps to exactly one
+  // 16px floor tile on screen, and the queue keeps > 1 tile between neighbours,
+  // so no two skeletons ever share a tile. They walk left until blocked (by the
+  // standoff line or the skeleton ahead), stand idle if out of reach, and only
+  // swing once within attack range.
+  enemyWalkTilesPerMs: 0.0018,  // march speed (~1.8 tiles/sec)
+  enemySpawnTiles: 13,          // frontmost skeleton spawns this many tiles out (off-screen right)
+  enemySpawnGapTiles: 1.7,      // extra spawn distance per queue slot (trailing column)
+  enemyStandoffTiles: 1.6,      // how far in front of the hero the front rank stops
+  enemyGapTiles: 1.15,          // min tiles between two skeletons (> 1 → never the same tile)
+  enemyAttackRangeTiles: 4.1,   // a stopped skeleton within this reach of the hero attacks; farther ones idle
+  enemyFirstAttackMs: 1400,     // windup before a skeleton's first hit after engaging
+  enemyAttackIntervalMs: 3400,  // steady cadence between a skeleton's hits
+  enemyAttackLungeMs: 260,      // length of the forward jab drawn on each hit
   runeCount: 6,
   pairsPerLoadout: 3,
   wrongFlashDurationMs: 200,

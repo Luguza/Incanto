@@ -11,10 +11,10 @@
 // (before it rests, or before the third pair releases the spell).
 const TAP_TRACE_MS = 240;
 
-// Enemies still marching or fighting (not mid-death). These are the ones a
-// spell can hit and the ones that keep a wave alive.
+// Enemies still on their feet (not mid-death). These are the ones a spell can
+// hit and the ones that keep a wave alive.
 function livingEnemies() {
-  return state.enemies.filter((e) => e.phase === "walk" || e.phase === "fight");
+  return state.enemies.filter((e) => e.phase !== "dying");
 }
 
 // The skeleton closest to the hero (smallest pos) — the spell's target and the

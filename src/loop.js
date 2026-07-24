@@ -26,26 +26,44 @@ function getEffectiveDt(rawDt) {
   return rawDt;
 }
 
-// March the mob one frame: walkers close on their stop slot, then switch to
-// fighting and hit the hero on a steady cadence; finished death animations are
-// culled. No shared windup bar — each skeleton keeps its own attack timer.
+// March the mob one frame. Processed front-to-back (nearest the hero first) so
+// each skeleton is blocked by the standoff line or by whoever is ahead of it,
+// always leaving > 1 tile between neighbours — no two ever share a tile. A
+// skeleton walks while it has room, idles when stopped out of reach, and only
+// attacks (on its own steady cadence) once it settles within attack range. No
+// shared windup bar — each keeps its own timer. Finished deaths are culled.
 function updateEnemies(now, dt) {
-  for (const e of state.enemies) {
-    if (e.phase === "walk") {
-      e.pos -= CONFIG.enemyWalkSpeed * dt;
-      if (e.pos <= e.stopPos) {
-        e.pos = e.stopPos;
-        e.phase = "fight";                       // arrived → in range
-        e.attackAt = now + CONFIG.enemyFirstAttackMs;
-      }
-    } else if (e.phase === "fight") {
-      if (now >= e.attackAt) {
-        hitPlayer(e.dmg);
-        e.attackAt = now + CONFIG.enemyAttackIntervalMs;
-      }
+  const step = CONFIG.enemyWalkTilesPerMs * dt;
+  const ordered = state.enemies.slice().sort((a, b) => a.pos - b.pos);
+  let limit = CONFIG.enemyStandoffTiles; // how far forward the next skeleton may advance
+  let chainSettled = true;               // is everything ahead settled against the hero?
+  for (const e of ordered) {
+    if (e.phase === "dying") {
+      // a crumbling skeleton still holds its tile until it's culled, so the
+      // ranks behind can't walk through the corpse
+      limit = e.pos + CONFIG.enemyGapTiles;
+      chainSettled = false;
+      continue;
     }
+    const newPos = Math.max(e.pos - step, limit);
+    const blocked = newPos <= limit + 1e-3;
+    e.pos = newPos;
+    const settled = chainSettled && blocked;
+    if (!blocked) {
+      e.phase = "walk";
+    } else if (settled && e.pos <= CONFIG.enemyAttackRangeTiles + 1e-3) {
+      if (e.phase !== "attack") { e.phase = "attack"; e.attackAt = now + CONFIG.enemyFirstAttackMs; }
+    } else {
+      e.phase = "idle";
+    }
+    if (e.phase === "attack" && now >= e.attackAt) {
+      hitPlayer(e.dmg);
+      e.attackAnimAt = now;                 // fire the forward-jab animation
+      e.attackAt = now + CONFIG.enemyAttackIntervalMs;
+    }
+    limit = e.pos + CONFIG.enemyGapTiles;   // next skeleton stays a gap behind this one
+    chainSettled = settled;                 // a still-moving skeleton breaks the settled chain
   }
-  // Drop skeletons whose death animation has played out.
   state.enemies = state.enemies.filter(
     (e) => !(e.phase === "dying" && now - e.phaseAt >= CONFIG.enemyDeathMs)
   );

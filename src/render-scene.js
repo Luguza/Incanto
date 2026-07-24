@@ -34,10 +34,9 @@ function setupScene(cv) {
     artW,
     wizard,
     feetY,
-    // Enemy march track: a normalized pos maps onto scene x. pos 0 lands the
-    // skeleton just in front of the hero; pos 1 is the far-right spawn edge.
-    enemyLeftX: wizard.x + wiz.w + 12,
-    enemyRightX: artW,
+    // Enemy march track: a skeleton's `pos` is in tiles to the right of the
+    // hero's front edge, so one pos-unit is exactly one 16px floor tile.
+    enemyLineX: wizard.x + wiz.w,
     fountains: [Math.round(artW * 0.32 / TILE) * TILE, Math.round(artW * 0.68 / TILE) * TILE],
     // The traced rune stands upright at arm's reach in front of the wizard,
     // facing the enemy. Our camera sees it from the side, so the circle
@@ -217,16 +216,32 @@ function renderScene(now) {
   ctx.restore();
 
   // Enemies: the mob walks in from the right toward the hero, fading out on
-  // death. Map each skeleton's normalized march position onto scene x; nearer
-  // ones (smaller pos) draw last so they overlap the ranks behind them.
+  // death. Each skeleton's tile position maps onto scene x (one tile = TILE px);
+  // nearer ones (smaller pos) draw last so they overlap the ranks behind them.
+  // Three distinct animations read the phase at a glance: a leg-cycling run
+  // while walking, a still idle stance when stopped out of reach, and a forward
+  // jab on every strike while attacking.
   const skl = SHEET.skeletIdle;
-  const sceneX = (pos) => scene.enemyLeftX + pos * (scene.enemyRightX - scene.enemyLeftX);
+  const sceneX = (pos) => scene.enemyLineX + pos * TILE;
   const skelY = feetY - skl.h;
   const ordered = state.enemies.slice().sort((a, b) => b.pos - a.pos);
   for (const e of ordered) {
+    const walking = e.phase === "walk";
+    const frameSet = walking ? ASSETS.skeletRun : ASSETS.skelet;
+    // Frame cadence sets the three moods apart: a brisk run cycle, a calm idle,
+    // and an agitated (fast) shuffle while attacking.
+    const frameMs = walking ? 110 : e.phase === "attack" ? 90 : 160;
+    const ef = Math.floor(now / frameMs + e.slot) % frameSet.length;
+
+    // Attacking: a sharp forward jab toward the hero (left) on each hit, then back.
+    let xJab = 0;
+    if (e.phase === "attack" && e.attackAnimAt && now - e.attackAnimAt < CONFIG.enemyAttackLungeMs) {
+      const p = (now - e.attackAnimAt) / CONFIG.enemyAttackLungeMs;
+      xJab = -Math.round(Math.sin(p * Math.PI) * 5);
+    }
+
     const cx = Math.round(sceneX(e.pos));
-    const sx = cx - Math.round(skl.w / 2);
-    const ef = Math.floor(now / 160 + e.slot) % ASSETS.skelet.length;
+    const sx = cx - Math.round(skl.w / 2) + xJab;
     let alpha = 1;
     if (e.phase === "dying") {
       const p = Math.min(1, (now - e.phaseAt) / CONFIG.enemyDeathMs);
@@ -246,7 +261,7 @@ function renderScene(now) {
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.drawImage(ASSETS.shadowSm, cx - 8, feetY - 2);
-    ctx.drawImage(ASSETS.skelet[ef], sx, skelY);
+    ctx.drawImage(frameSet[ef], sx, skelY);
     ctx.restore();
   }
 
@@ -269,7 +284,7 @@ function renderScene(now) {
       chest = { x: Math.round(sceneX(target.pos)), y: skelY + 9 };
       scene.castChest = chest;
     } else {
-      chest = scene.castChest || { x: scene.enemyLeftX, y: skelY + 9 };
+      chest = scene.castChest || { x: scene.enemyLineX, y: skelY + 9 };
     }
 
     if (t < charge) {

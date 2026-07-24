@@ -29,9 +29,9 @@ function freshState() {
     hpLevel: 0,
     gold: 0,
     // Endless waves — each wave sends a mob of skeletons that walk in from the
-    // right. An enemy: {id, maxHP, hp, dmg, slot, pos, stopPos, phase, phaseAt,
-    // attackAt}. `pos` is normalized (1 = spawn edge, 0 = at the hero); `phase`
-    // is walk | fight | dying.
+    // right. An enemy: {id, maxHP, hp, dmg, slot, pos, phase, phaseAt, attackAt,
+    // attackAnimAt}. `pos` is in tiles to the right of the hero (0 = at him);
+    // `phase` is walk | idle | attack | dying.
     wave: 1,
     enemies: [],
     nextEnemyId: 1,

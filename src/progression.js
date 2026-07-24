@@ -39,11 +39,11 @@ function startWave(w) {
       hp: maxHP,
       dmg,
       slot: i,
-      pos: 1.15 + i * CONFIG.enemySpawnGap,          // offscreen right, staggered
-      stopPos: CONFIG.enemyStandoff + i * CONFIG.enemySlotSpacing,
-      phase: "walk",                                  // walk | fight | dying
+      pos: CONFIG.enemySpawnTiles + i * CONFIG.enemySpawnGapTiles, // tiles out, trailing column
+      phase: "walk",              // walk | idle | attack | dying
       phaseAt: now,
-      attackAt: 0,
+      attackAt: 0,                // next time this skeleton lands a hit
+      attackAnimAt: 0,            // start of the current forward-jab animation
     });
   }
   state.castTargetId = null;
