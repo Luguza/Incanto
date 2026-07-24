@@ -573,17 +573,40 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  // --- 1. Glass shield backing: fill the dome silhouette with a radial wash
-  //        brightest at the apex, so the surface reads as bulging toward us. ---
+  // --- 1. Glass shield backing: a convex lens sheen. The wheel stays perfectly
+  //        round and concentric, but a bright highlight up top fading to a
+  //        shaded lower rim makes the glass read as gently bulging toward us. ---
   const discNow = Math.max(disc, 0.06 + 0.04 * Math.sin(now / 900));
-  const rad = Math.max(rx, ry) * scale * R.bandOuter;
-  const g = ctx.createRadialGradient(apex.x, apex.y, 0, apex.x, apex.y, rad);
-  g.addColorStop(0, `rgba(${c.discRGB}, ${(discNow + 0.10).toFixed(3)})`);
-  g.addColorStop(0.6, `rgba(${c.discRGB}, ${(discNow * 0.7).toFixed(3)})`);
-  g.addColorStop(1, `rgba(${c.discRGB}, ${(discNow * 0.15).toFixed(3)})`);
+  const RXo = rx * scale * R.bandOuter, RYo = ry * scale * R.bandOuter;
+  ctx.save();
   silhouette(R.bandOuter);
+  ctx.clip();
+  const bx = apex.x - RXo - 2, by = apex.y - RYo - 2, bw = RXo * 2 + 4, bh = RYo * 2 + 4;
+  // base wash, lit a little above centre
+  const g = ctx.createRadialGradient(apex.x, apex.y - RYo * 0.28, 0, apex.x, apex.y, Math.max(RXo, RYo));
+  g.addColorStop(0, `rgba(${c.discRGB}, ${(discNow + 0.12).toFixed(3)})`);
+  g.addColorStop(0.55, `rgba(${c.discRGB}, ${(discNow * 0.7).toFixed(3)})`);
+  g.addColorStop(1, `rgba(${c.discRGB}, ${(discNow * 0.18).toFixed(3)})`);
   ctx.fillStyle = g;
-  ctx.fill();
+  ctx.fillRect(bx, by, bw, bh);
+  // the lower rim curves away from the light: shade it
+  const d = ctx.createLinearGradient(0, apex.y - RYo * 0.15, 0, apex.y + RYo);
+  d.addColorStop(0, "rgba(4, 14, 18, 0)");
+  d.addColorStop(1, "rgba(4, 14, 18, 0.40)");
+  ctx.fillStyle = d;
+  ctx.fillRect(bx, by, bw, bh);
+  // glossy specular cap near the top of the bulge
+  ctx.globalCompositeOperation = "lighter";
+  const hy = apex.y - RYo * 0.44;
+  const sMax = Math.max(RXo, RYo) * 0.78;
+  const s = ctx.createRadialGradient(apex.x, hy, 0, apex.x, hy, sMax);
+  const specA = Math.min(0.6, 0.10 + disc * 0.22 + bright * 0.28);
+  s.addColorStop(0, `rgba(206, 251, 249, ${specA.toFixed(3)})`);
+  s.addColorStop(0.7, `rgba(120, 240, 236, ${(specA * 0.3).toFixed(3)})`);
+  s.addColorStop(1, "rgba(120, 240, 236, 0)");
+  ctx.fillStyle = s;
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.restore();
 
   // --- 2. Dome grid: concentric parallels + radial meridians, all bowed over
   //        the surface — the curved lines that sell the perspective. ---
