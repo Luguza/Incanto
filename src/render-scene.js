@@ -428,12 +428,16 @@ function pixLine(ctx, x0, y0, x1, y1) {
 // tilts it so we look down onto it; the band straddles the node ring so the
 // crystals sit in a filled ring, like the sockets on the big arena wheel.
 const RUNE3D = (() => {
-  const turn = 0.24, tilt = 0.30, bulge = 0.58;
+  const turn = 0.24, tilt = 0.30, bulge = 0.42;
+  // The band is centred on the node ring (rr = 1); the crystal sockets exactly
+  // span its width, tangent to both edge rings.
+  const bandInner = 0.76, bandOuter = 1.24;
   return {
     turn, tilt, bulge,
     cosT: Math.cos(turn), sinT: Math.sin(turn),
     cosB: Math.cos(tilt), sinB: Math.sin(tilt),
-    bandInner: 0.80, bandOuter: 1.15, // node ring is rr = 1
+    bandInner, bandOuter,
+    crystalR: (bandOuter - bandInner) / 2, // socket radius = half the band width
   };
 })();
 
@@ -500,23 +504,44 @@ function domeChord(ctx, x1, y1, x2, y2, scale, core, glowRGB, seg = 7) {
   }
 }
 
-// A single rune crystal seated in the band: a dark socket well, a glowing gem,
-// and a crisp core. `bright` (0..1) is the cast/charge brightening.
-function drawRuneCrystal(ctx, x, y, bright, c) {
+// A small circle in flat-disc space, centred at (cu,cv) with flat radius r,
+// projected over the dome — appears as a foreshortened socket ellipse. Outlined
+// by default; filled when `fill` is set.
+function domeCircleAt(ctx, cu, cv, r, scale, fill = false, seg = 20) {
+  if (fill) ctx.beginPath();
+  let prev = domeProject(cu + r, cv, scale);
+  if (fill) ctx.moveTo(prev.x, prev.y);
+  for (let i = 1; i <= seg; i++) {
+    const a = (i / seg) * Math.PI * 2;
+    const p = domeProject(cu + r * Math.cos(a), cv + r * Math.sin(a), scale);
+    if (fill) ctx.lineTo(p.x, p.y);
+    else pixLine(ctx, Math.round(prev.x), Math.round(prev.y), Math.round(p.x), Math.round(p.y));
+    prev = p;
+  }
+  if (fill) { ctx.closePath(); ctx.fill(); }
+}
+
+// A rune crystal socket seated in the band: it's a circle sized to span the
+// full band width (tangent to both edge rings), with a dark well and a glowing
+// gem core — matching the word sockets on the big arena wheel. (cu,cv) is the
+// slot on the unit node ring; `r` is the socket radius. `bright` is the cast glow.
+function drawRuneCrystal(ctx, cu, cv, r, scale, bright, c) {
+  ctx.fillStyle = "rgba(4, 16, 16, 0.55)";           // dark socket well
+  domeCircleAt(ctx, cu, cv, r * 0.9, scale, true);
   ctx.save();
-  ctx.fillStyle = "rgba(4, 16, 16, 0.5)";           // socket well
-  ctx.beginPath();
-  ctx.ellipse(x, y, 2.4, 3.1, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalCompositeOperation = "lighter";          // glowing gem body
-  ctx.fillStyle = `rgba(${c.glowRGB}, ${(0.5 + bright * 0.45).toFixed(3)})`;
-  ctx.beginPath();
-  ctx.moveTo(x, y - 2.7); ctx.lineTo(x + 1.7, y); ctx.lineTo(x, y + 2.7); ctx.lineTo(x - 1.7, y);
-  ctx.closePath();
-  ctx.fill();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = `rgba(${c.glowRGB}, ${(0.42 + bright * 0.4).toFixed(3)})`;
+  domeCircleAt(ctx, cu, cv, r, scale);               // bright socket ring
   ctx.restore();
-  ctx.fillStyle = c.dot;                             // crisp core
-  ctx.fillRect(x, y - 1, 1, 2);
+  const p = domeProject(cu, cv, scale);              // glowing gem core
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = `rgba(${c.discRGB}, ${(0.5 + bright * 0.4).toFixed(3)})`;
+  ctx.fillRect(Math.round(p.x) - 1, Math.round(p.y), 3, 1);
+  ctx.fillRect(Math.round(p.x), Math.round(p.y) - 1, 1, 3);
+  ctx.restore();
+  ctx.fillStyle = c.dot;
+  ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
 }
 
 // A 1px line with an additive glow: soft passes offset around the core line
@@ -578,7 +603,7 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   ctx.globalCompositeOperation = "lighter";
   const gridA = 0.10 + 0.05 * Math.sin(now / 800) + bright * 0.18;
   ctx.fillStyle = `rgba(${c.glowRGB}, ${Math.max(0, gridA).toFixed(3)})`;
-  for (const rr of [0.34, 0.58, 0.80]) domeRing(ctx, rr, scale);
+  domeRing(ctx, 0.5, scale);                          // one inner parallel
   for (let i = 0; i < CONFIG.runeCount; i++) {
     const s = slotUV(i);
     domeSeg(ctx, s.u * 0.16, s.v * 0.16, s.u * R.bandInner, s.v * R.bandInner, scale);
@@ -624,11 +649,11 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   domeRing(ctx, R.bandInner, scale);
   ctx.restore();
 
-  // --- 5. Crystals seated in the band at the six slots ---
+  // --- 5. Crystal sockets seated in the band at the six slots, each sized to
+  //        span the band width exactly (tangent to both edge rings). ---
   for (let i = 0; i < CONFIG.runeCount; i++) {
     const s = slotUV(i);
-    const p = domeProject(s.u, s.v, scale);
-    drawRuneCrystal(ctx, Math.round(p.x), Math.round(p.y), bright, c);
+    drawRuneCrystal(ctx, s.u, s.v, R.crystalR, scale, bright, c);
   }
 
   // --- 6. Center hub: a small ring + core at the apex ---
