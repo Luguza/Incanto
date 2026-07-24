@@ -31,18 +31,19 @@ function setupScene(cv) {
   const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
   const wizard = { x: margin, y: feetY - wiz.h };
   const skelet = { x: artW - margin - skl.w, y: feetY - skl.h };
+  // The traced rune is a "magic shield" hovering in front of the wizard, facing
+  // the enemy: a circle foreshortened to a tall, narrow ellipse (rx < ry). Its
+  // shared centre sits on the floor tile just in front of the wizard, midway up
+  // the floor, so the whole concentric wheel reads as centred on that tile.
+  const runeCx = Math.ceil((wizard.x + wiz.w) / TILE) * TILE + TILE / 2;
+  const runeCy = Math.round((FLOOR_Y + SCENE_H) / 2);
   scene = {
     cv,
     artW,
     wizard,
     skelet,
     fountains: [Math.round(artW * 0.32 / TILE) * TILE, Math.round(artW * 0.68 / TILE) * TILE],
-    // The traced rune is a "magic shield" — a convex lens conjured upright at
-    // arm's reach in front of the wizard, facing the enemy. It stands taller
-    // than it is wide (foreshortened horizontally, like the original disc), and
-    // domeProject() bulges its grid toward the viewer for the lens's convex 3D
-    // read. rx/ry size the node ring; the crystal band + glass reach past it.
-    rune: { cx: wizard.x + wiz.w + 11, cy: wizard.y + 9, rx: 9, ry: 14 },
+    rune: { cx: runeCx, cy: runeCy, rx: 9, ry: 14 },
     skelChest: { x: skelet.x + skl.w / 2, y: skelet.y + 9 },
     bg: null,
   };
@@ -344,7 +345,7 @@ function drawHeroBackfire(ctx, now) {
     const fseg = 32;
     for (let i = 0; i <= fseg; i++) {
       const a = (i / fseg) * Math.PI * 2;
-      const p = domeProject(RUNE3D.bandOuter * Math.cos(a), RUNE3D.bandOuter * Math.sin(a), 1);
+      const p = domeProject(RUNE_DISC.bandOuter * Math.cos(a), RUNE_DISC.bandOuter * Math.sin(a), 1);
       const fx = dcx + (p.x - cx) * grow, fy = dcy + (p.y - cy) * grow;
       i ? ctx.lineTo(fx, fy) : ctx.moveTo(fx, fy);
     }
@@ -422,44 +423,31 @@ function pixLine(ctx, x0, y0, x1, y1) {
   }
 }
 
-// --- 3D rune-shield projection ----------------------------------------------
-// The scene rune is etched on a shallow spherical cap ("magic shield") that
-// bulges toward the viewer. RUNE3D turns the cap slightly toward the enemy and
-// tilts it so we look down onto it; the band straddles the node ring so the
-// crystals sit in a filled ring, like the sockets on the big arena wheel.
-const RUNE3D = (() => {
-  const turn = 0.24, tilt = 0.30, bulge = 0.42;
-  // The band is centred on the node ring (rr = 1); the crystal sockets exactly
-  // span its width, tangent to both edge rings.
+// --- Rune-shield disc geometry ----------------------------------------------
+// The scene rune reads as a magic disc seen edge-on-ish in front of the wizard:
+// a circle foreshortened to a tall, narrow ellipse (via rx < ry in scene.rune).
+// Every ring shares one centre so the wheel stays clean and concentric, like a
+// small mirror of the flat arena wheel below. The band is centred on the node
+// ring (rr = 1); the crystal sockets exactly span its width, tangent to both
+// edge rings.
+const RUNE_DISC = (() => {
   const bandInner = 0.76, bandOuter = 1.24;
-  return {
-    turn, tilt, bulge,
-    cosT: Math.cos(turn), sinT: Math.sin(turn),
-    cosB: Math.cos(tilt), sinB: Math.sin(tilt),
-    bandInner, bandOuter,
-    crystalR: (bandOuter - bandInner) / 2, // socket radius = half the band width
-  };
+  return { bandInner, bandOuter, crystalR: (bandOuter - bandInner) / 2 };
 })();
 
-// Lift a point on the flat rune disc (unit coords u,v; the rim is |(u,v)| = 1)
-// onto the sphere cap and project it to screen. Straight lines on the flat disc
-// come out curved, bowing over the dome — the whole 3D cue. Points past the rim
-// (rr > 1) stay flat, forming the shield's raised lip.
+// Project a point on the flat rune disc (unit coords u,v; the rim is |(u,v)| = 1)
+// to screen. It's a clean concentric foreshortening — u scaled by rx, v by ry,
+// about the shared centre — so circles map to concentric ellipses and straight
+// lines stay straight (no shear/tilt distortion).
 function domeProject(u, v, scale = 1) {
   const { cx, cy, rx, ry } = scene.rune;
-  const rr = Math.hypot(u, v);
-  const z = rr < 1 ? RUNE3D.bulge * Math.sqrt(1 - rr * rr) : 0; // height toward viewer
-  const y = -v;                                  // flip to math-up
-  const x1 = u * RUNE3D.cosT + z * RUNE3D.sinT;  // turn about the vertical axis
-  const z1 = -u * RUNE3D.sinT + z * RUNE3D.cosT;
-  const y2 = y * RUNE3D.cosB + z1 * RUNE3D.sinB; // tilt: the bulge lifts toward us
-  return { x: cx + x1 * rx * scale, y: cy - y2 * ry * scale };
+  return { x: cx + u * rx * scale, y: cy + v * ry * scale };
 }
 
 // Map a big-arena point onto the disc, proportionally (radius kept, not just
-// angle) then curved over the dome, so a stroke drawn across the circle below
-// mirrors faithfully on the shield. Radius is clamped so a pointer flung past
-// the rim stays on the staff's reach.
+// angle), so a stroke drawn across the circle below mirrors faithfully on the
+// shield. Radius is clamped so a pointer flung past the rim stays on the
+// staff's reach.
 function runePointXY(px, py, scale = 1) {
   let nx = (px - CONFIG.circleCenter.x) / CONFIG.circleRadius;
   let ny = (py - CONFIG.circleCenter.y) / CONFIG.circleRadius;
@@ -566,7 +554,7 @@ function pixLineGlow(ctx, x0, y0, x1, y1, core, glowRGB) {
 function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   const c = CONFIG.colors.sceneRune;
   const { rx, ry } = scene.rune;
-  const R = RUNE3D;
+  const R = RUNE_DISC;
   const slotAngle = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / CONFIG.runeCount;
   const slotUV = (i) => ({ u: Math.cos(slotAngle(i)), v: Math.sin(slotAngle(i)) });
   const apex = domeProject(0, 0, scale);
