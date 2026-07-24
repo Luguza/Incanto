@@ -432,16 +432,31 @@ function pixLine(ctx, x0, y0, x1, y1) {
 // edge rings.
 const RUNE_DISC = (() => {
   const bandInner = 0.76, bandOuter = 1.24;
-  return { bandInner, bandOuter, crystalR: (bandOuter - bandInner) / 2 };
+  return {
+    bandInner, bandOuter, crystalR: (bandOuter - bandInner) / 2,
+    // Convexity of the lens: 0 = flat, ~0.5 = a bulging cap. It's a symmetric
+    // radial doming (a sphere seen head-on) — rings stay concentric and nothing
+    // shears, they just bunch toward the rim like the latitudes of a dome.
+    dome: 0.6,
+  };
 })();
 
 // Project a point on the flat rune disc (unit coords u,v; the rim is |(u,v)| = 1)
-// to screen. It's a clean concentric foreshortening — u scaled by rx, v by ry,
-// about the shared centre — so circles map to concentric ellipses and straight
-// lines stay straight (no shear/tilt distortion).
+// to screen. A symmetric, radial-only convex doming pushes inner points outward
+// (so concentric rings bunch toward the rim, reading as a bulge) while the rim
+// stays put; then a clean foreshortening — u by rx, v by ry about the shared
+// centre. Circles stay concentric ellipses; nothing shears or tilts.
 function domeProject(u, v, scale = 1) {
   const { cx, cy, rx, ry } = scene.rune;
-  return { x: cx + u * rx * scale, y: cy + v * ry * scale };
+  const rr = Math.hypot(u, v);
+  let k = 1;
+  if (RUNE_DISC.dome > 0 && rr > 1e-4) {
+    const RIM = RUNE_DISC.bandOuter;
+    const a = RUNE_DISC.dome * Math.PI / 2;             // surface angle at the rim
+    const domed = Math.sin(Math.min(rr, RIM) / RIM * a) / Math.sin(a) * RIM;
+    k = domed / rr;                                     // radial stretch at this point
+  }
+  return { x: cx + u * k * rx * scale, y: cy + v * k * ry * scale };
 }
 
 // Map a big-arena point onto the disc, proportionally (radius kept, not just
@@ -589,20 +604,21 @@ function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   g.addColorStop(1, `rgba(${c.discRGB}, ${(discNow * 0.18).toFixed(3)})`);
   ctx.fillStyle = g;
   ctx.fillRect(bx, by, bw, bh);
-  // the lower rim curves away from the light: shade it
-  const d = ctx.createLinearGradient(0, apex.y - RYo * 0.15, 0, apex.y + RYo);
-  d.addColorStop(0, "rgba(4, 14, 18, 0)");
-  d.addColorStop(1, "rgba(4, 14, 18, 0.40)");
+  // the lower rim curves away from the light: shade it into a dark terminator
+  const d = ctx.createLinearGradient(0, apex.y - RYo * 0.25, 0, apex.y + RYo);
+  d.addColorStop(0, "rgba(3, 12, 16, 0)");
+  d.addColorStop(0.6, "rgba(3, 12, 16, 0.28)");
+  d.addColorStop(1, "rgba(3, 12, 16, 0.62)");
   ctx.fillStyle = d;
   ctx.fillRect(bx, by, bw, bh);
   // glossy specular cap near the top of the bulge
   ctx.globalCompositeOperation = "lighter";
-  const hy = apex.y - RYo * 0.44;
-  const sMax = Math.max(RXo, RYo) * 0.78;
+  const hy = apex.y - RYo * 0.5;
+  const sMax = Math.max(RXo, RYo) * 0.62;
   const s = ctx.createRadialGradient(apex.x, hy, 0, apex.x, hy, sMax);
-  const specA = Math.min(0.6, 0.10 + disc * 0.22 + bright * 0.28);
-  s.addColorStop(0, `rgba(206, 251, 249, ${specA.toFixed(3)})`);
-  s.addColorStop(0.7, `rgba(120, 240, 236, ${(specA * 0.3).toFixed(3)})`);
+  const specA = Math.min(0.72, 0.24 + disc * 0.28 + bright * 0.3);
+  s.addColorStop(0, `rgba(216, 253, 251, ${specA.toFixed(3)})`);
+  s.addColorStop(0.6, `rgba(120, 240, 236, ${(specA * 0.32).toFixed(3)})`);
   s.addColorStop(1, "rgba(120, 240, 236, 0)");
   ctx.fillStyle = s;
   ctx.fillRect(bx, by, bw, bh);
