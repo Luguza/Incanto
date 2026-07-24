@@ -46,6 +46,7 @@ const SHEET = {
   crate: { x: 288, y: 298, w: 16, h: 22 },
   wizardIdle: { x: 128, y: 170, w: 16, h: 22, f: 4 },
   skeletIdle: { x: 368, y: 80, w: 16, h: 16, f: 4 },
+  skeletRun: { x: 432, y: 80, w: 16, h: 16, f: 4 },
   // 0x72 DungeonTileset II magic staff — a wooden shaft capped with a gem; the
   // gem is recolored teal at load so it matches the rune it traces.
   staffMagic: { x: 340, y: 145, w: 8, h: 30 },
@@ -187,6 +188,7 @@ function buildAssets() {
     wizard: frames(SHEET.wizardIdle),
     staff: recolorStaffGem(cutFrame(tilesetImg, SHEET.staffMagic, 0)),
     skelet: frames(SHEET.skeletIdle, { flip: true }),
+    skeletRun: frames(SHEET.skeletRun, { flip: true }),
     skeletHit: frames(SHEET.skeletIdle, { flip: true, silhouette: "#fff3d0" }),
     fountainMid: frames(SHEET.fountainMidRed),
     fountainBasin: frames(SHEET.fountainBasinRed),

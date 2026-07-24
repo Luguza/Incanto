@@ -26,22 +26,33 @@ function setupScene(cv) {
 
   const margin = Math.max(10, Math.round(artW * 0.08));
   const wiz = SHEET.wizardIdle;
-  const skl = SHEET.skeletIdle;
-  // Fighters stand in the middle of the floor, not right up against the wall
-  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
+  // Lanes: parallel depth rows across the floor the mob marches in on. Feet
+  // lines run from near the back wall to the front of the floor; the hero holds
+  // the middle lane.
+  const laneCount = Math.max(1, CONFIG.enemyLanes);
+  const laneY = [];
+  for (let i = 0; i < laneCount; i++) {
+    const frac = laneCount <= 1 ? 0.66 : 0.40 + (0.92 - 0.40) * (i / (laneCount - 1));
+    laneY.push(FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * frac));
+  }
+  const heroLane = Math.floor(laneCount / 2);
+  const feetY = laneY[heroLane];
   const wizard = { x: margin, y: feetY - wiz.h };
-  const skelet = { x: artW - margin - skl.w, y: feetY - skl.h };
   scene = {
     cv,
     artW,
     wizard,
-    skelet,
+    feetY,
+    laneY,
+    // Enemy march track: a skeleton's `pos` is in tiles to the right of the
+    // hero's front edge, so one pos-unit is exactly one 16px floor tile.
+    enemyLineX: wizard.x + wiz.w,
     fountains: [Math.round(artW * 0.32 / TILE) * TILE, Math.round(artW * 0.68 / TILE) * TILE],
     // The traced rune stands upright at arm's reach in front of the wizard,
     // facing the enemy. Our camera sees it from the side, so the circle
     // foreshortens horizontally: a tall, narrow ellipse (height > width).
     rune: { cx: wizard.x + wiz.w + 9, cy: wizard.y + 8, rx: 7, ry: 14 },
-    skelChest: { x: skelet.x + skl.w / 2, y: skelet.y + 9 },
+    castChest: null,  // cached chest of the last cast target, for the fireball
     bg: null,
   };
   scene.bg = buildBg(artW);
@@ -106,11 +117,12 @@ function buildBg(artW) {
     blit(SHEET.fountainTop, fx, FLOOR_Y - 2 * TILE);
   }
 
-  // Floor prop: a skull near the skeleton (the wizard's side stays clear —
-  // the traced rune floats there)
+  // Floor prop: a skull over on the right where the mob streams in (the wizard's
+  // side stays clear — the traced rune floats there)
   const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
-  blit(SHEET.skull, scene.skelet.x - 16, feetY - 12);
-  ctx.drawImage(ASSETS.shadow, scene.skelet.x - 16 + 8 - 9, feetY - 2); // skull shadow
+  const skullX = Math.round(artW * 0.82);
+  blit(SHEET.skull, skullX, feetY - 12);
+  ctx.drawImage(ASSETS.shadow, skullX + 8 - 9, feetY - 2); // skull shadow
 
   // --- Atmosphere pass (baked): depth + vignette ---------------------------
   // Ambient occlusion: the wall casts a soft shadow onto the front of the floor.
@@ -152,7 +164,7 @@ function renderScene(now) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(scene.bg, 0, 0);
 
-  const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
+  const feetY = scene.feetY;        // the hero's lane
   const fountainBasinY = FLOOR_Y;   // basin on the first floor row
 
   // Lava fountains: 3-frame animation, stream + basin. Drawn BEFORE the warm
@@ -213,33 +225,61 @@ function renderScene(now) {
   ctx.drawImage(ASSETS.wizard[wf], scene.wizard.x, scene.wizard.y);
   ctx.restore();
 
-  // Skeleton: walks in from the right on a new wave, fades out on death
-  let exOff = 0, eAlpha = 1;
-  if (state.enemyPhase === "enter") {
-    const p = Math.min(1, (now - state.enemyPhaseAt) / CONFIG.enemyEnterMs);
-    const eased = 1 - Math.pow(1 - p, 3);
-    exOff = Math.round((1 - eased) * (scene.artW + 24 - scene.skelet.x));
-  } else if (state.enemyPhase === "dying") {
-    const p = Math.min(1, (now - state.enemyPhaseAt) / CONFIG.enemyDeathMs);
-    eAlpha = 1 - p;
-    exOff = Math.round(p * 8);
-    // dissolving embers rise as it collapses
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    for (let i = 0; i < 7; i++) {
-      const h = (i * 97) % 13;
-      const ex = scene.skelet.x + 3 + ((i * 5) % SHEET.skeletIdle.w);
-      const ey = scene.skelet.y + SHEET.skeletIdle.h - Math.round(p * (10 + h));
-      ctx.fillStyle = `rgba(77, 227, 224, ${(eAlpha * 0.8).toFixed(2)})`;
-      ctx.fillRect(ex, ey, 1, 1);
+  // Enemies: the mob walks in from the right toward the hero, fading out on
+  // death. Each skeleton's tile position maps onto scene x (one tile = TILE px);
+  // nearer ones (smaller pos) draw last so they overlap the ranks behind them.
+  // Three distinct animations read the phase at a glance: a leg-cycling run
+  // while walking, a still idle stance when stopped out of reach, and a forward
+  // jab on every strike while attacking.
+  const skl = SHEET.skeletIdle;
+  const sceneX = (pos) => scene.enemyLineX + pos * TILE;
+  const laneFeetY = (e) => scene.laneY[e.lane] ?? feetY;
+  // Draw back lanes (higher up the floor) first, and within a lane the nearer
+  // ones last, so closer skeletons overlap the ranks behind them.
+  const ordered = state.enemies.slice().sort(
+    (a, b) => (laneFeetY(a) - laneFeetY(b)) || (b.pos - a.pos)
+  );
+  for (const e of ordered) {
+    const ly = laneFeetY(e);
+    const skelY = ly - skl.h;
+    const walking = e.phase === "walk";
+    const frameSet = walking ? ASSETS.skeletRun : ASSETS.skelet;
+    // Frame cadence sets the three moods apart: a brisk run cycle, a calm idle,
+    // and an agitated (fast) shuffle while attacking.
+    const frameMs = walking ? 110 : e.phase === "attack" ? 90 : 160;
+    const ef = Math.floor(now / frameMs + e.slot) % frameSet.length;
+
+    // Attacking: a sharp forward jab toward the hero (left) on each hit, then back.
+    let xJab = 0;
+    if (e.phase === "attack" && e.attackAnimAt && now - e.attackAnimAt < CONFIG.enemyAttackLungeMs) {
+      const p = (now - e.attackAnimAt) / CONFIG.enemyAttackLungeMs;
+      xJab = -Math.round(Math.sin(p * Math.PI) * 5);
     }
+
+    const cx = Math.round(sceneX(e.pos));
+    const sx = cx - Math.round(skl.w / 2) + xJab;
+    let alpha = 1;
+    if (e.phase === "dying") {
+      const p = Math.min(1, (now - e.phaseAt) / CONFIG.enemyDeathMs);
+      alpha = 1 - p;
+      // dissolving embers rise as it collapses
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 7; i++) {
+        const h = (i * 97) % 13;
+        const ex = sx + 3 + ((i * 5) % skl.w);
+        const ey = skelY + skl.h - Math.round(p * (10 + h));
+        ctx.fillStyle = `rgba(77, 227, 224, ${(alpha * 0.8).toFixed(2)})`;
+        ctx.fillRect(ex, ey, 1, 1);
+      }
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(ASSETS.shadowSm, cx - 8, ly - 2);
+    ctx.drawImage(frameSet[ef], sx, skelY);
     ctx.restore();
   }
-  ctx.save();
-  ctx.globalAlpha = eAlpha;
-  ctx.drawImage(ASSETS.shadowSm, scene.skelet.x + exOff + SHEET.skeletIdle.w / 2 - 8, feetY - 2);
-  ctx.drawImage(ASSETS.skelet[sf], scene.skelet.x + exOff, scene.skelet.y);
-  ctx.restore();
 
   // The wizard's spell-in-progress: the rune the player is tracing below is
   // mirrored as a tilted disc in front of the wizard. While tracing, it shows
@@ -252,7 +292,17 @@ function renderScene(now) {
     const flight = CONFIG.fireballFlightMs;
     const impact = CONFIG.fireballImpactMs;
     const f = CONFIG.colors.fireball;
-    const chest = scene.skelChest;
+    // Aim at the skeleton this cast targeted; cache its chest so the fireball
+    // still lands if the target has already dissolved by the time it arrives.
+    const target = state.enemies.find((e) => e.id === state.castTargetId);
+    let chest;
+    if (target) {
+      const ty = (scene.laneY[target.lane] ?? feetY) - skl.h;
+      chest = { x: Math.round(sceneX(target.pos)), y: ty + 9 };
+      scene.castChest = chest;
+    } else {
+      chest = scene.castChest || { x: scene.enemyLineX, y: (feetY - skl.h) + 9 };
+    }
 
     if (t < charge) {
       // charge: disc fades in behind the completed rune, lines go white-hot
@@ -280,8 +330,9 @@ function renderScene(now) {
       ctx.drawImage(ASSETS.fireball, x - 5, y - 3);
     } else if (t > charge + flight && t <= charge + flight + impact) {
       const q = (t - charge - flight) / impact;
-      if (Math.floor((t - charge - flight) / 70) % 2 === 0) {
-        ctx.drawImage(ASSETS.skeletHit[sf], scene.skelet.x, scene.skelet.y);
+      if (target && Math.floor((t - charge - flight) / 70) % 2 === 0) {
+        const ty = (scene.laneY[target.lane] ?? feetY) - skl.h;
+        ctx.drawImage(ASSETS.skeletHit[sf], Math.round(sceneX(target.pos)) - Math.round(skl.w / 2), ty);
       }
       const r = Math.round(2 + q * 10);
       ctx.fillStyle = f.y;
