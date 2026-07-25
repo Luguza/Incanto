@@ -143,29 +143,38 @@ function updateCamera(now, dt) {
 
 let lastRafNow = null;
 function rafLoop(now) {
-  if (lastRafNow === null) lastRafNow = now;
-  const rawDt = now - lastRafNow;
-  lastRafNow = now;
+  // The whole frame is wrapped so a single stray exception can never kill the
+  // loop. If it did, the screen would freeze while the input handlers keep
+  // mutating state — clicks (the phase nav especially) would change `state`
+  // but never repaint, so the game looks dead / the nav looks broken. Log the
+  // error, skip the bad frame, and always reschedule so the loop self-heals.
+  try {
+    if (lastRafNow === null) lastRafNow = now;
+    const rawDt = now - lastRafNow;
+    lastRafNow = now;
 
-  if (state.screen === "combat") {
-    const effectiveDt = getEffectiveDt(rawDt);
-    state.clockMs += effectiveDt;
-    updateSpawns(now);
-    updateEnemies(now, effectiveDt);
-    updateCamera(now, effectiveDt);
-    if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {
-      state.pendingRefill = false;
-      populateCircle(drawLoadout());
+    if (state.screen === "combat") {
+      const effectiveDt = getEffectiveDt(rawDt);
+      state.clockMs += effectiveDt;
+      updateSpawns(now);
+      updateEnemies(now, effectiveDt);
+      updateCamera(now, effectiveDt);
+      if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {
+        state.pendingRefill = false;
+        populateCircle(drawLoadout());
+      }
+      // Third pair matched by tap: once the staff has traced to the 2nd rune,
+      // release the spell.
+      if (state.pendingShapeAt && now >= state.pendingShapeAt) {
+        state.pendingShapeAt = 0;
+        onShapeComplete(now);
+      }
     }
-    // Third pair matched by tap: once the staff has traced to the 2nd rune,
-    // release the spell.
-    if (state.pendingShapeAt && now >= state.pendingShapeAt) {
-      state.pendingShapeAt = 0;
-      onShapeComplete(now);
-    }
+
+    render(now);
+  } catch (err) {
+    console.error("rafLoop frame error (loop kept alive):", err);
   }
-
-  render(now);
   requestAnimationFrame(rafLoop);
 }
 
