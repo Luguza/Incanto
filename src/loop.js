@@ -62,6 +62,7 @@ function updateEnemies(now, dt) {
     group.sort((a, b) => a.pos - b.pos);
     let limit = CONFIG.enemyStandoffTiles; // how far forward the next skeleton may advance
     let chainSettled = true;               // is everything ahead in this lane settled against the hero?
+    let frontRank = true;                  // only the lane's leading skeleton stands in melee
     for (const e of group) {
       if (e.phase === "dying" || e.phase === "struck") {
         // a doomed/crumbling skeleton still holds its tile until it's culled, so
@@ -74,10 +75,12 @@ function updateEnemies(now, dt) {
       const blocked = newPos <= limit + 1e-3;
       e.pos = newPos;
       const settled = chainSettled && blocked;
-      if (!blocked) {
-        e.phase = "walk";
-      } else if (settled && e.pos <= CONFIG.enemyAttackRangeTiles + 1e-3) {
+      // Only the front skeleton in the lane actually reaches melee and swings;
+      // everyone queued behind it just idles until it falls and they advance.
+      if (frontRank && settled && e.pos <= CONFIG.enemyAttackRangeTiles + 1e-3) {
         if (e.phase !== "attack") { e.phase = "attack"; e.attackAt = now + CONFIG.enemyFirstAttackMs; }
+      } else if (!blocked) {
+        e.phase = "walk";
       } else {
         e.phase = "idle";
       }
@@ -88,6 +91,7 @@ function updateEnemies(now, dt) {
       }
       limit = e.pos + CONFIG.enemyGapTiles;   // next skeleton stays a gap behind this one
       chainSettled = settled;                 // a still-moving skeleton breaks the settled chain
+      frontRank = false;                      // everyone after the leader is a back rank
     }
   }
   state.enemies = state.enemies.filter(

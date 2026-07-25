@@ -34,8 +34,8 @@ const CONFIG = {
   // Random trickle: the next skeleton arrives after a delay drawn uniformly from
   // [min, max] ms, capped at `enemyMaxCount` alive so the arena never overflows.
   enemyMaxCount: 9,          // hard cap on skeletons alive at once
-  enemySpawnMinMs: 1200,     // shortest gap between arrivals
-  enemySpawnMaxMs: 3400,     // longest gap between arrivals
+  enemySpawnMinMs: 3600,     // shortest gap between arrivals
+  enemySpawnMaxMs: 10200,    // longest gap between arrivals
   enemyFirstSpawnMs: 400,    // the first skeleton of a run walks in almost at once
   enemyLanes: 3,             // parallel depth rows the mob streams in on
   // March + melee. A skeleton's `pos` is measured in TILES to the right of the

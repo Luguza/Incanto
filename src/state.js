@@ -37,6 +37,8 @@ function freshState() {
     enemies: [],
     nextEnemyId: 1,
     nextSpawnAt: 0,           // performance.now() timestamp for the next skeleton to walk in
+    laneBag: [],              // shuffled lanes left to deal this cycle (each lane used once per cycle)
+    lastSpawnLane: -1,        // lane of the previous spawn, so no two arrivals share a lane back-to-back
     castTargetId: null,       // which enemy the in-flight fireball is aimed at
     poolIndex: 0,
     wrongMatchCount: 0,

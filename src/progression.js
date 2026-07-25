@@ -18,13 +18,29 @@ function randomSpawnDelay() {
   return lo + Math.random() * (hi - lo);
 }
 
+// Pick the lane for the next arrival. Lanes are dealt from a shuffled bag —
+// every lane is used exactly once per cycle (so all lanes get populated), and
+// the bag is reshuffled if it would repeat the previous lane back-to-back, so
+// no two consecutive skeletons ever share a lane.
+function nextSpawnLane() {
+  if (CONFIG.enemyLanes <= 1) return 0;
+  if (state.laneBag.length === 0) {
+    do {
+      state.laneBag = shuffleArray([...Array(CONFIG.enemyLanes).keys()]);
+    } while (state.laneBag[state.laneBag.length - 1] === state.lastSpawnLane);
+  }
+  const lane = state.laneBag.pop();          // next lane to deal is the bag's tail
+  state.lastSpawnLane = lane;
+  return lane;
+}
+
 // Send in one lone skeleton off the right edge. Every skeleton is identical
-// (same HP/damage). It joins a random lane, queued a gap behind whoever is
+// (same HP/damage). It joins its dealt lane, queued a gap behind whoever is
 // already furthest out in that lane so arrivals never spawn on top of a corpse
 // or a straggler, then walks to its own stop slot before it starts attacking.
 function spawnEnemy(now) {
   const id = state.nextEnemyId++;
-  const lane = Math.floor(Math.random() * CONFIG.enemyLanes);
+  const lane = nextSpawnLane();
   // Spawn at the standard distance, but if this lane still has stragglers, drop
   // in a gap behind the rearmost so the new one trails the column.
   let pos = CONFIG.enemySpawnTiles;
@@ -59,6 +75,8 @@ function startRun() {
   const now = performance.now();
   state.enemies = [];
   state.nextSpawnAt = now + CONFIG.enemyFirstSpawnMs;
+  state.laneBag = [];
+  state.lastSpawnLane = -1;
   state.castTargetId = null;
   state.castAt = 0;
   state.castChords = null;
@@ -113,4 +131,4 @@ function buyHp() {
   state._structuralDirty = true;
 }
 
-window.Incanto.progression = { dmgUpgradeCost, hpUpgradeCost, randomSpawnDelay, spawnEnemy, startRun, layoutCircle, shuffleArray, buyDmg, buyHp };
+window.Incanto.progression = { dmgUpgradeCost, hpUpgradeCost, randomSpawnDelay, nextSpawnLane, spawnEnemy, startRun, layoutCircle, shuffleArray, buyDmg, buyHp };
