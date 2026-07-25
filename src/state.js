@@ -67,6 +67,7 @@ function freshState() {
     shapeFlashUntil: 0,
     castAt: 0,
     castChords: null, // snapshot of the completed chords for the cast animation
+    dmgFloats: [],    // {value, color, born, x, y, targetId} damage numbers over fighters
     pendingRefill: false,
     // Tap-tap: after the second tap resolves a pair, the staff traces to the 2nd
     // rune of that pair before resting (or, on the third pair, before the cast).

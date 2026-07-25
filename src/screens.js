@@ -328,7 +328,6 @@ function renderCombatFull() {
         <div class="hero-hud">
           <div class="bar-label">HELD <span id="hero-hp-text"></span></div>
           <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
-          <div class="bar-sub">⚔ ${state.heroDmg} Schaden</div>
         </div>
         <div class="enemy-hud">
           <div class="bar-label" id="wave-label"></div>

@@ -109,6 +109,17 @@ function onShapeComplete(now) {
 
   // The spell hits the target (no gold in combat — currency is quiz-only)
   hitEnemy(target, state.heroDmg);
+  // Pop the damage number over the skeleton the moment the fireball lands, not
+  // when the cast starts — the pop is re-anchored to the body each frame.
+  const impactAt = now + CONFIG.castChargeMs + CONFIG.fireballFlightMs;
+  spawnDmgFloat({
+    value: state.heroDmg,
+    color: CONFIG.colors.dmgFloat.enemy,
+    born: impactAt,
+    targetId: target.id,
+    x: scene ? scene.enemyLineX + target.pos * TILE : 0,
+    y: scene ? (scene.laneY[target.lane] ?? scene.feetY) - SHEET.skeletIdle.h - 3 : 0,
+  });
   if (target.hp <= 0) {
     // Killed — but don't play the death animation yet. The fireball is still
     // charging + flying; the skeleton stays standing (marked `struck`) until the

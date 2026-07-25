@@ -361,6 +361,91 @@ function renderScene(now) {
   // Mis-cast backfire: the traced rune shatters in red over the wizard and its
   // broken magic detonates around him.
   if (now < state.heroBlastUntil) drawHeroBackfire(ctx, now);
+
+  // Floating damage numbers, drawn last so they sit above every fighter.
+  renderDmgFloats(ctx, now);
+}
+
+// --- Floating damage numbers -------------------------------------------------
+// Each hit pops a small number over the fighter it landed on, which then rises
+// and fades. Numbers are drawn as crisp pixel glyphs (a tiny 3x5 font) so they
+// sit in the scene's pixel-art look instead of blurry canvas text.
+const DMG_DIGITS = {
+  "0": [0b111, 0b101, 0b101, 0b101, 0b111],
+  "1": [0b010, 0b110, 0b010, 0b010, 0b111],
+  "2": [0b111, 0b001, 0b111, 0b100, 0b111],
+  "3": [0b111, 0b001, 0b111, 0b001, 0b111],
+  "4": [0b101, 0b101, 0b111, 0b001, 0b001],
+  "5": [0b111, 0b100, 0b111, 0b001, 0b111],
+  "6": [0b111, 0b100, 0b111, 0b101, 0b111],
+  "7": [0b111, 0b001, 0b001, 0b010, 0b010],
+  "8": [0b111, 0b101, 0b111, 0b101, 0b111],
+  "9": [0b111, 0b101, 0b111, 0b001, 0b111],
+};
+
+// Queue a damage number. `born` lets a hit whose visual lands later (a fireball
+// in flight) hold the pop until impact; `targetId` re-anchors it to a live
+// skeleton each frame so it tracks the body, falling back to the spawn x/y once
+// that skeleton is gone.
+function spawnDmgFloat({ value, color, x = 0, y = 0, born = performance.now(), targetId = null }) {
+  if (!state.dmgFloats) state.dmgFloats = [];
+  state.dmgFloats.push({ value: Math.max(0, Math.round(value)), color, x, y, born, targetId });
+}
+
+// Draw `str` as centred pixel digits: `s` art px per font pixel, top-left of the
+// block found from the centre x and a top y.
+function drawPixNumber(ctx, str, cx, topY, s) {
+  const glyphW = 3 * s, gap = s;
+  const totalW = str.length * glyphW + (str.length - 1) * gap;
+  let x = Math.round(cx - totalW / 2);
+  for (const ch of str) {
+    const rows = DMG_DIGITS[ch];
+    if (rows) {
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 3; c++) {
+          if (rows[r] & (1 << (2 - c))) ctx.fillRect(x + c * s, topY + r * s, s, s);
+        }
+      }
+    }
+    x += glyphW + gap;
+  }
+}
+
+function renderDmgFloats(ctx, now) {
+  const floats = state.dmgFloats;
+  if (!scene || !floats || !floats.length) return;
+  const ttl = CONFIG.dmgFloatMs, rise = CONFIG.dmgFloatRisePx, s = 2;
+  const skl = SHEET.skeletIdle;
+  const keep = [];
+  for (const f of floats) {
+    if (now < f.born) { keep.push(f); continue; }  // waiting on its delayed impact
+    const t = (now - f.born) / ttl;
+    if (t >= 1) continue;                            // expired — drop it
+    keep.push(f);
+
+    // Re-anchor to the live skeleton so the number rides the body; if it's gone,
+    // use the position captured when the hit was queued.
+    let ax = f.x, ay = f.y;
+    if (f.targetId != null) {
+      const e = state.enemies.find((en) => en.id === f.targetId);
+      if (e) {
+        ax = scene.enemyLineX + e.pos * TILE;
+        ay = (scene.laneY[e.lane] ?? scene.feetY) - skl.h - 3;
+      }
+    }
+    const topY = Math.round(ay - t * rise);
+    const alpha = t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85;   // quick pop, slow fade
+    const str = String(f.value);
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";            // drop shadow, for legibility
+    drawPixNumber(ctx, str, ax + 1, topY + 1, s);
+    ctx.fillStyle = `rgb(${f.color})`;
+    drawPixNumber(ctx, str, ax, topY, s);
+    ctx.restore();
+  }
+  state.dmgFloats = keep;
 }
 
 // A wrong pair backfires: the rune the wizard was tracing tears apart in red
@@ -884,4 +969,4 @@ function drawGemGlow(ctx, now, tx, ty, glow) {
   ctx.restore();
 }
 
-window.Incanto.renderScene = { setupScene, renderScene };
+window.Incanto.renderScene = { setupScene, renderScene, spawnDmgFloat };
