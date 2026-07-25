@@ -112,6 +112,7 @@ const CONFIG = {
     dmgFloat: {
       enemy: "255, 236, 200",
       hero: "255, 92, 96",
+      crit: "255, 214, 90",   // a crit bites gold
     },
     fireball: {
       C: "#fff7d9", // core

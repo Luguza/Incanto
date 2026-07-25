@@ -1,15 +1,8 @@
 "use strict";
 // ==============================================================================
-// progression.js — enemy spawning, upgrade costs, run start, circle layout,
-// and upgrade purchases (buyDmg/buyHp).
+// progression.js — enemy spawning, run start, and circle layout. (Permanent
+// build upgrades now live in the skill tree — see skilltree.js.)
 // ==============================================================================
-
-function dmgUpgradeCost() {
-  return Math.round(CONFIG.dmgUpgradeBaseCost * Math.pow(CONFIG.upgradeCostGrowth, state.dmgLevel));
-}
-function hpUpgradeCost() {
-  return Math.round(CONFIG.hpUpgradeBaseCost * Math.pow(CONFIG.upgradeCostGrowth, state.hpLevel));
-}
 
 // A random delay (ms) until the next skeleton walks in, drawn uniformly from
 // the configured [min, max] window.
@@ -113,25 +106,4 @@ function shuffleArray(arr) {
   return arr;
 }
 
-
-// Upgrade shop: spend quiz gold on permanent hero DMG or max HP
-function buyDmg() {
-  const cost = dmgUpgradeCost();
-  if (state.gold < cost) return;
-  state.gold -= cost;
-  state.dmgLevel++;
-  state.heroDmg = CONFIG.heroBaseDmg + state.dmgLevel * CONFIG.dmgPerLevel;
-  saveProgress();
-  state._structuralDirty = true;
-}
-function buyHp() {
-  const cost = hpUpgradeCost();
-  if (state.gold < cost) return;
-  state.gold -= cost;
-  state.hpLevel++;
-  state.heroMaxHP += CONFIG.hpPerLevel;
-  saveProgress();
-  state._structuralDirty = true;
-}
-
-window.Incanto.progression = { dmgUpgradeCost, hpUpgradeCost, randomSpawnDelay, nextSpawnLane, spawnEnemy, startRun, layoutCircle, shuffleArray, buyDmg, buyHp };
+window.Incanto.progression = { randomSpawnDelay, nextSpawnLane, spawnEnemy, startRun, layoutCircle, shuffleArray };

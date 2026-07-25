@@ -91,18 +91,23 @@ try {
   const buf = await page.locator("canvas.scene").screenshot({ path: SHOT });
   check(buf.length > 1500, "canvas.scene screenshot is non-trivial (" + buf.length + " bytes) -> " + SHOT);
 
-  // 3. Delegated UI dispatch: force the upgrade screen, click the data-act
-  //    button, confirm buyDmg() ran (dmgLevel incremented). Exercises the full
-  //    click -> [data-act] -> window[fn] path introduced by the refactor.
-  await page.evaluate(() => {
+  // 3. Delegated UI dispatch: open the skill-tree upgrade screen with a tier-1
+  //    node selected, click its data-act "Kaufen" button, confirm treeBuy() ran
+  //    (the node's rank incremented). Exercises the full click -> [data-act] ->
+  //    window[fn] path, plus the tree's reveal/purchase logic + stat recompute.
+  const before = await page.evaluate(() => {
     state.gold = 999999;
-    state.dmgLevel = 0;
+    state.nodeRanks = {};
+    recomputeMods();
+    state.tree = { scale: 0.62, tx: 171, ty: 171, selected: "dmg1" };
     state.screen = "upgrade";
-    render(performance.now()); // rebuild DOM for the upgrade screen
+    render(performance.now()); // rebuild DOM for the skill-tree screen
+    return state.heroDmg;
   });
-  await page.click('[data-act="buyDmg"]');
-  const dmgLevel = await page.evaluate(() => state.dmgLevel);
-  check(dmgLevel === 1, "delegated data-act='buyDmg' fired buyDmg() (dmgLevel=" + dmgLevel + ")");
+  await page.click('[data-act="treeBuy"]');
+  const bought = await page.evaluate(() => ({ rank: state.nodeRanks.dmg1 || 0, dmg: state.heroDmg }));
+  check(bought.rank === 1, "delegated data-act='treeBuy' fired treeBuy() (dmg1 rank=" + bought.rank + ")");
+  check(bought.dmg > before, "buying the node recomputed the build (heroDmg " + before + " -> " + bought.dmg + ")");
 
   check(errors.length === 0, "no console/page errors");
 

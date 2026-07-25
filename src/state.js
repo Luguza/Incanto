@@ -21,12 +21,23 @@ function freshState() {
     dragPointer: null,       // {x, y} pointer position in SVG (viewBox) coords, for the live line
     chords: [],              // {x1,y1,x2,y2,pairId}
     currentPairs: [],
-    // Hero: an HP pool (no discrete hearts) whose upgrades persist across runs
+    // Hero: an HP pool (no discrete hearts) whose upgrades persist across runs.
+    // The build is now the skill tree: `nodeRanks` (persisted) is the source of
+    // truth, `mods` is the derived stat bundle recomputed from it, and heroMaxHP
+    // / heroDmg are two derived legacy fields the combat code still reads.
     heroMaxHP: CONFIG.heroBaseHP,
     heroHP: CONFIG.heroBaseHP,
     heroDmg: CONFIG.heroBaseDmg,
-    dmgLevel: 0,
-    hpLevel: 0,
+    heroShield: 0,             // absorb pool granted by Ward nodes on some casts
+    nodeRanks: {},             // { nodeId: rank } — purchased skill-tree ranks
+    tree: null,                // { scale, tx, ty, selected } — pan/zoom view state
+    // Derived combat modifiers (see skilltree.recomputeMods). Safe defaults so
+    // combat never touches an undefined field before the first recompute.
+    mods: {
+      critChance: 0, critMult: 1.5, aoeExtra: 0, leech: 0, regen: 0,
+      walkMult: 1, coinMult: 1, shieldChance: 0, shieldAmount: 0, shieldMax: 0,
+      thorns: 0, spellFailProt: 0,
+    },
     gold: 0,
     // Endless trickle — lone skeletons walk in from the right at random
     // intervals. An enemy: {id, maxHP, hp, dmg, slot, lane, pos, phase, phaseAt,
@@ -99,8 +110,7 @@ function saveProgress() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       gold: state.gold,
-      dmgLevel: state.dmgLevel,
-      hpLevel: state.hpLevel,
+      nodeRanks: state.nodeRanks,
     }));
   } catch (e) { /* storage unavailable (private mode/quota) — play without saving */ }
 }
@@ -118,16 +128,32 @@ function clearProgress() {
   try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
 }
 
-// Overlay any persisted meta-progression onto a freshly built state.
+// Overlay any persisted meta-progression onto a freshly built state, then derive
+// the build from it. Legacy saves (flat dmgLevel/hpLevel from the old two-button
+// shop) are migrated onto the two entry skill-tree nodes so no progress is lost.
 function applySavedProgress() {
-  const data = loadProgress();
-  if (!data) return;
   const asCount = (v) => (Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0);
-  state.gold = asCount(data.gold);
-  state.dmgLevel = asCount(data.dmgLevel);
-  state.hpLevel = asCount(data.hpLevel);
-  state.heroDmg = CONFIG.heroBaseDmg + state.dmgLevel * CONFIG.dmgPerLevel;
-  state.heroMaxHP = CONFIG.heroBaseHP + state.hpLevel * CONFIG.hpPerLevel;
+  const data = loadProgress();
+  if (data) {
+    state.gold = asCount(data.gold);
+    if (data.nodeRanks && typeof data.nodeRanks === "object") {
+      const ranks = {};
+      for (const id in data.nodeRanks) {
+        const r = asCount(data.nodeRanks[id]);
+        const node = (typeof TREE_NODES !== "undefined") ? TREE_NODES[id] : null;
+        if (r > 0 && node) ranks[id] = Math.min(r, node.maxRank);
+      }
+      state.nodeRanks = ranks;
+    } else {
+      // migrate the old flat levels
+      state.nodeRanks = {};
+      if (typeof TREE_NODES !== "undefined") {
+        if (asCount(data.dmgLevel) > 0) state.nodeRanks.dmg1 = Math.min(asCount(data.dmgLevel), TREE_NODES.dmg1.maxRank);
+        if (asCount(data.hpLevel) > 0) state.nodeRanks.hp1 = Math.min(asCount(data.hpLevel), TREE_NODES.hp1.maxRank);
+      }
+    }
+  }
+  if (typeof recomputeMods === "function") recomputeMods();
   state.heroHP = state.heroMaxHP;
 }
 

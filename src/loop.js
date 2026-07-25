@@ -97,6 +97,19 @@ function updateEnemies(now, dt) {
             y: scene.wizard.y - 4,
           });
         }
+        // Thorns: reflect a slice of the blow back onto the attacker.
+        if (state.mods.thorns > 0 && e.phase === "attack") {
+          const refl = Math.max(1, Math.round(e.dmg * state.mods.thorns));
+          hitEnemy(e, refl);
+          spawnDmgFloat({
+            value: refl,
+            color: CONFIG.colors.dmgFloat.enemy,
+            targetId: e.id,
+            x: scene ? scene.enemyLineX + e.pos * TILE : 0,
+            y: scene ? (scene.laneY[e.lane] ?? scene.feetY) - SHEET.skeletIdle.h - 3 : 0,
+          });
+          if (e.hp <= 0) { e.phase = "dying"; e.phaseAt = now; state.kills++; }
+        }
       }
       limit = e.pos + CONFIG.enemyGapTiles;   // next skeleton stays a gap behind this one
       chainSettled = settled;                 // a still-moving skeleton breaks the settled chain
@@ -123,12 +136,14 @@ function updateCamera(now, dt) {
   // Ease the pan velocity toward its target (full speed when clear, 0 when a
   // skeleton is near) with a frame-rate-independent time constant, so the hero
   // accelerates into his stride and coasts to a stop instead of snapping.
-  const targetVel = clear ? CONFIG.heroWalkPxPerMs : 0;
+  // Fortune's walk-speed nodes scale the stride pace.
+  const walkSpeed = CONFIG.heroWalkPxPerMs * state.mods.walkMult;
+  const targetVel = clear ? walkSpeed : 0;
   const k = 1 - Math.exp(-dt / CONFIG.heroWalkEaseMs);
   state.cameraVel += (targetVel - state.cameraVel) * k;
   if (state.cameraVel < 1e-4) state.cameraVel = 0;
   state.cameraX += state.cameraVel * dt;
-  state.heroWalking = state.cameraVel > CONFIG.heroWalkPxPerMs * 0.15;
+  state.heroWalking = state.cameraVel > walkSpeed * 0.15;
 }
 
 let lastRafNow = null;
@@ -140,6 +155,10 @@ function rafLoop(now) {
   if (state.screen === "combat") {
     const effectiveDt = getEffectiveDt(rawDt);
     state.clockMs += effectiveDt;
+    // Sustain: trickle HP back while the run is live.
+    if (state.mods.regen > 0 && state.heroHP > 0 && state.heroHP < state.heroMaxHP) {
+      healHero(state.mods.regen * effectiveDt / 1000);
+    }
     updateSpawns(now);
     updateEnemies(now, effectiveDt);
     updateCamera(now, effectiveDt);

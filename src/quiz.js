@@ -116,7 +116,9 @@ function goToQuiz() {
 }
 
 function quizReward() {
-  return CONFIG.goldPerCorrect + CONFIG.quizKillBonus * state.kills;
+  // Fortune's coin nodes multiply the payout for a correct answer.
+  const base = CONFIG.goldPerCorrect + CONFIG.quizKillBonus * state.kills;
+  return Math.round(base * (state.mods ? state.mods.coinMult : 1));
 }
 
 // Mark the current question checked and, if correct, pay out gold. Shared by
