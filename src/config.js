@@ -7,7 +7,6 @@
 // CONFIG — every gameplay number, flag, and color lives here.
 // ---------------------------------------------------------------------------
 const CONFIG = {
-  windupDurationMs: 8000,
   // Hero: small HP pool, starts weak, upgrades bought with gold
   heroBaseHP: 10,
   heroBaseDmg: 3,
@@ -24,19 +23,38 @@ const CONFIG = {
   goldPerCorrect: 12,
   quizWaveBonus: 5, // bonus gold per question, scaled by how far you got
   quizFeedbackMs: 650,   // how long a wrong match flashes red before clearing
-  // Endless skeleton waves, scaling in HP and damage
+  // Endless skeleton waves, scaling in HP and damage. A wave now sends in a
+  // whole mob that walks in from the right toward the hero; each skeleton only
+  // attacks once it reaches melee range, at its own steady cadence.
   enemyBaseHP: 10,
   enemyHPGrowth: 1.45,
   enemyBaseDmg: 6,
   enemyDmgGrowth: 1.3,
   wrongPenaltyFraction: 0.2, // a wrong match backfires for this fraction of the hero's MAX HP
-  enemyEnterMs: 900,
   enemyDeathMs: 600,
+  // Mob size per wave: starts at a few, grows slowly, capped so the arena
+  // never overflows.
+  enemiesBaseCount: 3,
+  enemyMaxCount: 9,
+  enemyCountEveryWaves: 2,   // +1 skeleton every this many waves
+  enemyLanes: 3,             // parallel depth rows the mob streams in on
+  // March + melee. A skeleton's `pos` is measured in TILES to the right of the
+  // hero's front edge (0 = touching the hero). One pos-unit maps to exactly one
+  // 16px floor tile on screen, and the queue keeps > 1 tile between neighbours,
+  // so no two skeletons ever share a tile. They walk left until blocked (by the
+  // standoff line or the skeleton ahead), stand idle if out of reach, and only
+  // swing once within attack range.
+  enemyWalkTilesPerMs: 0.0018,  // march speed (~1.8 tiles/sec)
+  enemySpawnTiles: 13,          // frontmost skeleton spawns this many tiles out (off-screen right)
+  enemySpawnGapTiles: 1.7,      // extra spawn distance per queue slot (trailing column)
+  enemyStandoffTiles: 1.6,      // how far in front of the hero the front rank stops
+  enemyGapTiles: 1.15,          // min tiles between two skeletons (> 1 → never the same tile)
+  enemyAttackRangeTiles: 4.1,   // a stopped skeleton within this reach of the hero attacks; farther ones idle
+  enemyFirstAttackMs: 1400,     // windup before a skeleton's first hit after engaging
+  enemyAttackIntervalMs: 3400,  // steady cadence between a skeleton's hits
+  enemyAttackLungeMs: 260,      // length of the forward jab drawn on each hit
   runeCount: 6,
   pairsPerLoadout: 3,
-  // When false, casting a spell does NOT reset the skeleton's attack windup, so
-  // its attack timer keeps ticking and it lands hits at a steady cadence (constant DPS).
-  staggerOnCast: false,
   wrongFlashDurationMs: 200,
   runeFlashDurationMs: 820,  // how long the rune circle glows red before it dissolves + re-deals
   heroBlastMs: 820,          // total length of the mis-cast backfire (break + explosion)
@@ -60,7 +78,6 @@ const CONFIG = {
     wrongFlash: "rgba(229,72,77,0.35)",
     heartFull: "#e5484d",
     heartEmpty: "#3a3540",
-    windupFill: "#e5484d",
     // Dungeon scene effect colors (sprites come from assets/dungeon_tiles.png)
     dungeon: {
       background: "#17131e",
