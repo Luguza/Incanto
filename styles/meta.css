@@ -74,12 +74,12 @@
   }
   .tree-canvas:active { cursor: grabbing; }
 
-  /* edges */
-  .tedge .e-line { stroke-width: 3; fill: none; stroke-linecap: round; }
-  .tedge .e-tick { stroke-width: 2; stroke-linecap: round; }
-  .tedge.e-off  .e-line, .tedge.e-off  .e-tick { stroke: #2a2540; }
-  .tedge.e-half .e-line, .tedge.e-half .e-tick { stroke: #514a6e; }
-  .tedge.e-on   .e-line { stroke: #7ff0ed; filter: drop-shadow(0 0 3px rgba(127, 240, 237, 0.5)); }
+  /* edges — crisp, flat lines (no glow), trimmed to the circle rims in JS */
+  .tedge .e-line { stroke-width: 4.5; fill: none; stroke-linecap: butt; }
+  .tedge .e-tick { stroke-width: 3; stroke-linecap: round; }
+  .tedge.e-off  .e-line, .tedge.e-off  .e-tick { stroke: #2c2742; }
+  .tedge.e-half .e-line, .tedge.e-half .e-tick { stroke: #574f76; }
+  .tedge.e-on   .e-line { stroke: #7ff0ed; }
   .tedge.e-on   .e-tick { stroke: #bffcfa; }
 
   /* nodes */

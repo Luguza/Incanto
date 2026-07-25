@@ -37,12 +37,16 @@ const RUNE_GLYPHS = {
 };
 
 // ---------------------------------------------------------------------------
-// Tree geometry — nodes sit on 8 radial spokes around a central seed. Distance
-// from the seed = power tier (farther out = rarer, pricier, stronger). Positions
-// are computed from {angle, ring} into a 900×900 tree-space (seed at 450,450).
+// Tree geometry — a big, deliberately over-sized web. Seven themed sectors
+// (offense, vitality, crit, arcane, ward, sustain, fortune) each FAN OUT from
+// the seed into branching sub-paths, and neighbouring sectors are cross-linked,
+// so routes weave rather than run in straight lines. Positions are computed from
+// {angle, ring} in a large tree-space (seed at TREE_CENTER); the 900-unit SVG
+// viewBox is just the pan/zoom window onto it, so the tree dwarfs the screen.
 // ---------------------------------------------------------------------------
-const TREE_CENTER = 450;
-const TREE_RINGS = { 1: 112, 2: 206, 3: 298, 4: 388 };
+const TREE_CENTER = 1300;                 // seed sits at the middle of the tree-space
+const TREE_VIEW = 900;                     // SVG viewBox size = the pan/zoom window
+const TREE_RINGS = { 1: 230, 2: 430, 3: 640, 4: 860, 5: 1050 };
 
 // Each node: title, theme, {angle,ring} placement, maxRank (dots), base cost +
 // per-rank cost growth, an `effect` map summed into the stat model, and a blurb
@@ -51,94 +55,142 @@ const TREE_NODES = {
   root: { title: "Ursprung", theme: "origin", angle: 0, ring: 0, maxRank: 0, cost: 0,
     effect: {}, blurb: "Der Quell deiner Macht. Von hier verzweigen sich alle Pfade." },
 
-  // ── Offense (aufwärts) — flat & prozentualer Schaden ──────────────────────
-  dmg1: { title: "Schneide", theme: "offense", angle: 270, ring: 1, maxRank: 5, cost: 30, growth: 1.5,
+  // ── Offense (aufwärts, 270°) — flat & prozentualer Schaden ────────────────
+  o1: { title: "Schneide", theme: "offense", angle: 270, ring: 1, maxRank: 5, cost: 30, growth: 1.5,
     effect: { flatDmg: 2 }, blurb: "Schärft deinen Grundschaden." },
-  dmg2: { title: "Zorn", theme: "offense", angle: 270, ring: 2, maxRank: 4, cost: 90, growth: 1.5,
+  o2: { title: "Zorn", theme: "offense", angle: 255, ring: 2, maxRank: 4, cost: 90, growth: 1.5,
     effect: { pctDmg: 0.06 }, blurb: "Verstärkt allen Schaden prozentual." },
-  dmg3: { title: "Bruch", theme: "offense", angle: 270, ring: 3, maxRank: 4, cost: 160, growth: 1.55,
-    effect: { flatDmg: 4 }, blurb: "Wuchtiger Grundschaden." },
-  dmg4: { title: "Vernichtung", theme: "offense", angle: 270, ring: 4, maxRank: 2, cost: 420, growth: 1.7,
+  o3: { title: "Wetzstein", theme: "offense", angle: 285, ring: 2, maxRank: 5, cost: 70, growth: 1.5,
+    effect: { flatDmg: 3 }, blurb: "Mehr Grundschaden." },
+  o4: { title: "Bruch", theme: "offense", angle: 246, ring: 3, maxRank: 4, cost: 170,
+    effect: { flatDmg: 5 }, blurb: "Wuchtiger Grundschaden." },
+  o5: { title: "Raserei", theme: "offense", angle: 270, ring: 3, maxRank: 3, cost: 210,
+    effect: { pctDmg: 0.08 }, blurb: "Kräftige prozentuale Verstärkung." },
+  o6: { title: "Spalter", theme: "offense", angle: 294, ring: 3, maxRank: 3, cost: 200,
+    effect: { flatDmg: 6 }, blurb: "Schwerer Grundschaden." },
+  o7: { title: "Vernichtung", theme: "offense", angle: 270, ring: 4, maxRank: 2, cost: 460, growth: 1.7,
     effect: { pctDmg: 0.15 }, blurb: "Schlüsselzeichen: gewaltige Schadensverstärkung." },
 
-  // ── Vitality (abwärts) — flat & prozentuale LP ────────────────────────────
-  hp1: { title: "Zähigkeit", theme: "vitality", angle: 90, ring: 1, maxRank: 5, cost: 25, growth: 1.5,
+  // ── Vitality (abwärts, 90°) — flat & prozentuale LP ───────────────────────
+  v1: { title: "Zähigkeit", theme: "vitality", angle: 90, ring: 1, maxRank: 5, cost: 25, growth: 1.5,
     effect: { flatHp: 20 }, blurb: "Erhöht deine maximalen Lebenspunkte." },
-  hp2: { title: "Lebenskraft", theme: "vitality", angle: 90, ring: 2, maxRank: 4, cost: 80, growth: 1.5,
+  v2: { title: "Lebenskraft", theme: "vitality", angle: 75, ring: 2, maxRank: 4, cost: 80, growth: 1.5,
     effect: { pctHp: 0.06 }, blurb: "Mehr Lebenspunkte prozentual." },
-  hp3: { title: "Bollwerk", theme: "vitality", angle: 90, ring: 3, maxRank: 4, cost: 150, growth: 1.55,
-    effect: { flatHp: 45 }, blurb: "Eine große Lebensreserve." },
-  hp4: { title: "Unsterblichkeit", theme: "vitality", angle: 90, ring: 4, maxRank: 2, cost: 400, growth: 1.7,
+  v3: { title: "Zäher Balg", theme: "vitality", angle: 105, ring: 2, maxRank: 5, cost: 65, growth: 1.5,
+    effect: { flatHp: 30 }, blurb: "Mehr maximale Lebenspunkte." },
+  v4: { title: "Bollwerk", theme: "vitality", angle: 66, ring: 3, maxRank: 4, cost: 150,
+    effect: { flatHp: 50 }, blurb: "Eine große Lebensreserve." },
+  v5: { title: "Herzblut", theme: "vitality", angle: 90, ring: 3, maxRank: 3, cost: 200,
+    effect: { pctHp: 0.08 }, blurb: "Kräftige prozentuale LP." },
+  v6: { title: "Wall", theme: "vitality", angle: 114, ring: 3, maxRank: 3, cost: 190,
+    effect: { flatHp: 60 }, blurb: "Gewaltige Lebensreserve." },
+  v7: { title: "Unsterblichkeit", theme: "vitality", angle: 90, ring: 4, maxRank: 2, cost: 440, growth: 1.7,
     effect: { pctHp: 0.18 }, blurb: "Schlüsselzeichen: gewaltige LP-Verstärkung." },
 
-  // ── Crit (oben rechts) — Krit-Chance & Krit-Schaden ───────────────────────
-  crit1: { title: "Präzision", theme: "crit", angle: 315, ring: 1, maxRank: 5, cost: 40, growth: 1.5,
+  // ── Crit (oben rechts, 315°) — Krit-Chance & Krit-Schaden ─────────────────
+  c1: { title: "Präzision", theme: "crit", angle: 315, ring: 1, maxRank: 5, cost: 40, growth: 1.5,
     effect: { critChance: 0.04 }, blurb: "Chance, einen kritischen Treffer zu landen." },
-  crit2: { title: "Wucht", theme: "crit", angle: 315, ring: 2, maxRank: 4, cost: 110, growth: 1.5,
+  c2: { title: "Wucht", theme: "crit", angle: 300, ring: 2, maxRank: 4, cost: 110, growth: 1.5,
     effect: { critMult: 0.15 }, blurb: "Kritische Treffer schlagen härter zu." },
-  crit3: { title: "Adlerauge", theme: "crit", angle: 315, ring: 3, maxRank: 3, cost: 200, growth: 1.55,
+  c3: { title: "Schärfe", theme: "crit", angle: 330, ring: 2, maxRank: 4, cost: 95, growth: 1.5,
+    effect: { critChance: 0.05 }, blurb: "Mehr Krit-Chance." },
+  c4: { title: "Zermalmen", theme: "crit", angle: 296, ring: 3, maxRank: 3, cost: 210,
+    effect: { critMult: 0.2 }, blurb: "Kräftiger Krit-Schaden." },
+  c5: { title: "Adlerauge", theme: "crit", angle: 315, ring: 3, maxRank: 3, cost: 220,
     effect: { critChance: 0.06 }, blurb: "Deutlich mehr Krit-Chance." },
-  crit4: { title: "Hinrichtung", theme: "crit", angle: 315, ring: 4, maxRank: 2, cost: 460, growth: 1.7,
+  c6: { title: "Grausamkeit", theme: "crit", angle: 334, ring: 3, maxRank: 3, cost: 200,
+    effect: { critMult: 0.18 }, blurb: "Härtere kritische Treffer." },
+  c7: { title: "Hinrichtung", theme: "crit", angle: 315, ring: 4, maxRank: 2, cost: 480, growth: 1.7,
     effect: { critMult: 0.4 }, blurb: "Schlüsselzeichen: verheerender Krit-Schaden." },
 
-  // ── Sustain (rechts) — LP-Regeneration & Lebensraub ───────────────────────
-  sus1: { title: "Genesung", theme: "sustain", angle: 0, ring: 1, maxRank: 5, cost: 45, growth: 1.5,
-    effect: { regen: 0.5 }, blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
-  sus2: { title: "Aderlass", theme: "sustain", angle: 0, ring: 2, maxRank: 4, cost: 130, growth: 1.55,
-    effect: { leech: 0.08 }, blurb: "Heilt dich für einen Teil des Zauberschadens." },
-  sus3: { title: "Lebensquell", theme: "sustain", angle: 0, ring: 3, maxRank: 3, cost: 220, growth: 1.55,
-    effect: { regen: 1 }, blurb: "Kräftigere LP-Regeneration." },
-  sus4: { title: "Vampirismus", theme: "sustain", angle: 0, ring: 4, maxRank: 2, cost: 480, growth: 1.7,
-    effect: { leech: 0.15 }, blurb: "Schlüsselzeichen: gewaltiger Lebensraub." },
+  // ── Arcane (oben links, 225°) — Zaubermacht & Flächenwirkung ──────────────
+  a1: { title: "Fokus", theme: "arcane", angle: 225, ring: 1, maxRank: 4, cost: 60, growth: 1.5,
+    effect: { pctDmg: 0.05 }, blurb: "Arkane Bündelung — verstärkt deinen Schaden." },
+  a2: { title: "Resonanz", theme: "arcane", angle: 210, ring: 2, maxRank: 3, cost: 130,
+    effect: { pctDmg: 0.06 }, blurb: "Mehr prozentualer Schaden." },
+  a3: { title: "Kanalisierung", theme: "arcane", angle: 240, ring: 2, maxRank: 3, cost: 120,
+    effect: { flatDmg: 4 }, blurb: "Arkane Wucht auf deinen Schaden." },
+  a4: { title: "Überladung", theme: "arcane", angle: 216, ring: 3, maxRank: 2, cost: 260,
+    effect: { pctDmg: 0.09 }, blurb: "Kräftige Schadensverstärkung." },
+  a5: { title: "Splitterzauber", theme: "arcane", angle: 225, ring: 4, maxRank: 2, cost: 320, growth: 1.8,
+    effect: { aoeExtra: 1 }, blurb: "Dein Zauber trifft ein zusätzliches Skelett (mehr Kacheln)." },
+  a6: { title: "Kettenblitz", theme: "arcane", angle: 225, ring: 5, maxRank: 1, cost: 700, growth: 1.8,
+    effect: { aoeExtra: 1 }, blurb: "Schlüsselzeichen: trifft ein weiteres Ziel — reine Verwüstung." },
 
-  // ── Fortune (unten rechts) — Gold & Lauftempo ─────────────────────────────
-  for1: { title: "Glückssträhne", theme: "fortune", angle: 45, ring: 1, maxRank: 5, cost: 50, growth: 1.5,
-    effect: { coinMult: 0.1 }, blurb: "Mehr Gold für richtig gelöste Vokabeln." },
-  for2: { title: "Flinkheit", theme: "fortune", angle: 45, ring: 2, maxRank: 3, cost: 90, growth: 1.55,
-    effect: { walkMult: 0.08 }, blurb: "Der Held schreitet zügiger durch den Gang." },
-  for3: { title: "Reichtum", theme: "fortune", angle: 45, ring: 3, maxRank: 3, cost: 200, growth: 1.6,
-    effect: { coinMult: 0.15 }, blurb: "Deutlich mehr Gold aus dem Lernen." },
-
-  // ── Ward (links) — Schilde, Dornen, Fehlschlag-Schutz ─────────────────────
-  ward1: { title: "Schildzauber", theme: "ward", angle: 180, ring: 1, maxRank: 4, cost: 70, growth: 1.55,
+  // ── Ward (links, 180°) — Schilde, Dornen, Fehlschlag-Schutz ───────────────
+  w1: { title: "Schildzauber", theme: "ward", angle: 180, ring: 1, maxRank: 4, cost: 70, growth: 1.55,
     effect: { shieldChance: 0.14, shieldAmount: 5, shieldMax: 6 },
     blurb: "Manche Zauber gewähren einen Schild, der erlittenen Schaden absorbiert." },
-  ward2: { title: "Dornen", theme: "ward", angle: 180, ring: 2, maxRank: 4, cost: 140, growth: 1.55,
-    effect: { thorns: 0.25 }, blurb: "Wirft einen Teil des erlittenen Schadens auf den Angreifer zurück." },
-  ward3: { title: "Barriere", theme: "ward", angle: 180, ring: 3, maxRank: 3, cost: 240, growth: 1.6,
-    effect: { shieldChance: 0.1, shieldAmount: 6, shieldMax: 8 },
-    blurb: "Häufigere und stärkere Schilde." },
-  ward4: { title: "Schutzzauber", theme: "ward", angle: 180, ring: 4, maxRank: 3, cost: 300, growth: 1.6,
+  w2: { title: "Dornen", theme: "ward", angle: 165, ring: 2, maxRank: 4, cost: 130,
+    effect: { thorns: 0.2 }, blurb: "Wirft einen Teil des erlittenen Schadens auf den Angreifer zurück." },
+  w3: { title: "Aegis", theme: "ward", angle: 195, ring: 2, maxRank: 3, cost: 150,
+    effect: { shieldChance: 0.08, shieldAmount: 5, shieldMax: 6 }, blurb: "Häufigere Schilde." },
+  w4: { title: "Stacheln", theme: "ward", angle: 162, ring: 3, maxRank: 3, cost: 230,
+    effect: { thorns: 0.25 }, blurb: "Stärkere Schadensreflexion." },
+  w5: { title: "Barriere", theme: "ward", angle: 186, ring: 3, maxRank: 3, cost: 240,
+    effect: { shieldChance: 0.1, shieldAmount: 6, shieldMax: 8 }, blurb: "Stärkere, häufigere Schilde." },
+  w6: { title: "Schutzzauber", theme: "ward", angle: 180, ring: 4, maxRank: 3, cost: 320, growth: 1.6,
     effect: { spellFailProt: 0.2 }, blurb: "Schlüsselzeichen: Chance, den Fehlschlag-Rückschlag ganz abzuwehren." },
 
-  // ── Arcane (oben links) — Zaubermacht & Flächenwirkung ────────────────────
-  arc1: { title: "Fokus", theme: "arcane", angle: 225, ring: 1, maxRank: 4, cost: 60, growth: 1.5,
-    effect: { pctDmg: 0.05 }, blurb: "Arkane Bündelung — verstärkt deinen Schaden." },
-  arc2: { title: "Splitterzauber", theme: "arcane", angle: 225, ring: 2, maxRank: 2, cost: 260, growth: 1.8,
-    effect: { aoeExtra: 1 }, blurb: "Dein Zauber trifft ein zusätzliches Skelett (mehr Kacheln)." },
-  arc3: { title: "Kettenblitz", theme: "arcane", angle: 225, ring: 3, maxRank: 1, cost: 600, growth: 1.8,
-    effect: { aoeExtra: 1 }, blurb: "Schlüsselzeichen: trifft ein weiteres Ziel — reine Verwüstung." },
+  // ── Sustain (rechts, 0°) — LP-Regeneration & Lebensraub ───────────────────
+  s1: { title: "Genesung", theme: "sustain", angle: 0, ring: 1, maxRank: 5, cost: 45, growth: 1.5,
+    effect: { regen: 0.5 }, blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
+  s2: { title: "Aderlass", theme: "sustain", angle: 345, ring: 2, maxRank: 4, cost: 130,
+    effect: { leech: 0.06 }, blurb: "Heilt dich für einen Teil des Zauberschadens." },
+  s3: { title: "Balsam", theme: "sustain", angle: 15, ring: 2, maxRank: 4, cost: 110,
+    effect: { regen: 0.8 }, blurb: "Stärkere LP-Regeneration." },
+  s4: { title: "Blutzoll", theme: "sustain", angle: 338, ring: 3, maxRank: 3, cost: 230,
+    effect: { leech: 0.08 }, blurb: "Mehr Lebensraub." },
+  s5: { title: "Lebensquell", theme: "sustain", angle: 0, ring: 3, maxRank: 3, cost: 220,
+    effect: { regen: 1.2 }, blurb: "Kräftige LP-Regeneration." },
+  s6: { title: "Zehrung", theme: "sustain", angle: 22, ring: 3, maxRank: 3, cost: 210,
+    effect: { leech: 0.07 }, blurb: "Zusätzlicher Lebensraub." },
+  s7: { title: "Vampirismus", theme: "sustain", angle: 0, ring: 4, maxRank: 2, cost: 480, growth: 1.7,
+    effect: { leech: 0.15 }, blurb: "Schlüsselzeichen: gewaltiger Lebensraub." },
+
+  // ── Fortune (unten rechts, 45°) — Gold & Lauftempo ────────────────────────
+  f1: { title: "Glückssträhne", theme: "fortune", angle: 45, ring: 1, maxRank: 5, cost: 50, growth: 1.5,
+    effect: { coinMult: 0.1 }, blurb: "Mehr Gold für richtig gelöste Vokabeln." },
+  f2: { title: "Flinkheit", theme: "fortune", angle: 30, ring: 2, maxRank: 3, cost: 90,
+    effect: { walkMult: 0.08 }, blurb: "Der Held schreitet zügiger durch den Gang." },
+  f3: { title: "Wohlstand", theme: "fortune", angle: 60, ring: 2, maxRank: 4, cost: 100,
+    effect: { coinMult: 0.12 }, blurb: "Mehr Gold aus dem Lernen." },
+  f4: { title: "Windschritt", theme: "fortune", angle: 26, ring: 3, maxRank: 2, cost: 200,
+    effect: { walkMult: 0.1 }, blurb: "Deutlich schnelleres Vorankommen." },
+  f5: { title: "Reichtum", theme: "fortune", angle: 45, ring: 3, maxRank: 3, cost: 210,
+    effect: { coinMult: 0.15 }, blurb: "Deutlich mehr Gold." },
+  f6: { title: "Schatzgespür", theme: "fortune", angle: 64, ring: 3, maxRank: 2, cost: 220,
+    effect: { coinMult: 0.15 }, blurb: "Noch mehr Gold aus dem Lernen." },
 };
 
-// Undirected connections. A short inner ring links the tier-1 nodes for a woven
-// look; each spoke then chains outward; a couple of cross-links between
-// neighbouring spokes open alternate routes (Path-of-Exile style webbing).
+// Undirected connections. Each sector FANS from its tier-1 node into two (or
+// more) sub-branches, and adjacent sectors are cross-linked at their nearest
+// tips, so the tree weaves into a web instead of running as straight spokes.
 const TREE_EDGES = [
-  ["root", "dmg1"], ["root", "hp1"], ["root", "crit1"], ["root", "sus1"],
-  ["root", "for1"], ["root", "ward1"], ["root", "arc1"],
-  // inner ring
-  ["dmg1", "crit1"], ["crit1", "sus1"], ["sus1", "for1"], ["for1", "hp1"],
-  ["ward1", "arc1"], ["arc1", "dmg1"],
-  // spokes
-  ["dmg1", "dmg2"], ["dmg2", "dmg3"], ["dmg3", "dmg4"],
-  ["hp1", "hp2"], ["hp2", "hp3"], ["hp3", "hp4"],
-  ["crit1", "crit2"], ["crit2", "crit3"], ["crit3", "crit4"],
-  ["sus1", "sus2"], ["sus2", "sus3"], ["sus3", "sus4"],
-  ["for1", "for2"], ["for2", "for3"],
-  ["ward1", "ward2"], ["ward2", "ward3"], ["ward3", "ward4"],
-  ["arc1", "arc2"], ["arc2", "arc3"],
-  // cross-links
-  ["dmg2", "crit2"], ["ward2", "arc2"],
+  // seed → each sector root
+  ["root", "o1"], ["root", "v1"], ["root", "c1"], ["root", "a1"],
+  ["root", "w1"], ["root", "s1"], ["root", "f1"],
+  // inner ring weaving the tier-1 nodes together
+  ["o1", "c1"], ["c1", "s1"], ["s1", "f1"], ["f1", "v1"], ["w1", "a1"], ["a1", "o1"],
+  // Offense fan
+  ["o1", "o2"], ["o1", "o3"], ["o2", "o4"], ["o2", "o5"], ["o3", "o5"], ["o3", "o6"],
+  ["o5", "o7"], ["o6", "o7"],
+  // Vitality fan
+  ["v1", "v2"], ["v1", "v3"], ["v2", "v4"], ["v2", "v5"], ["v3", "v5"], ["v3", "v6"],
+  ["v5", "v7"], ["v6", "v7"],
+  // Crit fan
+  ["c1", "c2"], ["c1", "c3"], ["c2", "c4"], ["c2", "c5"], ["c3", "c5"], ["c3", "c6"],
+  ["c5", "c7"], ["c6", "c7"],
+  // Arcane fan (deep AoE keystones)
+  ["a1", "a2"], ["a1", "a3"], ["a2", "a4"], ["a3", "a4"], ["a4", "a5"], ["a5", "a6"],
+  // Ward fan
+  ["w1", "w2"], ["w1", "w3"], ["w2", "w4"], ["w3", "w5"], ["w2", "w5"], ["w5", "w6"], ["w4", "w6"],
+  // Sustain fan
+  ["s1", "s2"], ["s1", "s3"], ["s2", "s4"], ["s3", "s5"], ["s3", "s6"], ["s5", "s7"], ["s4", "s7"],
+  // Fortune fan
+  ["f1", "f2"], ["f1", "f3"], ["f2", "f4"], ["f3", "f5"], ["f3", "f6"],
+  // cross-links between neighbouring sectors (the web)
+  ["o3", "c2"], ["c3", "s2"], ["s3", "f2"], ["f3", "v2"], ["w3", "a2"], ["a3", "o4"],
 ];
 
 // Resolve {angle,ring} → absolute tree-space coords, and build the neighbour map.
@@ -264,10 +316,13 @@ function effectText(effect, mult) {
 // ---------------------------------------------------------------------------
 function treeClamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+function nodeRadius(id) { return id === "root" ? 34 : 28; }
+
 function initTreeView(resetSelection) {
-  const s = 0.82;
+  const s = 0.92;                       // default zoom — shows the seed + inner rings big
+  const c = TREE_VIEW / 2;              // viewBox centre
   const keep = (!resetSelection && state.tree) ? state.tree.selected : null;
-  state.tree = { scale: s, tx: TREE_CENTER - TREE_CENTER * s, ty: TREE_CENTER - TREE_CENTER * s, selected: keep };
+  state.tree = { scale: s, tx: c - TREE_CENTER * s, ty: c - TREE_CENTER * s, selected: keep };
 }
 
 function runeGroup(theme, opacity) {
@@ -300,22 +355,24 @@ function nodeSvg(id) {
   const rank = nodeRank(id);
   const maxed = rank >= node.maxRank;
   const selected = state.tree && state.tree.selected === id;
-  const R = id === "root" ? 30 : 26;
+  const R = nodeRadius(id);
 
   const sel = selected
-    ? `<circle class="n-sel" r="${R + 6}" fill="none" stroke="#eafffe" stroke-width="2"/>`
+    ? `<circle class="n-sel" r="${R + 7}" fill="none" stroke="#eafffe" stroke-width="3"/>`
     : "";
 
   let disc, glyph, dots = "";
   if (!revealed) {
-    disc = `<circle class="n-disc" r="${R}" fill="#120e1c" stroke="#332e46" stroke-width="2"/>`;
-    glyph = `<text class="n-q" y="8" text-anchor="middle" fill="#4a4560">?</text>`;
+    disc = `<circle class="n-disc" r="${R}" fill="#120e1c" stroke="#332e46" stroke-width="3"/>`;
+    glyph = `<text class="n-q" y="9" text-anchor="middle" fill="#4a4560">?</text>`;
   } else {
-    const fill = purchased ? `rgba(${theme.glow},0.22)` : "#141020";
+    // Crisp, flat discs — a filled inner core for purchased nodes, hollow for
+    // affordable-but-unbought. No blur (clean borders).
+    const fill = purchased ? `rgba(${theme.glow},0.25)` : "#141020";
     disc = `<circle class="n-disc" r="${R}" fill="${fill}" stroke="${theme.color}" ` +
-      `stroke-width="${purchased ? 3 : 2}" opacity="${purchased ? 1 : 0.82}" ` +
-      `${purchased ? 'filter="url(#nodeGlow)"' : ""}/>` +
-      (maxed && id !== "root" ? `<circle r="${R + 3.5}" fill="none" stroke="${theme.color}" stroke-width="1" opacity="0.55"/>` : "");
+      `stroke-width="${purchased ? 4 : 3}" opacity="${purchased ? 1 : 0.85}"/>` +
+      (purchased ? `<circle r="${R - 6}" fill="none" stroke="${theme.color}" stroke-width="1.5" opacity="0.45"/>` : "") +
+      (maxed && id !== "root" ? `<circle r="${R + 4.5}" fill="none" stroke="${theme.color}" stroke-width="1.5" opacity="0.6"/>` : "");
     glyph = runeGroup(node.theme, purchased ? 1 : 0.9);
     if (id !== "root") dots = nodeDotsSvg(rank, node.maxRank, R, theme.color);
   }
@@ -328,11 +385,17 @@ function edgeSvg(a, b) {
   const both = isPurchased(a) && isPurchased(b);
   const half = !both && (isPurchased(a) || isPurchased(b));
   const cls = both ? "e-on" : half ? "e-half" : "e-off";
-  const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
   const dx = pb.x - pa.x, dy = pb.y - pa.y, len = Math.hypot(dx, dy) || 1;
-  const nx = -dy / len * 4, ny = dx / len * 4; // little perpendicular tick at midpoint
+  const ux = dx / len, uy = dy / len;
+  // Stop each end at the rim of the circle it connects (leave a hair of gap).
+  const ra = nodeRadius(a) + 1.5, rb = nodeRadius(b) + 1.5;
+  if (len <= ra + rb) return "";                      // circles touch — no visible segment
+  const x1 = pa.x + ux * ra, y1 = pa.y + uy * ra;
+  const x2 = pb.x - ux * rb, y2 = pb.y - uy * rb;
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const nx = -uy * 5, ny = ux * 5;                    // perpendicular tick at the midpoint
   return `<g class="tedge ${cls}">` +
-    `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" class="e-line"/>` +
+    `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="e-line"/>` +
     `<line x1="${(mx - nx).toFixed(1)}" y1="${(my - ny).toFixed(1)}" x2="${(mx + nx).toFixed(1)}" y2="${(my + ny).toFixed(1)}" class="e-tick"/>` +
     `</g>`;
 }
@@ -408,11 +471,6 @@ function renderUpgradeFull() {
         <div class="tree-gold"><span class="coin">◈</span> ${state.gold}</div>
       </div>
       <svg class="tree-canvas" id="tree-canvas" viewBox="0 0 900 900" preserveAspectRatio="xMidYMid meet">
-        <defs>
-          <filter id="nodeGlow" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="3.2"/>
-          </filter>
-        </defs>
         <g id="tree-cam" transform="${cam}">
           <g class="tree-edges">${edges}</g>
           <g class="tree-nodes">${nodes}</g>
@@ -442,7 +500,7 @@ function applyTreeCam() {
 // Zoom about a point given in viewBox (tree-space-ish) coords, keeping it fixed.
 function treeZoomAt(vx, vy, factor) {
   const t = state.tree;
-  const ns = treeClamp(t.scale * factor, 0.32, 2.6);
+  const ns = treeClamp(t.scale * factor, 0.28, 3.2);
   const real = ns / t.scale;
   t.tx = vx - (vx - t.tx) * real;
   t.ty = vy - (vy - t.ty) * real;

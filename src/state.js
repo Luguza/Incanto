@@ -148,8 +148,8 @@ function applySavedProgress() {
       // migrate the old flat levels
       state.nodeRanks = {};
       if (typeof TREE_NODES !== "undefined") {
-        if (asCount(data.dmgLevel) > 0) state.nodeRanks.dmg1 = Math.min(asCount(data.dmgLevel), TREE_NODES.dmg1.maxRank);
-        if (asCount(data.hpLevel) > 0) state.nodeRanks.hp1 = Math.min(asCount(data.hpLevel), TREE_NODES.hp1.maxRank);
+        if (asCount(data.dmgLevel) > 0) state.nodeRanks.o1 = Math.min(asCount(data.dmgLevel), TREE_NODES.o1.maxRank);
+        if (asCount(data.hpLevel) > 0) state.nodeRanks.v1 = Math.min(asCount(data.hpLevel), TREE_NODES.v1.maxRank);
       }
     }
   }
