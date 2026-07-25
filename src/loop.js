@@ -88,6 +88,15 @@ function updateEnemies(now, dt) {
         hitPlayer(e.dmg);
         e.attackAnimAt = now;                 // fire the forward-jab animation
         e.attackAt = now + CONFIG.enemyAttackIntervalMs;
+        // Pop the damage number over the hero, in sync with the skeleton's jab.
+        if (scene) {
+          spawnDmgFloat({
+            value: e.dmg,
+            color: CONFIG.colors.dmgFloat.hero,
+            x: scene.wizard.x + SHEET.wizardIdle.w / 2,
+            y: scene.wizard.y - 4,
+          });
+        }
       }
       limit = e.pos + CONFIG.enemyGapTiles;   // next skeleton stays a gap behind this one
       chainSettled = settled;                 // a still-moving skeleton breaks the settled chain

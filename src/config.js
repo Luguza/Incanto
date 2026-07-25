@@ -65,6 +65,9 @@ const CONFIG = {
   fireballImpactMs: 280,
   castChargeMs: 420,
   runePuffMs: 260,
+  // Floating damage numbers that pop over a fighter on each hit, then rise + fade
+  dmgFloatMs: 850,      // how long a damage number lingers before it's culled
+  dmgFloatRisePx: 16,   // art pixels it drifts upward across its life
   circleCenter: { x: 300, y: 300 },
   circleRadius: 215,
   runeRadius: 48,
@@ -96,6 +99,12 @@ const CONFIG = {
     // this is the additive halo its gem throws while tracing/casting.
     staff: {
       glowRGB: "77, 227, 224",
+    },
+    // Floating damage numbers: warm cream when the hero's spell bites a skeleton,
+    // angry red when a skeleton lands a hit on the hero.
+    dmgFloat: {
+      enemy: "255, 236, 200",
+      hero: "255, 92, 96",
     },
     fireball: {
       C: "#fff7d9", // core
