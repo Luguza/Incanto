@@ -15,6 +15,12 @@ const CONFIG = {
   dmgUpgradeBaseCost: 30,
   hpUpgradeBaseCost: 25,
   upgradeCostGrowth: 1.6,
+  // Hallway advance: the hero holds his spot on screen while the corridor scrolls
+  // past (the camera pans right), reading as him striding deeper down the hall.
+  // He walks whenever the near stretch of floor is clear and halts the moment a
+  // skeleton crosses into it — that's when he plants to fight.
+  heroWalkPxPerMs: 0.03,          // corridor pan speed while advancing (~1.9 tiles/sec)
+  heroWalkClearFraction: 2 / 3,   // no skeleton within this fraction from the left → advance
   // Currency is earned only in the post-death vocab quiz, then spent between
   // runs on permanent build upgrades
   quizQuestionCount: 8,  // one of each Duolingo-style exercise per session

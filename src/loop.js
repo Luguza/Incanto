@@ -99,6 +99,22 @@ function updateEnemies(now, dt) {
   );
 }
 
+// Advance the hallway camera while the near stretch of floor is clear. The hero
+// holds his spot on screen; panning the corridor left reads as him striding
+// forward. He halts the instant a skeleton crosses into the near two-thirds —
+// that's when he plants to fight. `pos` is tiles from the hero, so the enemy's
+// screen x is `enemyLineX + pos * TILE`, independent of the scroll (no feedback).
+function updateCamera(now, dt) {
+  if (!scene) return;
+  const boundary = scene.artW * CONFIG.heroWalkClearFraction;
+  let clear = true;
+  for (const e of livingEnemies()) {
+    if (scene.enemyLineX + e.pos * TILE < boundary) { clear = false; break; }
+  }
+  state.heroWalking = clear;
+  if (clear) state.cameraX += CONFIG.heroWalkPxPerMs * dt;
+}
+
 let lastRafNow = null;
 function rafLoop(now) {
   if (lastRafNow === null) lastRafNow = now;
@@ -110,6 +126,7 @@ function rafLoop(now) {
     state.clockMs += effectiveDt;
     updateSpawns(now);
     updateEnemies(now, effectiveDt);
+    updateCamera(now, effectiveDt);
     if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {
       state.pendingRefill = false;
       populateCircle(drawLoadout());
