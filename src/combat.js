@@ -11,10 +11,12 @@
 // (before it rests, or before the third pair releases the spell).
 const TAP_TRACE_MS = 240;
 
-// Enemies still on their feet (not mid-death). These are the ones a spell can
-// hit and the ones that keep a wave alive.
+// Enemies a spell can still meaningfully hit: on their feet and not already
+// doomed. A `struck` skeleton has taken its killing blow and is only standing
+// until the bolt lands, so it's excluded here — the next cast picks a new target
+// instead of wasting itself on a corpse-to-be.
 function livingEnemies() {
-  return state.enemies.filter((e) => e.phase !== "dying");
+  return state.enemies.filter((e) => e.phase !== "dying" && e.phase !== "struck");
 }
 
 // The skeleton closest to the hero (smallest pos) — the spell's target and the
@@ -108,22 +110,24 @@ function onShapeComplete(now) {
   // The spell hits the target (no gold in combat — currency is quiz-only)
   hitEnemy(target, state.heroDmg);
   if (target.hp <= 0) {
-    target.phase = "dying";
+    // Killed — but don't play the death animation yet. The fireball is still
+    // charging + flying; the skeleton stays standing (marked `struck`) until the
+    // bolt actually lands, then it collapses (see updateEnemies). Count the kill
+    // now, since it's already decided.
+    target.phase = "struck";
     target.phaseAt = now;
+    target.struckUntil = now + CONFIG.castChargeMs + CONFIG.fireballFlightMs;
+    state.kills++;
   }
 
-  if (livingEnemies().length === 0) {
-    // that was the last one: end the wave once the cast animation finishes (see rafLoop)
-    state.pendingWaveEnd = true;
-  } else {
-    state.pendingRefill = true;
-  }
+  // Always deal a fresh loadout after a cast — there's always another skeleton
+  // walking in behind this one.
+  state.pendingRefill = true;
 }
 
 function hitPlayer(n) {
   state.heroHP = Math.max(0, state.heroHP - n);
   if (state.heroHP <= 0 && state.screen === "combat") {
-    state.lastWaveReached = state.wave;
     state.runActive = false;   // run is over — the combat nav will start a fresh one
     state.screen = "defeat";
   }

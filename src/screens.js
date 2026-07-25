@@ -352,13 +352,13 @@ function patchCombatContinuous(now) {
   root.classList.toggle("rune-flash", now < state.runeFlashUntil);
   document.getElementById("hero-hp-text").textContent = `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}`;
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
-  // With a whole mob on screen, the enemy bar tracks the frontmost skeleton —
-  // the one the next spell will hit — and the label shows how many remain.
+  // The enemy bar tracks the frontmost skeleton — the one the next spell will
+  // hit — while the label shows this run's kill tally and how many are on screen.
   const remaining = livingEnemies();
   const front = frontEnemy();
   const count = remaining.length;
   document.getElementById("wave-label").innerHTML =
-    `WELLE ${state.wave} · ${count} SKELETT${count === 1 ? "" : "E"}`;
+    `${state.kills} ERLEGT · ${count} SKELETT${count === 1 ? "" : "E"}`;
   const enemyPct = front ? (100 * front.hp / front.maxHP) : 0;
   document.getElementById("enemy-hp-fill").style.width = enemyPct.toFixed(1) + "%";
 
@@ -428,8 +428,8 @@ function renderEndFull() {
   app.innerHTML = `
     <div class="screen end-screen">
       <h1 class="defeat">Niederlage</h1>
-      <p>Die Horde hat dich in <strong>Welle ${state.lastWaveReached}</strong> überwältigt</p>
-      <p class="dim">${elapsed}s überlebt &middot; ${state.wrongMatchCount} Fehler</p>
+      <p>Die Horde hat dich <strong>überwältigt</strong></p>
+      <p class="dim">${state.kills} Skelette erlegt &middot; ${elapsed}s überlebt &middot; ${state.wrongMatchCount} Fehler</p>
       <p class="end-flavor">Lerne deine Vokabeln, um für den nächsten Lauf stärker zu werden.</p>
       <button class="fight-btn study-btn" data-act="goToQuiz">Lernen &amp; Gold verdienen →</button>
     </div>`;

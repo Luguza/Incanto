@@ -21,22 +21,22 @@ const CONFIG = {
   quizOptionCount: 4,
   quizMatchPairs: 5,     // tap-to-match exercise: pairs per board
   goldPerCorrect: 12,
-  quizWaveBonus: 5, // bonus gold per question, scaled by how far you got
+  quizKillBonus: 5, // bonus gold per question, scaled by skeletons slain last run
   quizFeedbackMs: 650,   // how long a wrong match flashes red before clearing
-  // Endless skeleton waves, scaling in HP and damage. A wave now sends in a
-  // whole mob that walks in from the right toward the hero; each skeleton only
-  // attacks once it reaches melee range, at its own steady cadence.
+  // Endless skeletons: instead of discrete waves, lone skeletons stream in at
+  // random intervals and walk toward the hero; each only attacks once it reaches
+  // melee range, at its own steady cadence. Every skeleton is identical — same
+  // HP, same damage (no per-wave scaling).
   enemyBaseHP: 10,
-  enemyHPGrowth: 1.45,
   enemyBaseDmg: 6,
-  enemyDmgGrowth: 1.3,
   wrongPenaltyFraction: 0.2, // a wrong match backfires for this fraction of the hero's MAX HP
-  enemyDeathMs: 600,
-  // Mob size per wave: starts at a few, grows slowly, capped so the arena
-  // never overflows.
-  enemiesBaseCount: 3,
-  enemyMaxCount: 9,
-  enemyCountEveryWaves: 2,   // +1 skeleton every this many waves
+  enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
+  // Random trickle: the next skeleton arrives after a delay drawn uniformly from
+  // [min, max] ms, capped at `enemyMaxCount` alive so the arena never overflows.
+  enemyMaxCount: 9,          // hard cap on skeletons alive at once
+  enemySpawnMinMs: 1200,     // shortest gap between arrivals
+  enemySpawnMaxMs: 3400,     // longest gap between arrivals
+  enemyFirstSpawnMs: 400,    // the first skeleton of a run walks in almost at once
   enemyLanes: 3,             // parallel depth rows the mob streams in on
   // March + melee. A skeleton's `pos` is measured in TILES to the right of the
   // hero's front edge (0 = touching the hero). One pos-unit maps to exactly one

@@ -116,7 +116,7 @@ function goToQuiz() {
 }
 
 function quizReward() {
-  return CONFIG.goldPerCorrect + CONFIG.quizWaveBonus * (state.lastWaveReached - 1);
+  return CONFIG.goldPerCorrect + CONFIG.quizKillBonus * state.kills;
 }
 
 // Mark the current question checked and, if correct, pay out gold. Shared by
