@@ -138,10 +138,16 @@ function applySavedProgress() {
     state.gold = asCount(data.gold);
     if (data.nodeRanks && typeof data.nodeRanks === "object") {
       const ranks = {};
+      const nodes = (typeof TREE_NODES !== "undefined") ? TREE_NODES : {};
+      const legacy = (typeof LEGACY_NODE_IDS !== "undefined") ? LEGACY_NODE_IDS : {};
       for (const id in data.nodeRanks) {
         const r = asCount(data.nodeRanks[id]);
-        const node = (typeof TREE_NODES !== "undefined") ? TREE_NODES[id] : null;
-        if (r > 0 && node) ranks[id] = Math.min(r, node.maxRank);
+        if (r <= 0) continue;
+        // accept current ids as-is; remap ids from the first release onto their
+        // present-day equivalent so nobody's tree progress is silently wiped
+        const mapped = nodes[id] ? id : legacy[id];
+        const node = mapped ? nodes[mapped] : null;
+        if (node) ranks[mapped] = Math.min((ranks[mapped] || 0) + r, node.maxRank);
       }
       state.nodeRanks = ranks;
     } else {

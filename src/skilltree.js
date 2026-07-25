@@ -193,6 +193,18 @@ const TREE_EDGES = [
   ["o3", "c2"], ["c3", "s2"], ["s3", "f2"], ["f3", "v2"], ["w3", "a2"], ["a3", "o4"],
 ];
 
+// The first release used different node ids; this maps those onto their closest
+// equivalent in the current tree so saved progress isn't lost across the rename.
+const LEGACY_NODE_IDS = {
+  dmg1: "o1", dmg2: "o2", dmg3: "o4", dmg4: "o7",
+  hp1: "v1", hp2: "v2", hp3: "v4", hp4: "v7",
+  crit1: "c1", crit2: "c2", crit3: "c5", crit4: "c7",
+  sus1: "s1", sus2: "s2", sus3: "s5", sus4: "s7",
+  for1: "f1", for2: "f2", for3: "f5",
+  ward1: "w1", ward2: "w2", ward3: "w5", ward4: "w6",
+  arc1: "a1", arc2: "a5", arc3: "a6",
+};
+
 // Resolve {angle,ring} → absolute tree-space coords, and build the neighbour map.
 const NODE_POS = {};
 for (const id in TREE_NODES) {
