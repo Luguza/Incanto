@@ -38,6 +38,11 @@ function setupScene(cv) {
   const heroLane = Math.floor(laneCount / 2);
   const feetY = laneY[heroLane];
   const wizard = { x: margin, y: feetY - wiz.h };
+  // The traced rune is a "magic shield" hovering just in front of the wizard,
+  // facing the enemy: a circle foreshortened to a tall, narrow ellipse (rx < ry).
+  // Its centre sits ~0.9 tiles ahead of the wizard, midway up the floor.
+  const runeCx = Math.round(wizard.x + wiz.w / 2 + 0.9 * TILE);
+  const runeCy = Math.round((FLOOR_Y + SCENE_H) / 2);
   scene = {
     cv,
     artW,
@@ -48,10 +53,7 @@ function setupScene(cv) {
     // hero's front edge, so one pos-unit is exactly one 16px floor tile.
     enemyLineX: wizard.x + wiz.w,
     fountains: [Math.round(artW * 0.32 / TILE) * TILE, Math.round(artW * 0.68 / TILE) * TILE],
-    // The traced rune stands upright at arm's reach in front of the wizard,
-    // facing the enemy. Our camera sees it from the side, so the circle
-    // foreshortens horizontally: a tall, narrow ellipse (height > width).
-    rune: { cx: wizard.x + wiz.w + 9, cy: wizard.y + 8, rx: 7, ry: 14 },
+    rune: { cx: runeCx, cy: runeCy, rx: 8, ry: 12 },
     castChest: null,  // cached chest of the last cast target, for the fireball
     bg: null,
   };
@@ -321,8 +323,9 @@ function renderScene(now) {
 
     if (t >= charge && t <= charge + flight) {
       const p = (t - charge) / flight;
-      const x = Math.round(scene.rune.cx + (chest.x - scene.rune.cx) * p);
-      const y = Math.round(scene.rune.cy + (chest.y - scene.rune.cy) * p - Math.sin(p * Math.PI) * 10);
+      const ap = domeProject(0, 0, 1);        // launch from the shield's lit apex
+      const x = Math.round(ap.x + (chest.x - ap.x) * p);
+      const y = Math.round(ap.y + (chest.y - ap.y) * p - Math.sin(p * Math.PI) * 10);
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.drawImage(ASSETS.glowFireball, x - 9, y - 9);
@@ -365,7 +368,7 @@ function renderScene(now) {
 // state.heroBlastUntil: the disc shatters first, the blast blooms underneath.
 function drawHeroBackfire(ctx, now) {
   const q = Math.max(0, Math.min(1, 1 - (state.heroBlastUntil - now) / CONFIG.heroBlastMs)); // 0 → 1
-  const { cx, cy, rx, ry } = scene.rune;
+  const { cx, cy } = scene.rune;
   const wiz = SHEET.wizardIdle;
   const hx = scene.wizard.x + wiz.w / 2;
   const hy = scene.wizard.y + wiz.h / 2;
@@ -385,23 +388,28 @@ function drawHeroBackfire(ctx, now) {
     // apart, so the magic reads as breaking *into* him
     const dcx = cx + (hx - cx) * shatter;
     const dcy = cy + (hy - cy) * shatter;
-    // red flash filling the disc, swelling hard as it lets go
+    // red flash shaped like the shield dome, swelling hard as it lets go
     ctx.fillStyle = `rgba(255, 74, 80, ${(fade * 0.6).toFixed(3)})`;
-    const RY = Math.round(ry * 1.6 * (1 + shatter));
-    const RX = rx * 1.6 * (1 + shatter);
-    for (let dy = -RY; dy <= RY; dy++) {
-      const s = dy / (RY + 0.5);
-      const hw = Math.round(RX * Math.sqrt(Math.max(0, 1 - s * s)));
-      ctx.fillRect(Math.round(dcx - hw), Math.round(dcy + dy), hw * 2, 1);
+    const grow = 1.4 * (1 + shatter);
+    ctx.beginPath();
+    const fseg = 32;
+    for (let i = 0; i <= fseg; i++) {
+      const a = (i / fseg) * Math.PI * 2;
+      const p = domeProject(RUNE_DISC.bandOuter * Math.cos(a), RUNE_DISC.bandOuter * Math.sin(a), 1);
+      const fx = dcx + (p.x - cx) * grow, fy = dcy + (p.y - cy) * grow;
+      i ? ctx.lineTo(fx, fy) : ctx.moveTo(fx, fy);
     }
-    // the six nodes fling outward around the drifting centre as it sinks into him
+    ctx.closePath();
+    ctx.fill();
+    // the six crystals fling outward from the drifting centre as it sinks into him
     const nodes = [];
     for (let i = 0; i < CONFIG.runeCount; i++) {
       const a = -Math.PI / 2 + (i * 2 * Math.PI) / CONFIG.runeCount;
-      const spread = shatter * 30;
+      const p = domeProject(Math.cos(a), Math.sin(a), 1);
+      const spread = 1 + shatter * 2.2;   // hurl the crystals apart as they let go
       nodes.push({
-        x: dcx + (rx + spread) * Math.cos(a),
-        y: dcy + (ry + spread) * Math.sin(a),
+        x: dcx + (p.x - cx) * spread,
+        y: dcy + (p.y - cy) * spread,
       });
     }
     // jagged red cracks between neighbours, snapping as they separate
@@ -465,24 +473,113 @@ function pixLine(ctx, x0, y0, x1, y1) {
   }
 }
 
-// Map a point on the bottom arena circle onto the scene's perspective disc
-function runePoint(px, py, scale) {
+// --- Rune-shield disc geometry ----------------------------------------------
+// The scene rune reads as a magic disc seen edge-on-ish in front of the wizard:
+// a circle foreshortened to a tall, narrow ellipse (via rx < ry in scene.rune).
+// Every ring shares one centre so the wheel stays clean and concentric, like a
+// small mirror of the flat arena wheel below. The band is centred on the node
+// ring (rr = 1); the crystal sockets exactly span its width, tangent to both
+// edge rings.
+const RUNE_DISC = (() => {
+  const bandInner = 0.82, bandOuter = 1.18;
+  const socketR = 0.15; // small, round sockets that sit within the band
+  // Convex perspective: the disc bulges toward the viewer, turned slightly about
+  // its vertical axis so the near point (apex) sits a touch RIGHT of centre. Each
+  // interior ring therefore shifts progressively rightward — their centres are
+  // NOT shared — and the radial lines curve. Rim points (rr >= 1) don't move, so
+  // the outline stays put and there's no vertical lean.
+  const turn = 0.34, bulge = 0.8;
+  return {
+    bandInner, bandOuter, socketR,
+    turn, bulge, cosT: Math.cos(turn), sinT: Math.sin(turn),
+  };
+})();
+
+// Project a point on the flat rune disc (unit coords u,v; the rim is |(u,v)| = 1)
+// to screen. The disc bulges toward the viewer (height z, max at the centre) and
+// is turned slightly about its vertical axis, which slides interior points to the
+// right by z — so concentric input circles come out as rings whose centres step
+// rightward, and straight radial lines bow. Vertical (v) stays clean, so nothing
+// leans up or down.
+function domeProject(u, v, scale = 1) {
   const { cx, cy, rx, ry } = scene.rune;
-  const a = Math.atan2(py - CONFIG.circleCenter.y, px - CONFIG.circleCenter.x);
-  return { x: cx + rx * scale * Math.cos(a), y: cy + ry * scale * Math.sin(a) };
+  const rr = Math.hypot(u, v);
+  const z = rr < 1 ? RUNE_DISC.bulge * Math.sqrt(1 - rr * rr) : 0; // bulge toward viewer
+  const x = u * RUNE_DISC.cosT + z * RUNE_DISC.sinT;              // turn slides inner points right
+  return { x: cx + x * rx * scale, y: cy + v * ry * scale };
 }
 
-// Map an *interior* arena point onto the disc proportionally (radius kept, not
-// just angle) so a line being drawn across the circle mirrors faithfully on the
-// disc. The normalized radius is clamped so a pointer flung past the rim stays
-// on the staff's reach.
+// Map a big-arena point onto the disc, proportionally (radius kept, not just
+// angle), so a stroke drawn across the circle below mirrors faithfully on the
+// shield. Radius is clamped so a pointer flung past the rim stays on the
+// staff's reach.
 function runePointXY(px, py, scale = 1) {
-  const { cx, cy, rx, ry } = scene.rune;
   let nx = (px - CONFIG.circleCenter.x) / CONFIG.circleRadius;
   let ny = (py - CONFIG.circleCenter.y) / CONFIG.circleRadius;
   const r = Math.hypot(nx, ny);
   if (r > 1.1) { nx = (nx / r) * 1.1; ny = (ny / r) * 1.1; }
-  return { x: cx + nx * rx * scale, y: cy + ny * ry * scale };
+  return domeProject(nx, ny, scale);
+}
+
+// A closed parallel (circle rr = const on the flat disc) drawn as a 1px curve
+// bent over the dome.
+function domeRing(ctx, rr, scale, seg = 40) {
+  let prev = domeProject(rr, 0, scale);
+  for (let i = 1; i <= seg; i++) {
+    const a = (i / seg) * Math.PI * 2;
+    const p = domeProject(rr * Math.cos(a), rr * Math.sin(a), scale);
+    pixLine(ctx, Math.round(prev.x), Math.round(prev.y), Math.round(p.x), Math.round(p.y));
+    prev = p;
+  }
+}
+
+// A straight segment in flat disc space, sampled and drawn as a 1px polyline
+// that bows over the dome.
+function domeSeg(ctx, u1, v1, u2, v2, scale, seg = 5) {
+  let prev = domeProject(u1, v1, scale);
+  for (let i = 1; i <= seg; i++) {
+    const t = i / seg;
+    const p = domeProject(u1 + (u2 - u1) * t, v1 + (v2 - v1) * t, scale);
+    pixLine(ctx, Math.round(prev.x), Math.round(prev.y), Math.round(p.x), Math.round(p.y));
+    prev = p;
+  }
+}
+
+// A traced chord between two big-arena points, sampled in arena space then
+// curved over the dome and drawn with the additive glow.
+function domeChord(ctx, x1, y1, x2, y2, scale, core, glowRGB, seg = 7) {
+  let prev = runePointXY(x1, y1, scale);
+  for (let i = 1; i <= seg; i++) {
+    const t = i / seg;
+    const p = runePointXY(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, scale);
+    pixLineGlow(ctx, Math.round(prev.x), Math.round(prev.y), Math.round(p.x), Math.round(p.y), core, glowRGB);
+    prev = p;
+  }
+}
+
+// A rune crystal socket seated in the band: a small, round gem well with a
+// glowing rim and a bright core. Drawn as a smooth foreshortened ellipse (rw x
+// rh) rather than a stepped polygon, so it stays cleanly round at this size and
+// the dome skew doesn't fleck it with straight edges. (cu,cv) is the slot on the
+// unit node ring; `r` is the socket radius; `bright` is the cast glow.
+function drawRuneCrystal(ctx, cu, cv, r, scale, bright, c) {
+  const { rx, ry } = scene.rune;
+  const p = domeProject(cu, cv, scale);
+  const rw = r * rx * scale, rh = r * ry * scale;
+  ctx.fillStyle = "rgba(4, 16, 16, 0.6)";            // dark gem well
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, rw * 0.9, rh * 0.9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();                                        // glowing rim
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = `rgba(${c.glowRGB}, ${(0.5 + bright * 0.4).toFixed(3)})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = c.dot;                             // bright core
+  ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
 }
 
 // A 1px line with an additive glow: soft passes offset around the core line
@@ -498,93 +595,151 @@ function pixLineGlow(ctx, x0, y0, x1, y1, core, glowRGB) {
   pixLine(ctx, x0, y0, x1, y1);
 }
 
+// Draw the rune shield: a rune circle etched on a shallow sphere-cap dome. The
+// glass backing is lit at the apex to read as bulging; concentric parallels and
+// radial meridians curve over the surface (the 3D cue); a filled band straddles
+// the node ring with a crystal seated in each of the six slots; traced chords
+// bow across the dome. `bright` drives the cast brightening, `scale`/`alpha` the
+// charge/puff growth-and-fade.
 function drawSceneRune(ctx, now, chords, { disc, bright, scale, alpha = 1 }) {
   const c = CONFIG.colors.sceneRune;
-  const { cx, cy, rx, ry } = scene.rune;
+  const { rx, ry } = scene.rune;
+  const R = RUNE_DISC;
   const slotAngle = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / CONFIG.runeCount;
-  const slotPt = (i) => ({
-    x: Math.round(cx + rx * scale * Math.cos(slotAngle(i))),
-    y: Math.round(cy + ry * scale * Math.sin(slotAngle(i))),
-  });
+  const slotUV = (i) => ({ u: Math.cos(slotAngle(i)), v: Math.sin(slotAngle(i)) });
+  const apex = domeProject(0, 0, scale);
+
+  // trace the projected silhouette of the disc at flat-radius rr into a path
+  const silhouette = (rr, seg = 46) => {
+    ctx.beginPath();
+    for (let i = 0; i <= seg; i++) {
+      const a = (i / seg) * Math.PI * 2;
+      const p = domeProject(rr * Math.cos(a), rr * Math.sin(a), scale);
+      i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+    }
+    ctx.closePath();
+  };
+
   ctx.save();
-  ctx.globalAlpha = alpha;
+  // The whole wheel breathes: a calm ~3.5s alpha pulse gently dips the entire
+  // disc (lines included) so the hero behind it shows through a little more at
+  // the trough. Shallow — peaks at full, only eases back to 0.85.
+  const pulse = 0.925 + 0.075 * Math.sin(now * (2 * Math.PI / 3500));
+  ctx.globalAlpha = alpha * pulse;
 
-  // the disc hums: an ambient pulsing fill even while tracing, stronger
-  // during the cast charge
-  const discNow = Math.max(disc, 0.05 + 0.035 * Math.sin(now / 900));
-  ctx.fillStyle = `rgba(${c.discRGB}, ${discNow.toFixed(3)})`;
-  const RY = Math.round(ry * scale), RX = rx * scale;
-  for (let dy = -RY; dy <= RY; dy++) {
-    // sample at the row center so the ellipse's top/bottom don't flatten
-    const s = (dy + (dy < 0 ? 0.5 : -0.5)) / (RY + 0.5);
-    const hw = Math.round(RX * Math.sqrt(Math.max(0, 1 - s * s)));
-    ctx.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2, 1);
-  }
+  // --- 1. Glass shield backing: a convex lens sheen. The wheel stays perfectly
+  //        round and concentric, but a bright highlight up top fading to a
+  //        shaded lower rim makes the glass read as gently bulging toward us. ---
+  const discNow = Math.max(disc, 0.06 + 0.04 * Math.sin(now / 900));
+  const RXo = rx * scale * R.bandOuter, RYo = ry * scale * R.bandOuter;
+  ctx.save();
+  silhouette(R.bandOuter);
+  ctx.clip();
+  const bx = apex.x - RXo - 12, by = apex.y - RYo - 6, bw = RXo * 2 + 24, bh = RYo * 2 + 12;
+  // Keep the glass mostly see-through so the wizard reads through it — just a
+  // faint blue wash lit a little above centre.
+  const glassBlue = "96, 158, 236";
+  const g = ctx.createRadialGradient(apex.x, apex.y - RYo * 0.28, 0, apex.x, apex.y, Math.max(RXo, RYo));
+  g.addColorStop(0, `rgba(${glassBlue}, ${(discNow * 0.45 + 0.035).toFixed(3)})`);
+  g.addColorStop(0.55, `rgba(${glassBlue}, ${(discNow * 0.28 + 0.015).toFixed(3)})`);
+  g.addColorStop(1, `rgba(${glassBlue}, ${(discNow * 0.05).toFixed(3)})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(bx, by, bw, bh);
+  // the lower rim curves away from the light: a light shade, not a heavy one, so
+  // it doesn't darken what shows through
+  const d = ctx.createLinearGradient(0, apex.y - RYo * 0.25, 0, apex.y + RYo);
+  d.addColorStop(0, "rgba(3, 12, 16, 0)");
+  d.addColorStop(1, "rgba(3, 12, 16, 0.24)");
+  ctx.fillStyle = d;
+  ctx.fillRect(bx, by, bw, bh);
+  // glossy specular cap near the top of the bulge (faint at rest, blooms on cast)
+  ctx.globalCompositeOperation = "lighter";
+  const hy = apex.y - RYo * 0.5;
+  const sMax = Math.max(RXo, RYo) * 0.62;
+  const s = ctx.createRadialGradient(apex.x, hy, 0, apex.x, hy, sMax);
+  const specA = Math.min(0.6, 0.1 + disc * 0.28 + bright * 0.32);
+  s.addColorStop(0, `rgba(216, 253, 251, ${specA.toFixed(3)})`);
+  s.addColorStop(0.6, `rgba(120, 240, 236, ${(specA * 0.3).toFixed(3)})`);
+  s.addColorStop(1, "rgba(120, 240, 236, 0)");
+  ctx.fillStyle = s;
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.restore();
 
-  // ghost web: every possible chord shimmers faintly, mirroring the
-  // filigree pulse on the big circle below
+  // --- 2. Dome grid: concentric parallels + radial meridians, all bowed over
+  //        the surface — the curved lines that sell the perspective. ---
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  let pairIdx = 0;
+  const gridA = 0.10 + 0.05 * Math.sin(now / 800) + bright * 0.18;
+  ctx.fillStyle = `rgba(${c.glowRGB}, ${Math.max(0, gridA).toFixed(3)})`;
+  domeRing(ctx, 0.5, scale);                          // one inner parallel
+  for (let i = 0; i < CONFIG.runeCount; i++) {
+    const s = slotUV(i);
+    domeSeg(ctx, s.u * 0.16, s.v * 0.16, s.u * R.bandInner, s.v * R.bandInner, scale);
+  }
+  ctx.restore();
+
+  // --- 3. Faint chord web (hexagon edges + hexagram), curved over the dome,
+  //        mirroring the filigree pulse on the big circle below. ---
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
   for (let a = 0; a < CONFIG.runeCount; a++) {
-    for (let b = a + 1; b < CONFIG.runeCount; b++) {
-      const ga = 0.05 + 0.045 * Math.sin(now / 700 + pairIdx * 1.3);
+    for (const step of [1, 2]) {
+      const b = (a + step) % CONFIG.runeCount;
+      const ga = 0.045 + 0.035 * Math.sin(now / 700 + (a * 2 + step) * 1.3);
       ctx.fillStyle = `rgba(${c.glowRGB}, ${Math.max(0, ga).toFixed(3)})`;
-      const p1 = slotPt(a), p2 = slotPt(b);
-      pixLine(ctx, p1.x, p1.y, p2.x, p2.y);
-      pairIdx++;
+      const s1 = slotUV(a), s2 = slotUV(b);
+      domeSeg(ctx, s1.u, s1.v, s2.u, s2.v, scale);
     }
   }
   ctx.restore();
 
-  // pulsing elliptical rings — the inner circle plus a fainter outer band
-  // edge, hinting at the full wheel below
+  // --- 4. The outer band: a faint filled ring straddling the node circle, where
+  //        the crystals sit; kept translucent so only its edge rings read hard. ---
+  ctx.fillStyle = `rgba(${c.discRGB}, ${(0.07 + bright * 0.16 + 0.02 * Math.sin(now / 900)).toFixed(3)})`;
+  ctx.beginPath();                                  // outer edge, then inner hole
+  const bseg = 46;
+  for (let i = 0; i <= bseg; i++) {
+    const a = (i / bseg) * Math.PI * 2;
+    const p = domeProject(R.bandOuter * Math.cos(a), R.bandOuter * Math.sin(a), scale);
+    i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+  }
+  for (let i = bseg; i >= 0; i--) {
+    const a = (i / bseg) * Math.PI * 2;
+    const p = domeProject(R.bandInner * Math.cos(a), R.bandInner * Math.sin(a), scale);
+    ctx.lineTo(p.x, p.y);
+  }
+  ctx.fill("evenodd");
+  // bright rim edges on the band
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  const ringA = 0.2 + 0.08 * Math.sin(now / 900) + bright * 0.3;
-  const steps = 44;
-  for (const [mult, aMult] of [[1, 1], [1.3, 0.45]]) {
-    ctx.fillStyle = `rgba(${c.glowRGB}, ${Math.max(0, ringA * aMult).toFixed(3)})`;
-    for (let i = 0; i < steps; i++) {
-      const a = (i * 2 * Math.PI) / steps;
-      ctx.fillRect(
-        Math.round(cx + rx * scale * mult * Math.cos(a)),
-        Math.round(cy + ry * scale * mult * Math.sin(a)), 1, 1
-      );
-    }
-  }
+  ctx.fillStyle = `rgba(${c.glowRGB}, ${(0.28 + bright * 0.4).toFixed(3)})`;
+  domeRing(ctx, R.bandOuter, scale);
+  domeRing(ctx, R.bandInner, scale);
   ctx.restore();
 
-  // glowing node dots at the six slot angles
+  // --- 5. Crystal sockets seated in the band at the six slots, each sized to
+  //        span the band width exactly (tangent to both edge rings). ---
+  for (let i = 0; i < CONFIG.runeCount; i++) {
+    const s = slotUV(i);
+    drawRuneCrystal(ctx, s.u, s.v, R.socketR, scale, bright, c);
+  }
+
+  // --- 6. Center hub: a small ring + core at the apex ---
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.fillStyle = `rgba(${c.glowRGB}, 0.35)`;
-  for (let i = 0; i < CONFIG.runeCount; i++) {
-    const p = slotPt(i);
-    ctx.fillRect(p.x - 1, p.y - 1, 3, 3);
-  }
+  ctx.fillStyle = `rgba(${c.glowRGB}, ${(0.35 + bright * 0.4).toFixed(3)})`;
+  domeRing(ctx, 0.16, scale, 16);
+  ctx.fillStyle = `rgba(${c.discRGB}, ${(0.55 + bright * 0.4).toFixed(3)})`;
+  ctx.fillRect(Math.round(apex.x), Math.round(apex.y), 1, 1);
   ctx.restore();
-  ctx.fillStyle = c.dot;
-  for (let i = 0; i < CONFIG.runeCount; i++) {
-    const p = slotPt(i);
-    ctx.fillRect(p.x, p.y, 1, 1);
-  }
 
-  // the chords traced so far: burst white right after the match (mirroring
-  // the filigree burst below), then hold lit with a midpoint tick
+  // --- 7. The chords traced so far, bowed over the dome; burst white right
+  //        after a match, then hold lit. ---
   if (chords) {
     for (const ch of chords) {
       const bursting = ch.addedAt && now - ch.addedAt < 320;
       const core = bursting || bright > 0.5 ? c.bright : c.line;
-      const p1 = runePoint(ch.x1, ch.y1, scale);
-      const p2 = runePoint(ch.x2, ch.y2, scale);
-      pixLineGlow(ctx, Math.round(p1.x), Math.round(p1.y), Math.round(p2.x), Math.round(p2.y), core, c.glowRGB);
-      // midpoint tick perpendicular to the chord — the sub-line hint
-      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
-      const len = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
-      const tx = -(p2.y - p1.y) / len, ty = (p2.x - p1.x) / len;
-      ctx.fillStyle = core;
-      pixLine(ctx, Math.round(mx - tx * 2), Math.round(my - ty * 2), Math.round(mx + tx * 2), Math.round(my + ty * 2));
+      domeChord(ctx, ch.x1, ch.y1, ch.x2, ch.y2, scale, core, c.glowRGB);
     }
   }
   ctx.restore();
@@ -620,7 +775,8 @@ function drawWizardStaff(ctx, now) {
   if (state.castAt) {
     const t = now - state.castAt;
     const charge = CONFIG.castChargeMs, puff = CONFIG.runePuffMs;
-    const discTop = { x: scene.rune.cx, y: scene.rune.cy - 4 };
+    const ap = domeProject(0, 0, 1);        // the dome apex — the shield's lit centre
+    const discTop = { x: ap.x, y: ap.y - 4 };
     active = 1;
     if (t < charge) {                       // charge: lift into the disc, wind up
       target = discTop; glow = 0.55 + 0.45 * (t / charge); smooth = 0.4;
