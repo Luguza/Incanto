@@ -19,6 +19,15 @@ function setupScene(cv) {
   const maxPxByH = Math.floor((maxCssH * dpr) / SCENE_H);
   px = Math.max(1, Math.min(px || 1, maxPxByH || 1, 10));
   const artW = Math.ceil((cssW * dpr) / px);
+  // The hallway background is a long tile-strip drawn as two copies offset by the
+  // camera, so the corridor scrolls on forever. Making it several screens long
+  // (a whole number of pillar bays, so the pillar cadence wraps seamlessly) means
+  // its props only recur every few screens — the repeat is far less obvious than
+  // a one-screen loop. Props within it are scattered, not placed at fixed marks.
+  const screenCols = Math.ceil(artW / TILE);
+  const PILLAR_STEP = 6;                                   // wall pillars every N tiles (one bay)
+  const cols = Math.ceil((screenCols * 3) / PILLAR_STEP) * PILLAR_STEP;
+  const bgW = cols * TILE;
   cv.width = artW;
   cv.height = SCENE_H;
   cv.style.width = `${(artW * px) / dpr}px`;
@@ -43,22 +52,64 @@ function setupScene(cv) {
   // Its centre sits ~0.9 tiles ahead of the wizard, midway up the floor.
   const runeCx = Math.round(wizard.x + wiz.w / 2 + 0.9 * TILE);
   const runeCy = Math.round((FLOOR_Y + SCENE_H) / 2);
+  const layout = buildHallLayout(cols, PILLAR_STEP);
   scene = {
     cv,
     artW,
+    bgW,
     wizard,
     feetY,
     laneY,
     // Enemy march track: a skeleton's `pos` is in tiles to the right of the
     // hero's front edge, so one pos-unit is exactly one 16px floor tile.
     enemyLineX: wizard.x + wiz.w,
-    fountains: [Math.round(artW * 0.32 / TILE) * TILE, Math.round(artW * 0.68 / TILE) * TILE],
+    fountains: layout.fountainCols.map((c) => c * TILE),
+    props: layout,
     rune: { cx: runeCx, cy: runeCy, rx: 8, ry: 12 },
     castChest: null,  // cached chest of the last cast target, for the fireball
     bg: null,
+    edgeVignette: buildEdgeVignette(artW),
   };
-  scene.bg = buildBg(artW);
+  scene.bg = buildBg(bgW);
   return true;
+}
+
+// Scatter the corridor's furnishings across the whole strip so nothing sits at a
+// fixed screen mark and the layout only repeats every strip-length. Pillars keep
+// a steady bay cadence (architecture reads as deliberate); fountains, banners and
+// floor debris are spread into even buckets with a deterministic tile-hash jitter
+// so they never clump and never land on a pillar. All positions are tile columns.
+function buildHallLayout(cols, step) {
+  const pillars = [];
+  for (let c = 0; c < cols; c += step) pillars.push(c);
+  const taken = new Set(pillars);
+  const blocked = (c) => taken.has(c - 1) || taken.has(c) || taken.has(c + 1);
+  // Spread `count` marks into even buckets across [lo, hi), jittered ±2 tiles and
+  // nudged clear of anything already placed.
+  const scatter = (count, seed, lo, hi) => {
+    const out = [];
+    const range = hi - lo;
+    for (let i = 0; i < count; i++) {
+      let c = lo + Math.floor((i + 0.5) * range / count) + ((tileHash(seed, i) % 5) - 2);
+      let guard = 0;
+      while (blocked(c) && guard++ < 5) c++;
+      c = Math.max(lo, Math.min(hi - 1, c));
+      taken.add(c);
+      out.push(c);
+    }
+    return out;
+  };
+  const fountainCols = scatter(Math.max(2, Math.round(cols / 16)), 101, 2, cols - 2);
+  const banners = [];
+  for (const c of scatter(Math.max(1, Math.round(cols / 18)), 202, 2, cols - 3)) {
+    banners.push({ col: c, sheet: "bannerRed" });
+    banners.push({ col: c + 1, sheet: "bannerGreen" });
+    taken.add(c + 1);
+  }
+  const debris = ["skull", "crate"];
+  const floorProps = scatter(Math.max(1, Math.round(cols / 22)), 303, 2, cols - 2)
+    .map((c, i) => ({ col: c, type: debris[tileHash(404, i) % debris.length] }));
+  return { pillars, banners, floorProps, fountainCols };
 }
 
 function buildBg(artW) {
@@ -99,18 +150,18 @@ function buildBg(artW) {
     ctx.fillRect(0, FLOOR_Y + y, artW, 1);
   }
 
-  // Columns near the edges: capital on top, shaft down the full wall, and the
-  // base tile planted on the first floor row so the pillar stands on the floor
-  // with its bottom tile aligned to the wall→floor transition.
-  for (const cx of [TILE, (cols - 2) * TILE]) {
+  // Wall pillars on a steady bay cadence down the corridor: capital on top, shaft
+  // down the full wall, and the base tile planted on the first floor row so each
+  // pillar stands with its bottom tile on the wall→floor transition.
+  for (const col of scene.props.pillars) {
+    const cx = col * TILE;
     blit(SHEET.wallColumnTop, cx, 0);
     for (let y = TILE; y < FLOOR_Y; y += TILE) blit(SHEET.wallColumnMid, cx, y);
     blit(SHEET.wallColumnBase, cx, FLOOR_Y);
   }
 
-  // Banners hang from just below the top cap
-  blit(SHEET.bannerRed, Math.round(artW * 0.46 / TILE) * TILE, TILE);
-  blit(SHEET.bannerGreen, Math.round(artW * 0.54 / TILE) * TILE, TILE);
+  // Banners hang in scattered pairs from just below the top cap
+  for (const b of scene.props.banners) blit(SHEET[b.sheet], b.col * TILE, TILE);
 
   // Fountains are a 3-tile stack anchored to the floor line: spout, streaming
   // mid, and basin. The spout sits two rows above the floor so the mid tile
@@ -119,12 +170,14 @@ function buildBg(artW) {
     blit(SHEET.fountainTop, fx, FLOOR_Y - 2 * TILE);
   }
 
-  // Floor prop: a skull over on the right where the mob streams in (the wizard's
-  // side stays clear — the traced rune floats there)
+  // Floor debris (skulls, crates) scattered down the hall, each on its own
+  // grounding shadow, resting on the mid floor line.
   const feetY = FLOOR_Y + Math.round((SCENE_H - FLOOR_Y) * 0.66);
-  const skullX = Math.round(artW * 0.82);
-  blit(SHEET.skull, skullX, feetY - 12);
-  ctx.drawImage(ASSETS.shadow, skullX + 8 - 9, feetY - 2); // skull shadow
+  for (const fp of scene.props.floorProps) {
+    const spr = SHEET[fp.type];
+    blit(spr, fp.col * TILE, feetY + 4 - spr.h);
+    ctx.drawImage(ASSETS.shadow, fp.col * TILE + 8 - 9, feetY - 2);
+  }
 
   // --- Atmosphere pass (baked): depth + vignette ---------------------------
   // Ambient occlusion: the wall casts a soft shadow onto the front of the floor.
@@ -146,13 +199,27 @@ function buildBg(artW) {
   const vb = ctx.createLinearGradient(0, SCENE_H - 8, 0, SCENE_H);
   vb.addColorStop(0, "rgba(6, 4, 10, 0)"); vb.addColorStop(1, "rgba(6, 4, 10, 0.6)");
   band(vb, 0, SCENE_H - 8, artW, 8);
+  // The left/right vignette is NOT baked here — it belongs to the screen frame,
+  // not the corridor. Baked in, it would sweep past as dark bands while the
+  // hallway scrolls; instead it rides on top as a fixed overlay (see renderScene).
+
+  return cv;
+}
+
+// The left/right edge vignette, cached as a screen-fixed overlay (transparent in
+// the middle). Drawn over the scrolled corridor so the darkened borders stay
+// pinned to the viewport instead of scrolling away with the hallway.
+function buildEdgeVignette(artW) {
+  const cv = document.createElement("canvas");
+  cv.width = artW;
+  cv.height = SCENE_H;
+  const ctx = cv.getContext("2d");
   const vl = ctx.createLinearGradient(0, 0, 16, 0);
   vl.addColorStop(0, "rgba(6, 4, 10, 0.55)"); vl.addColorStop(1, "rgba(6, 4, 10, 0)");
-  band(vl, 0, 0, 16, SCENE_H);
+  ctx.fillStyle = vl; ctx.fillRect(0, 0, 16, SCENE_H);
   const vr = ctx.createLinearGradient(artW - 16, 0, artW, 0);
   vr.addColorStop(0, "rgba(6, 4, 10, 0)"); vr.addColorStop(1, "rgba(6, 4, 10, 0.55)");
-  band(vr, artW - 16, 0, 16, SCENE_H);
-
+  ctx.fillStyle = vr; ctx.fillRect(artW - 16, 0, 16, SCENE_H);
   return cv;
 }
 
@@ -164,7 +231,17 @@ function renderScene(now) {
   }
   const ctx = cv.getContext("2d");
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(scene.bg, 0, 0);
+
+  // Hallway scroll: the corridor (background + its props) slides left as the hero
+  // strides forward, while he and the skeletons hold their screen positions — a
+  // camera following the hero down an endless hall. Two tile-aligned copies of the
+  // background wrap seamlessly; `camOff` is the current scroll within one length.
+  const bgW = scene.bgW;
+  const camOff = ((state.cameraX % bgW) + bgW) % bgW;
+  ctx.drawImage(scene.bg, -camOff, 0);
+  ctx.drawImage(scene.bg, bgW - camOff, 0);
+  // Edge vignette rides on top, pinned to the viewport (not the scrolling hall).
+  ctx.drawImage(scene.edgeVignette, 0, 0);
 
   const feetY = scene.feetY;        // the hero's lane
   const fountainBasinY = FLOOR_Y;   // basin on the first floor row
@@ -174,9 +251,13 @@ function renderScene(now) {
   // tiles around it (otherwise the opaque basin sprite leaves a dark core).
   scene.fountains.forEach((fx, i) => {
     const fi = (Math.floor(now / 160) + i) % ASSETS.fountainMid.length;
-    // Streaming mid tiles fill the gap between the spout and the basin.
-    for (let y = FLOOR_Y - TILE; y > FLOOR_Y - 2 * TILE; y -= TILE) ctx.drawImage(ASSETS.fountainMid[fi], fx, y);
-    ctx.drawImage(ASSETS.fountainBasin[fi], fx, fountainBasinY);
+    // Scroll the animated stream+basin with the corridor (two wrapped copies) so
+    // they stay planted on the baked spout as the hallway slides by.
+    for (const bx of [fx - camOff, fx - camOff + bgW]) {
+      // Streaming mid tiles fill the gap between the spout and the basin.
+      for (let y = FLOOR_Y - TILE; y > FLOOR_Y - 2 * TILE; y -= TILE) ctx.drawImage(ASSETS.fountainMid[fi], bx, y);
+      ctx.drawImage(ASSETS.fountainBasin[fi], bx, fountainBasinY);
+    }
   });
 
   // Light pools (additive): each fountain spills warm light over itself and the
@@ -185,10 +266,12 @@ function renderScene(now) {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   scene.fountains.forEach((fx, i) => {
-    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 130 + i * 2.1);
-    ctx.drawImage(ASSETS.poolWarm, fx + 8 - 34, fountainBasinY - 34);
-    ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now / 110 + i * 2.1);
-    ctx.drawImage(ASSETS.glowFountain, fx + 8 - 15, fountainBasinY + 4 - 15);
+    for (const bx of [fx - camOff, fx - camOff + bgW]) {
+      ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 130 + i * 2.1);
+      ctx.drawImage(ASSETS.poolWarm, bx + 8 - 34, fountainBasinY - 34);
+      ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now / 110 + i * 2.1);
+      ctx.drawImage(ASSETS.glowFountain, bx + 8 - 15, fountainBasinY + 4 - 15);
+    }
   });
   ctx.globalAlpha = (0.6 + 0.25 * Math.sin(now / 300)) * (state.screen === "combat" ? 1 : 0.5);
   ctx.drawImage(ASSETS.poolCool, scene.rune.cx - 22, scene.rune.cy - 22);
@@ -217,8 +300,17 @@ function renderScene(now) {
     }
   }
 
+  // Walking down the hallway: a subtle vertical bob sells footsteps against the
+  // scrolling floor (the hero keeps his screen spot; the corridor slides past).
+  // Its amplitude tracks the eased pan speed so the bob fades in and out with the
+  // motion rather than popping on and off.
+  const walkFactor = Math.min(1, state.cameraVel / CONFIG.heroWalkPxPerMs);
+  const walkBob = now >= state.heroBlastUntil
+    ? -Math.abs(Math.sin(now / 150)) * walkFactor
+    : 0;
+
   ctx.save();
-  ctx.translate(Math.round(hkx), Math.round(hky));
+  ctx.translate(Math.round(hkx), Math.round(hky + walkBob));
   // The staff is drawn BEHIND the wizard so the shaft is occluded by his body
   // and only the gem end pokes out. At rest it stands upright; while
   // tracing/casting the gem rides out to the rune disc, then jabs on launch.

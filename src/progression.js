@@ -74,6 +74,9 @@ function startRun() {
   state.screen = "combat";
   const now = performance.now();
   state.enemies = [];
+  state.cameraX = 0;
+  state.cameraVel = 0;
+  state.heroWalking = false;
   state.nextSpawnAt = now + CONFIG.enemyFirstSpawnMs;
   state.laneBag = [];
   state.lastSpawnLane = -1;
