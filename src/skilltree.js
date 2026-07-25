@@ -1,11 +1,13 @@
 "use strict";
 // ==============================================================================
 // skilltree.js — the Path-of-Exile-style rune upgrade tree that replaces the old
-// two-button shop. Owns: TREE_NODES/EDGES data, derived stat model
-// (recomputeMods), purchase + reveal logic (treeBuy, nodeRevealed …), the
-// pan/zoom SVG screen (renderUpgradeFull, attachTreeInteractions) and the
-// procedural per-theme rune glyphs. Loads after screens.js so it can define the
-// global `renderUpgradeFull` the loop router calls for the "upgrade" screen.
+// two-button shop. The tree is PROCEDURALLY GENERATED: seven themed sectors each
+// fan outward across ~22 rings, repeating a small set of effect archetypes whose
+// magnitude — and cost — grow the farther they sit from the seed. That yields a
+// giant web (~1400 nodes) you pan/zoom around. This module owns the generator,
+// the derived stat model (recomputeMods), purchase/reveal logic, and the SVG
+// screen. Loads after screens.js so it can define the global `renderUpgradeFull`
+// the loop router calls for the "upgrade" screen.
 // ==============================================================================
 
 // ---------------------------------------------------------------------------
@@ -37,182 +39,171 @@ const RUNE_GLYPHS = {
 };
 
 // ---------------------------------------------------------------------------
-// Tree geometry — a big, deliberately over-sized web. Seven themed sectors
-// (offense, vitality, crit, arcane, ward, sustain, fortune) each FAN OUT from
-// the seed into branching sub-paths, and neighbouring sectors are cross-linked,
-// so routes weave rather than run in straight lines. Positions are computed from
-// {angle, ring} in a large tree-space (seed at TREE_CENTER); the 900-unit SVG
-// viewBox is just the pan/zoom window onto it, so the tree dwarfs the screen.
+// Generation — the tree lives in a large tree-space (seed at TREE_CENTER); the
+// 900-unit SVG viewBox is just the pan/zoom window onto it, so the tree dwarfs
+// the screen. Each sector repeats its `arch` (archetype) list outward; a node's
+// effect value scales with its ring (stronger further out), as does its cost.
 // ---------------------------------------------------------------------------
-const TREE_CENTER = 1300;                 // seed sits at the middle of the tree-space
-const TREE_VIEW = 900;                     // SVG viewBox size = the pan/zoom window
-const TREE_RINGS = { 1: 230, 2: 430, 3: 640, 4: 860, 5: 1050 };
+const TREE_CENTER = 3500;
+const TREE_VIEW = 900;
+const TREE_RINGS = 22;                 // number of rings (tiers) per sector
+const TREE_DR = 150;                   // tree-space distance between rings
+const VAL_PER_RING = 0.5;              // effect grows by this fraction of base per ring out
+const COST_PER_RING = 1.25;            // cost multiplies by this per ring out
 
-// Each node: title, theme, {angle,ring} placement, maxRank (dots), base cost +
-// per-rank cost growth, an `effect` map summed into the stat model, and a blurb
-// describing the mechanic (shown on a single click).
-const TREE_NODES = {
-  root: { title: "Ursprung", theme: "origin", angle: 0, ring: 0, maxRank: 0, cost: 0,
-    effect: {}, blurb: "Der Quell deiner Macht. Von hier verzweigen sich alle Pfade." },
-
-  // ── Offense (aufwärts, 270°) — flat & prozentualer Schaden ────────────────
-  o1: { title: "Schneide", theme: "offense", angle: 270, ring: 1, maxRank: 5, cost: 30, growth: 1.5,
-    effect: { flatDmg: 2 }, blurb: "Schärft deinen Grundschaden." },
-  o2: { title: "Zorn", theme: "offense", angle: 255, ring: 2, maxRank: 4, cost: 90, growth: 1.5,
-    effect: { pctDmg: 0.06 }, blurb: "Verstärkt allen Schaden prozentual." },
-  o3: { title: "Wetzstein", theme: "offense", angle: 285, ring: 2, maxRank: 5, cost: 70, growth: 1.5,
-    effect: { flatDmg: 3 }, blurb: "Mehr Grundschaden." },
-  o4: { title: "Bruch", theme: "offense", angle: 246, ring: 3, maxRank: 4, cost: 170,
-    effect: { flatDmg: 5 }, blurb: "Wuchtiger Grundschaden." },
-  o5: { title: "Raserei", theme: "offense", angle: 270, ring: 3, maxRank: 3, cost: 210,
-    effect: { pctDmg: 0.08 }, blurb: "Kräftige prozentuale Verstärkung." },
-  o6: { title: "Spalter", theme: "offense", angle: 294, ring: 3, maxRank: 3, cost: 200,
-    effect: { flatDmg: 6 }, blurb: "Schwerer Grundschaden." },
-  o7: { title: "Vernichtung", theme: "offense", angle: 270, ring: 4, maxRank: 2, cost: 460, growth: 1.7,
-    effect: { pctDmg: 0.15 }, blurb: "Schlüsselzeichen: gewaltige Schadensverstärkung." },
-
-  // ── Vitality (abwärts, 90°) — flat & prozentuale LP ───────────────────────
-  v1: { title: "Zähigkeit", theme: "vitality", angle: 90, ring: 1, maxRank: 5, cost: 25, growth: 1.5,
-    effect: { flatHp: 20 }, blurb: "Erhöht deine maximalen Lebenspunkte." },
-  v2: { title: "Lebenskraft", theme: "vitality", angle: 75, ring: 2, maxRank: 4, cost: 80, growth: 1.5,
-    effect: { pctHp: 0.06 }, blurb: "Mehr Lebenspunkte prozentual." },
-  v3: { title: "Zäher Balg", theme: "vitality", angle: 105, ring: 2, maxRank: 5, cost: 65, growth: 1.5,
-    effect: { flatHp: 30 }, blurb: "Mehr maximale Lebenspunkte." },
-  v4: { title: "Bollwerk", theme: "vitality", angle: 66, ring: 3, maxRank: 4, cost: 150,
-    effect: { flatHp: 50 }, blurb: "Eine große Lebensreserve." },
-  v5: { title: "Herzblut", theme: "vitality", angle: 90, ring: 3, maxRank: 3, cost: 200,
-    effect: { pctHp: 0.08 }, blurb: "Kräftige prozentuale LP." },
-  v6: { title: "Wall", theme: "vitality", angle: 114, ring: 3, maxRank: 3, cost: 190,
-    effect: { flatHp: 60 }, blurb: "Gewaltige Lebensreserve." },
-  v7: { title: "Unsterblichkeit", theme: "vitality", angle: 90, ring: 4, maxRank: 2, cost: 440, growth: 1.7,
-    effect: { pctHp: 0.18 }, blurb: "Schlüsselzeichen: gewaltige LP-Verstärkung." },
-
-  // ── Crit (oben rechts, 315°) — Krit-Chance & Krit-Schaden ─────────────────
-  c1: { title: "Präzision", theme: "crit", angle: 315, ring: 1, maxRank: 5, cost: 40, growth: 1.5,
-    effect: { critChance: 0.04 }, blurb: "Chance, einen kritischen Treffer zu landen." },
-  c2: { title: "Wucht", theme: "crit", angle: 300, ring: 2, maxRank: 4, cost: 110, growth: 1.5,
-    effect: { critMult: 0.15 }, blurb: "Kritische Treffer schlagen härter zu." },
-  c3: { title: "Schärfe", theme: "crit", angle: 330, ring: 2, maxRank: 4, cost: 95, growth: 1.5,
-    effect: { critChance: 0.05 }, blurb: "Mehr Krit-Chance." },
-  c4: { title: "Zermalmen", theme: "crit", angle: 296, ring: 3, maxRank: 3, cost: 210,
-    effect: { critMult: 0.2 }, blurb: "Kräftiger Krit-Schaden." },
-  c5: { title: "Adlerauge", theme: "crit", angle: 315, ring: 3, maxRank: 3, cost: 220,
-    effect: { critChance: 0.06 }, blurb: "Deutlich mehr Krit-Chance." },
-  c6: { title: "Grausamkeit", theme: "crit", angle: 334, ring: 3, maxRank: 3, cost: 200,
-    effect: { critMult: 0.18 }, blurb: "Härtere kritische Treffer." },
-  c7: { title: "Hinrichtung", theme: "crit", angle: 315, ring: 4, maxRank: 2, cost: 480, growth: 1.7,
-    effect: { critMult: 0.4 }, blurb: "Schlüsselzeichen: verheerender Krit-Schaden." },
-
-  // ── Arcane (oben links, 225°) — Zaubermacht & Flächenwirkung ──────────────
-  a1: { title: "Fokus", theme: "arcane", angle: 225, ring: 1, maxRank: 4, cost: 60, growth: 1.5,
-    effect: { pctDmg: 0.05 }, blurb: "Arkane Bündelung — verstärkt deinen Schaden." },
-  a2: { title: "Resonanz", theme: "arcane", angle: 210, ring: 2, maxRank: 3, cost: 130,
-    effect: { pctDmg: 0.06 }, blurb: "Mehr prozentualer Schaden." },
-  a3: { title: "Kanalisierung", theme: "arcane", angle: 240, ring: 2, maxRank: 3, cost: 120,
-    effect: { flatDmg: 4 }, blurb: "Arkane Wucht auf deinen Schaden." },
-  a4: { title: "Überladung", theme: "arcane", angle: 216, ring: 3, maxRank: 2, cost: 260,
-    effect: { pctDmg: 0.09 }, blurb: "Kräftige Schadensverstärkung." },
-  a5: { title: "Splitterzauber", theme: "arcane", angle: 225, ring: 4, maxRank: 2, cost: 320, growth: 1.8,
-    effect: { aoeExtra: 1 }, blurb: "Dein Zauber trifft ein zusätzliches Skelett (mehr Kacheln)." },
-  a6: { title: "Kettenblitz", theme: "arcane", angle: 225, ring: 5, maxRank: 1, cost: 700, growth: 1.8,
-    effect: { aoeExtra: 1 }, blurb: "Schlüsselzeichen: trifft ein weiteres Ziel — reine Verwüstung." },
-
-  // ── Ward (links, 180°) — Schilde, Dornen, Fehlschlag-Schutz ───────────────
-  w1: { title: "Schildzauber", theme: "ward", angle: 180, ring: 1, maxRank: 4, cost: 70, growth: 1.55,
-    effect: { shieldChance: 0.14, shieldAmount: 5, shieldMax: 6 },
-    blurb: "Manche Zauber gewähren einen Schild, der erlittenen Schaden absorbiert." },
-  w2: { title: "Dornen", theme: "ward", angle: 165, ring: 2, maxRank: 4, cost: 130,
-    effect: { thorns: 0.2 }, blurb: "Wirft einen Teil des erlittenen Schadens auf den Angreifer zurück." },
-  w3: { title: "Aegis", theme: "ward", angle: 195, ring: 2, maxRank: 3, cost: 150,
-    effect: { shieldChance: 0.08, shieldAmount: 5, shieldMax: 6 }, blurb: "Häufigere Schilde." },
-  w4: { title: "Stacheln", theme: "ward", angle: 162, ring: 3, maxRank: 3, cost: 230,
-    effect: { thorns: 0.25 }, blurb: "Stärkere Schadensreflexion." },
-  w5: { title: "Barriere", theme: "ward", angle: 186, ring: 3, maxRank: 3, cost: 240,
-    effect: { shieldChance: 0.1, shieldAmount: 6, shieldMax: 8 }, blurb: "Stärkere, häufigere Schilde." },
-  w6: { title: "Schutzzauber", theme: "ward", angle: 180, ring: 4, maxRank: 3, cost: 320, growth: 1.6,
-    effect: { spellFailProt: 0.2 }, blurb: "Schlüsselzeichen: Chance, den Fehlschlag-Rückschlag ganz abzuwehren." },
-
-  // ── Sustain (rechts, 0°) — LP-Regeneration & Lebensraub ───────────────────
-  s1: { title: "Genesung", theme: "sustain", angle: 0, ring: 1, maxRank: 5, cost: 45, growth: 1.5,
-    effect: { regen: 0.5 }, blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
-  s2: { title: "Aderlass", theme: "sustain", angle: 345, ring: 2, maxRank: 4, cost: 130,
-    effect: { leech: 0.06 }, blurb: "Heilt dich für einen Teil des Zauberschadens." },
-  s3: { title: "Balsam", theme: "sustain", angle: 15, ring: 2, maxRank: 4, cost: 110,
-    effect: { regen: 0.8 }, blurb: "Stärkere LP-Regeneration." },
-  s4: { title: "Blutzoll", theme: "sustain", angle: 338, ring: 3, maxRank: 3, cost: 230,
-    effect: { leech: 0.08 }, blurb: "Mehr Lebensraub." },
-  s5: { title: "Lebensquell", theme: "sustain", angle: 0, ring: 3, maxRank: 3, cost: 220,
-    effect: { regen: 1.2 }, blurb: "Kräftige LP-Regeneration." },
-  s6: { title: "Zehrung", theme: "sustain", angle: 22, ring: 3, maxRank: 3, cost: 210,
-    effect: { leech: 0.07 }, blurb: "Zusätzlicher Lebensraub." },
-  s7: { title: "Vampirismus", theme: "sustain", angle: 0, ring: 4, maxRank: 2, cost: 480, growth: 1.7,
-    effect: { leech: 0.15 }, blurb: "Schlüsselzeichen: gewaltiger Lebensraub." },
-
-  // ── Fortune (unten rechts, 45°) — Gold & Lauftempo ────────────────────────
-  f1: { title: "Glückssträhne", theme: "fortune", angle: 45, ring: 1, maxRank: 5, cost: 50, growth: 1.5,
-    effect: { coinMult: 0.1 }, blurb: "Mehr Gold für richtig gelöste Vokabeln." },
-  f2: { title: "Flinkheit", theme: "fortune", angle: 30, ring: 2, maxRank: 3, cost: 90,
-    effect: { walkMult: 0.08 }, blurb: "Der Held schreitet zügiger durch den Gang." },
-  f3: { title: "Wohlstand", theme: "fortune", angle: 60, ring: 2, maxRank: 4, cost: 100,
-    effect: { coinMult: 0.12 }, blurb: "Mehr Gold aus dem Lernen." },
-  f4: { title: "Windschritt", theme: "fortune", angle: 26, ring: 3, maxRank: 2, cost: 200,
-    effect: { walkMult: 0.1 }, blurb: "Deutlich schnelleres Vorankommen." },
-  f5: { title: "Reichtum", theme: "fortune", angle: 45, ring: 3, maxRank: 3, cost: 210,
-    effect: { coinMult: 0.15 }, blurb: "Deutlich mehr Gold." },
-  f6: { title: "Schatzgespür", theme: "fortune", angle: 64, ring: 3, maxRank: 2, cost: 220,
-    effect: { coinMult: 0.15 }, blurb: "Noch mehr Gold aus dem Lernen." },
-};
-
-// Undirected connections. Each sector FANS from its tier-1 node into two (or
-// more) sub-branches, and adjacent sectors are cross-linked at their nearest
-// tips, so the tree weaves into a web instead of running as straight spokes.
-const TREE_EDGES = [
-  // seed → each sector root
-  ["root", "o1"], ["root", "v1"], ["root", "c1"], ["root", "a1"],
-  ["root", "w1"], ["root", "s1"], ["root", "f1"],
-  // inner ring weaving the tier-1 nodes together
-  ["o1", "c1"], ["c1", "s1"], ["s1", "f1"], ["f1", "v1"], ["w1", "a1"], ["a1", "o1"],
-  // Offense fan
-  ["o1", "o2"], ["o1", "o3"], ["o2", "o4"], ["o2", "o5"], ["o3", "o5"], ["o3", "o6"],
-  ["o5", "o7"], ["o6", "o7"],
-  // Vitality fan
-  ["v1", "v2"], ["v1", "v3"], ["v2", "v4"], ["v2", "v5"], ["v3", "v5"], ["v3", "v6"],
-  ["v5", "v7"], ["v6", "v7"],
-  // Crit fan
-  ["c1", "c2"], ["c1", "c3"], ["c2", "c4"], ["c2", "c5"], ["c3", "c5"], ["c3", "c6"],
-  ["c5", "c7"], ["c6", "c7"],
-  // Arcane fan (deep AoE keystones)
-  ["a1", "a2"], ["a1", "a3"], ["a2", "a4"], ["a3", "a4"], ["a4", "a5"], ["a5", "a6"],
-  // Ward fan
-  ["w1", "w2"], ["w1", "w3"], ["w2", "w4"], ["w3", "w5"], ["w2", "w5"], ["w5", "w6"], ["w4", "w6"],
-  // Sustain fan
-  ["s1", "s2"], ["s1", "s3"], ["s2", "s4"], ["s3", "s5"], ["s3", "s6"], ["s5", "s7"], ["s4", "s7"],
-  // Fortune fan
-  ["f1", "f2"], ["f1", "f3"], ["f2", "f4"], ["f3", "f5"], ["f3", "f6"],
-  // cross-links between neighbouring sectors (the web)
-  ["o3", "c2"], ["c3", "s2"], ["s3", "f2"], ["f3", "v2"], ["w3", "a2"], ["a3", "o4"],
+// Sectors: base angle (screen degrees, y-down) + the effect archetypes that
+// repeat outward. Each archetype is a reusable "node type"; `rare` ones (AoE,
+// fail-protection) only appear on deep rings so the strong mechanics stay far
+// from the seed.
+const TREE_SECTORS = [
+  { key: "off", theme: "offense", angle: 270, arch: [
+    { stat: "flatDmg", base: 2, cost: 28, maxRank: 4, title: "Schneide", blurb: "Schärft deinen Grundschaden." },
+    { stat: "pctDmg", base: 0.05, cost: 42, maxRank: 3, title: "Zorn", blurb: "Verstärkt allen Schaden prozentual." },
+  ]},
+  { key: "vit", theme: "vitality", angle: 90, arch: [
+    { stat: "flatHp", base: 16, cost: 24, maxRank: 4, title: "Zähigkeit", blurb: "Erhöht deine maximalen Lebenspunkte." },
+    { stat: "pctHp", base: 0.05, cost: 40, maxRank: 3, title: "Lebenskraft", blurb: "Mehr Lebenspunkte prozentual." },
+  ]},
+  { key: "cri", theme: "crit", angle: 315, arch: [
+    { stat: "critChance", base: 0.03, cost: 40, maxRank: 4, title: "Präzision", blurb: "Chance auf kritische Treffer." },
+    { stat: "critMult", base: 0.12, cost: 46, maxRank: 3, title: "Wucht", blurb: "Kritische Treffer schlagen härter zu." },
+  ]},
+  { key: "arc", theme: "arcane", angle: 225, arch: [
+    { stat: "pctDmg", base: 0.05, cost: 44, maxRank: 3, title: "Fokus", blurb: "Arkane Bündelung — verstärkt deinen Schaden." },
+    { stat: "aoeExtra", base: 1, cost: 220, growth: 1.8, maxRank: 1, rare: true, title: "Splitterzauber",
+      blurb: "Dein Zauber trifft ein zusätzliches Ziel (mehr Kacheln)." },
+  ]},
+  { key: "war", theme: "ward", angle: 180, arch: [
+    { stat: "thorns", base: 0.12, cost: 38, maxRank: 3, title: "Dornen", blurb: "Wirft einen Teil des erlittenen Schadens zurück." },
+    { special: "shield", cost: 48, maxRank: 3, title: "Schildzauber", blurb: "Manche Zauber gewähren einen absorbierenden Schild." },
+    { stat: "spellFailProt", base: 0.07, cost: 70, growth: 1.5, maxRank: 2, rare: true, title: "Schutzzauber",
+      blurb: "Chance, den Fehlschlag-Rückschlag ganz abzuwehren." },
+  ]},
+  { key: "sus", theme: "sustain", angle: 0, arch: [
+    { stat: "regen", base: 0.4, cost: 40, maxRank: 4, title: "Genesung", blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
+    { stat: "leech", base: 0.05, cost: 52, maxRank: 3, title: "Aderlass", blurb: "Heilt dich für einen Teil des Zauberschadens." },
+  ]},
+  { key: "for", theme: "fortune", angle: 45, arch: [
+    { stat: "coinMult", base: 0.08, cost: 44, maxRank: 4, title: "Glückssträhne", blurb: "Mehr Gold für richtig gelöste Vokabeln." },
+    { stat: "walkMult", base: 0.06, cost: 46, maxRank: 3, title: "Flinkheit", blurb: "Der Held schreitet zügiger voran." },
+  ]},
 ];
 
-// The first release used different node ids; this maps those onto their closest
-// equivalent in the current tree so saved progress isn't lost across the rename.
+function thash(a, b, c) {
+  let h = (Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(c, 83492791)) >>> 0;
+  return h;
+}
+function angDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
+// Build the whole tree once at load: node metadata, absolute positions, edges.
+function buildSkillTree() {
+  const nodes = {
+    root: { title: "Ursprung", theme: "origin", ring: 0, maxRank: 0, cost: 0, growth: 1.4, effect: {},
+      blurb: "Der Quell deiner Macht. Von hier verzweigen sich alle Pfade." },
+  };
+  const pos = { root: { x: TREE_CENTER, y: TREE_CENTER } };
+  const edges = [];
+
+  const minSpacing = 84;
+  const wedge = (2 * Math.PI / TREE_SECTORS.length) * 0.86; // leave a gap between sectors
+  const half = wedge / 2;
+
+  for (const sec of TREE_SECTORS) {
+    const A = (sec.angle * Math.PI) / 180;
+    const ringNodes = [[]]; // ringNodes[r] = [{id, ang}]
+    for (let r = 1; r <= TREE_RINGS; r++) {
+      const Rr = r * TREE_DR;
+      const maxByArc = Math.max(1, Math.floor((wedge * Rr) / minSpacing));
+      const width = Math.min(Math.max(1, Math.round(0.8 * r)), maxByArc, 13);
+      const arr = [];
+      for (let i = 0; i < width; i++) {
+        const frac = width === 1 ? 0.5 : i / (width - 1);
+        const h = thash(sec.angle + 1, r, i + 1);
+        const jA = ((h % 100) / 100 - 0.5) * wedge * 0.05;
+        const jR = (((h >> 8) % 100) / 100 - 0.5) * TREE_DR * 0.26;
+        const ang = A - half + frac * (2 * half) + jA;
+        const rr = Rr + jR;
+        const id = `${sec.key}_${r}_${i}`;
+
+        // Pick an archetype; the simple flat stat (arch[0]) anchors each ring's
+        // first node, the rest alternate. Rare ones only surface on deep rings.
+        let a = sec.arch[((r - 1) + i) % sec.arch.length];
+        if (a.rare && !(r >= 7 && ((r * 3 + i) % 6 === 0))) a = sec.arch[0];
+
+        const tier = 1 + VAL_PER_RING * (r - 1);   // magnitude multiplier for this ring
+        let effect;
+        if (a.special === "shield") {
+          effect = { shieldChance: Math.min(0.3, 0.1 + 0.005 * r), shieldAmount: Math.round(4 * tier), shieldMax: Math.round(6 * tier) };
+        } else if (a.stat === "aoeExtra") {
+          effect = { aoeExtra: 1 };
+        } else {
+          let v = a.base * tier;
+          if (a.stat === "flatDmg" || a.stat === "flatHp") v = Math.max(1, Math.round(v));
+          else if (a.stat === "regen") v = Math.round(v * 10) / 10;
+          else v = Math.round(v * 1000) / 1000;
+          effect = { [a.stat]: v };
+        }
+        const cost = Math.max(5, Math.round(a.cost * Math.pow(COST_PER_RING, r - 1)));
+        nodes[id] = { title: a.title, theme: sec.theme, ring: r, maxRank: a.maxRank || 3,
+          cost, growth: a.growth || 1.4, effect, blurb: a.blurb };
+        pos[id] = { x: TREE_CENTER + rr * Math.cos(ang), y: TREE_CENTER + rr * Math.sin(ang) };
+        arr.push({ id, ang });
+      }
+      ringNodes[r] = arr;
+    }
+
+    // Edges: each node links to its nearest parent one ring in (ring 1 → root);
+    // every third node gets a second parent, and alternate same-ring neighbours
+    // are joined — enough to weave a web without turning it into a solid mesh.
+    for (let r = 1; r <= TREE_RINGS; r++) {
+      const arr = ringNodes[r];
+      for (let k = 0; k < arr.length; k++) {
+        const cur = arr[k];
+        if (r === 1) { edges.push(["root", cur.id]); continue; }
+        const inner = ringNodes[r - 1];
+        let best = inner[0], bd = Infinity, second = null, sd = Infinity;
+        for (const n of inner) {
+          const d = Math.abs(angDiff(n.ang, cur.ang));
+          if (d < bd) { sd = bd; second = best; bd = d; best = n; }
+          else if (d < sd) { sd = d; second = n; }
+        }
+        edges.push([best.id, cur.id]);
+        if (k % 3 === 0 && second) edges.push([second.id, cur.id]);
+      }
+      for (let k = 0; k + 1 < arr.length; k += 2) edges.push([arr[k].id, arr[k + 1].id]);
+    }
+  }
+
+  // Weave the sectors together with an inner ring across their tier-1 bases.
+  for (let s = 0; s < TREE_SECTORS.length; s++) {
+    const a = `${TREE_SECTORS[s].key}_1_0`;
+    const b = `${TREE_SECTORS[(s + 1) % TREE_SECTORS.length].key}_1_0`;
+    if (pos[a] && pos[b]) edges.push([a, b]);
+  }
+
+  return { nodes, pos, edges };
+}
+
+const _TREE = buildSkillTree();
+const TREE_NODES = _TREE.nodes;
+const NODE_POS = _TREE.pos;
+const TREE_EDGES = _TREE.edges;
+
+// The two earlier releases used different node ids; map their tier-1 bases onto
+// the current inner nodes so a little saved progress carries across. Deeper old
+// ids simply drop (the tree was regenerated). Unknown ids are ignored on load.
 const LEGACY_NODE_IDS = {
-  dmg1: "o1", dmg2: "o2", dmg3: "o4", dmg4: "o7",
-  hp1: "v1", hp2: "v2", hp3: "v4", hp4: "v7",
-  crit1: "c1", crit2: "c2", crit3: "c5", crit4: "c7",
-  sus1: "s1", sus2: "s2", sus3: "s5", sus4: "s7",
-  for1: "f1", for2: "f2", for3: "f5",
-  ward1: "w1", ward2: "w2", ward3: "w5", ward4: "w6",
-  arc1: "a1", arc2: "a5", arc3: "a6",
+  dmg1: "off_1_0", o1: "off_1_0", hp1: "vit_1_0", v1: "vit_1_0",
+  crit1: "cri_1_0", c1: "cri_1_0", sus1: "sus_1_0", s1: "sus_1_0",
+  for1: "for_1_0", f1: "for_1_0", ward1: "war_1_0", w1: "war_1_0",
+  arc1: "arc_1_0", a1: "arc_1_0",
 };
 
-// Resolve {angle,ring} → absolute tree-space coords, and build the neighbour map.
-const NODE_POS = {};
-for (const id in TREE_NODES) {
-  const n = TREE_NODES[id];
-  const r = TREE_RINGS[n.ring] || 0;
-  const a = (n.angle * Math.PI) / 180;
-  NODE_POS[id] = { x: TREE_CENTER + r * Math.cos(a), y: TREE_CENTER + r * Math.sin(a) };
-}
 const NEIGHBORS = {};
 for (const [a, b] of TREE_EDGES) {
   (NEIGHBORS[a] || (NEIGHBORS[a] = [])).push(b);
@@ -231,7 +222,7 @@ function nodeRevealed(id) {
   return (NEIGHBORS[id] || []).some(isPurchased);
 }
 function nodeCost(node, rank) {
-  return Math.round(node.cost * Math.pow(node.growth || 1.55, rank));
+  return Math.round(node.cost * Math.pow(node.growth || 1.4, rank));
 }
 
 // ---------------------------------------------------------------------------
@@ -327,11 +318,10 @@ function effectText(effect, mult) {
 // Rendering
 // ---------------------------------------------------------------------------
 function treeClamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
-
 function nodeRadius(id) { return id === "root" ? 34 : 28; }
 
 function initTreeView(resetSelection) {
-  const s = 0.92;                       // default zoom — shows the seed + inner rings big
+  const s = 0.9;                        // default zoom — seed + inner rings big
   const c = TREE_VIEW / 2;              // viewBox centre
   const keep = (!resetSelection && state.tree) ? state.tree.selected : null;
   state.tree = { scale: s, tx: c - TREE_CENTER * s, ty: c - TREE_CENTER * s, selected: keep };
@@ -366,20 +356,15 @@ function nodeSvg(id) {
   const purchased = isPurchased(id);
   const rank = nodeRank(id);
   const maxed = rank >= node.maxRank;
-  const selected = state.tree && state.tree.selected === id;
   const R = nodeRadius(id);
-
-  const sel = selected
-    ? `<circle class="n-sel" r="${R + 7}" fill="none" stroke="#eafffe" stroke-width="3"/>`
-    : "";
 
   let disc, glyph, dots = "";
   if (!revealed) {
+    // Hidden nodes render as a cheap "?" disc (most of a fresh tree is hidden,
+    // which keeps the huge web light until you push into it).
     disc = `<circle class="n-disc" r="${R}" fill="#120e1c" stroke="#332e46" stroke-width="3"/>`;
     glyph = `<text class="n-q" y="9" text-anchor="middle" fill="#4a4560">?</text>`;
   } else {
-    // Crisp, flat discs — a filled inner core for purchased nodes, hollow for
-    // affordable-but-unbought. No blur (clean borders).
     const fill = purchased ? `rgba(${theme.glow},0.25)` : "#141020";
     disc = `<circle class="n-disc" r="${R}" fill="${fill}" stroke="${theme.color}" ` +
       `stroke-width="${purchased ? 4 : 3}" opacity="${purchased ? 1 : 0.85}"/>` +
@@ -388,8 +373,7 @@ function nodeSvg(id) {
     glyph = runeGroup(node.theme, purchased ? 1 : 0.9);
     if (id !== "root") dots = nodeDotsSvg(rank, node.maxRank, R, theme.color);
   }
-  return `<g class="tnode${selected ? " selected" : ""}" data-node="${id}" ` +
-    `transform="translate(${pos.x.toFixed(1)},${pos.y.toFixed(1)})">${sel}${disc}${glyph}${dots}</g>`;
+  return `<g class="tnode" data-node="${id}" transform="translate(${pos.x.toFixed(1)},${pos.y.toFixed(1)})">${disc}${glyph}${dots}</g>`;
 }
 
 function edgeSvg(a, b) {
@@ -456,6 +440,7 @@ function renderTreeInfo() {
     <div class="ti-head">
       <span class="ti-rune">${runeGlyphSvg(node.theme, 24)}</span>
       <span class="ti-name" style="color:${theme.color}">${node.title}</span>
+      <span class="ti-tier">Stufe ${node.ring}</span>
       ${node.maxRank ? `<span class="ti-dots" style="color:${theme.color}">${dots}</span>` : ""}
     </div>
     <div class="ti-blurb">${node.blurb}</div>
@@ -463,8 +448,17 @@ function renderTreeInfo() {
     ${buy}</div>`;
 }
 
+function selRingSvg() {
+  const id = state.tree && state.tree.selected;
+  const p = id && NODE_POS[id] ? NODE_POS[id] : null;
+  return p
+    ? `<circle id="tree-sel" fill="none" stroke="#eafffe" stroke-width="3" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nodeRadius(id) + 7}"/>`
+    : `<circle id="tree-sel" fill="none" stroke="#eafffe" stroke-width="3" r="0" style="display:none"/>`;
+}
+
 // The whole upgrade phase is the tree now. Called by the loop router for the
-// "upgrade" screen (structural rebuild only — pan/zoom patch the transform live).
+// "upgrade" screen (structural rebuild only — pan/zoom and node selection patch
+// the DOM live, so tapping around the ~1400-node web stays cheap).
 function renderUpgradeFull() {
   if (!state.tree) initTreeView(true);
   const t = state.tree;
@@ -485,7 +479,7 @@ function renderUpgradeFull() {
       <svg class="tree-canvas" id="tree-canvas" viewBox="0 0 900 900" preserveAspectRatio="xMidYMid meet">
         <g id="tree-cam" transform="${cam}">
           <g class="tree-edges">${edges}</g>
-          <g class="tree-nodes">${nodes}</g>
+          <g class="tree-nodes">${selRingSvg()}${nodes}</g>
         </g>
       </svg>
       <div class="tree-zoom">
@@ -493,14 +487,30 @@ function renderUpgradeFull() {
         <button class="tz-btn" data-act="treeZoom" data-args="[0.8]" aria-label="Verkleinern">&minus;</button>
         <button class="tz-btn" data-act="treeReset" aria-label="Ansicht zurücksetzen">&#8635;</button>
       </div>
-      ${renderTreeInfo()}
+      <div id="tree-info-slot">${renderTreeInfo()}</div>
       <button class="fight-btn tree-run-btn" data-act="startRun">Lauf starten →</button>
     </div>`;
 
   attachTreeInteractions();
 }
 
-// Recentre + fit the view on the seed.
+// Select a node without rebuilding the whole web: move the selection ring and
+// refresh just the info slot.
+function selectNode(id) {
+  if (!state.tree) return;
+  state.tree.selected = id;
+  const ring = document.getElementById("tree-sel");
+  const p = NODE_POS[id];
+  if (ring && p) {
+    ring.setAttribute("cx", p.x.toFixed(1));
+    ring.setAttribute("cy", p.y.toFixed(1));
+    ring.setAttribute("r", nodeRadius(id) + 7);
+    ring.style.display = "";
+  }
+  const slot = document.getElementById("tree-info-slot");
+  if (slot) slot.innerHTML = renderTreeInfo();
+}
+
 function applyTreeCam() {
   const cam = document.getElementById("tree-cam");
   if (cam) {
@@ -509,10 +519,10 @@ function applyTreeCam() {
       `translate(${t.tx.toFixed(2)},${t.ty.toFixed(2)}) scale(${t.scale.toFixed(4)})`);
   }
 }
-// Zoom about a point given in viewBox (tree-space-ish) coords, keeping it fixed.
+// Zoom about a point given in viewBox coords, keeping it fixed under the cursor.
 function treeZoomAt(vx, vy, factor) {
   const t = state.tree;
-  const ns = treeClamp(t.scale * factor, 0.28, 3.2);
+  const ns = treeClamp(t.scale * factor, 0.1, 3.2);
   const real = ns / t.scale;
   t.tx = vx - (vx - t.tx) * real;
   t.ty = vy - (vy - t.ty) * real;
@@ -524,7 +534,7 @@ function treeReset() { initTreeView(false); state._structuralDirty = true; }
 
 // Pan (one pointer), pinch (two pointers), wheel zoom, and tap-to-select — all
 // bound to the freshly rendered SVG. Pan/zoom mutate the transform live and
-// persist to state.tree, so a later rebuild restores the same view.
+// persist to state.tree; selection patches the DOM in place. Neither rebuilds.
 function attachTreeInteractions() {
   const svg = document.getElementById("tree-canvas");
   if (!svg) return;
@@ -578,11 +588,11 @@ function attachTreeInteractions() {
     if (pts.size < 2) pinch = 0;
     if (pts.size === 1) { const r = [...pts.values()][0]; last = { x: r.x, y: r.y }; }
     else if (pts.size === 0) last = null;
-    // A near-stationary single-pointer tap on a node selects it.
+    // A near-stationary single-pointer tap on a node selects it (cheap patch).
     if (wasSingle && moved < 8 && e.pointerId === downId) {
       const el = document.elementFromPoint(e.clientX, e.clientY);
       const g = el && el.closest ? el.closest("[data-node]") : null;
-      if (g) { state.tree.selected = g.dataset.node; state._structuralDirty = true; }
+      if (g) selectNode(g.dataset.node);
     }
   };
   svg.addEventListener("pointerup", onUp);

@@ -151,12 +151,11 @@ function applySavedProgress() {
       }
       state.nodeRanks = ranks;
     } else {
-      // migrate the old flat levels
+      // migrate the very old flat dmgLevel/hpLevel onto the two entry nodes
       state.nodeRanks = {};
-      if (typeof TREE_NODES !== "undefined") {
-        if (asCount(data.dmgLevel) > 0) state.nodeRanks.o1 = Math.min(asCount(data.dmgLevel), TREE_NODES.o1.maxRank);
-        if (asCount(data.hpLevel) > 0) state.nodeRanks.v1 = Math.min(asCount(data.hpLevel), TREE_NODES.v1.maxRank);
-      }
+      const nd = (typeof TREE_NODES !== "undefined") ? TREE_NODES : {};
+      if (asCount(data.dmgLevel) > 0 && nd.off_1_0) state.nodeRanks.off_1_0 = Math.min(asCount(data.dmgLevel), nd.off_1_0.maxRank);
+      if (asCount(data.hpLevel) > 0 && nd.vit_1_0) state.nodeRanks.vit_1_0 = Math.min(asCount(data.hpLevel), nd.vit_1_0.maxRank);
     }
   }
   if (typeof recomputeMods === "function") recomputeMods();

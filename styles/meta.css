@@ -86,7 +86,7 @@
   .tnode { cursor: pointer; }
   .tnode .n-q { font-family: var(--display-font); font-size: 26px; font-weight: 700; }
   .tnode.selected { pointer-events: auto; }
-  .tnode .n-sel { animation: treePulse 1.4s ease-in-out infinite; }
+  #tree-sel { animation: treePulse 1.4s ease-in-out infinite; pointer-events: none; }
   @keyframes treePulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
 
   /* zoom toolbar */
@@ -113,6 +113,7 @@
   .ti-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
   .ti-rune { display: inline-flex; }
   .ti-name { font-family: var(--display-font); font-size: 19px; letter-spacing: 1px; }
+  .ti-tier { font-size: 11px; color: #8a8398; letter-spacing: 0.5px; }
   .ti-dots { margin-left: auto; display: inline-flex; gap: 4px; }
   .ti-dots .dot {
     width: 8px; height: 8px; border-radius: 50%; border: 1px solid currentColor;
