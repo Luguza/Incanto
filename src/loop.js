@@ -111,8 +111,15 @@ function updateCamera(now, dt) {
   for (const e of livingEnemies()) {
     if (scene.enemyLineX + e.pos * TILE < boundary) { clear = false; break; }
   }
-  state.heroWalking = clear;
-  if (clear) state.cameraX += CONFIG.heroWalkPxPerMs * dt;
+  // Ease the pan velocity toward its target (full speed when clear, 0 when a
+  // skeleton is near) with a frame-rate-independent time constant, so the hero
+  // accelerates into his stride and coasts to a stop instead of snapping.
+  const targetVel = clear ? CONFIG.heroWalkPxPerMs : 0;
+  const k = 1 - Math.exp(-dt / CONFIG.heroWalkEaseMs);
+  state.cameraVel += (targetVel - state.cameraVel) * k;
+  if (state.cameraVel < 1e-4) state.cameraVel = 0;
+  state.cameraX += state.cameraVel * dt;
+  state.heroWalking = state.cameraVel > CONFIG.heroWalkPxPerMs * 0.15;
 }
 
 let lastRafNow = null;
