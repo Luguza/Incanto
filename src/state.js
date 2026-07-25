@@ -21,22 +21,25 @@ function freshState() {
     dragPointer: null,       // {x, y} pointer position in SVG (viewBox) coords, for the live line
     chords: [],              // {x1,y1,x2,y2,pairId}
     currentPairs: [],
-    // Hero: an HP pool (no discrete hearts) that upgrades persist across waves
+    // Hero: an HP pool (no discrete hearts) whose upgrades persist across runs
     heroMaxHP: CONFIG.heroBaseHP,
     heroHP: CONFIG.heroBaseHP,
     heroDmg: CONFIG.heroBaseDmg,
     dmgLevel: 0,
     hpLevel: 0,
     gold: 0,
-    // Endless waves — each wave sends a mob of skeletons that walk in from the
-    // right. An enemy: {id, maxHP, hp, dmg, slot, pos, phase, phaseAt, attackAt,
-    // attackAnimAt}. `pos` is in tiles to the right of the hero (0 = at him);
-    // `phase` is walk | idle | attack | dying.
-    wave: 1,
+    // Endless trickle — lone skeletons walk in from the right at random
+    // intervals. An enemy: {id, maxHP, hp, dmg, slot, lane, pos, phase, phaseAt,
+    // attackAt, attackAnimAt, struckUntil}. `pos` is in tiles to the right of the
+    // hero (0 = at him); `phase` is walk | idle | attack | struck | dying.
+    // `struck` = fatally hit, standing until the bolt lands, then it collapses.
+    kills: 0,                 // skeletons slain this run (score + quiz gold bonus)
     enemies: [],
     nextEnemyId: 1,
+    nextSpawnAt: 0,           // performance.now() timestamp for the next skeleton to walk in
+    laneBag: [],              // shuffled lanes left to deal this cycle (each lane used once per cycle)
+    lastSpawnLane: -1,        // lane of the previous spawn, so no two arrivals share a lane back-to-back
     castTargetId: null,       // which enemy the in-flight fireball is aimed at
-    pendingWaveEnd: false,    // set when the last skeleton falls; ends the wave after the cast anim
     poolIndex: 0,
     wrongMatchCount: 0,
     // Post-death vocab quiz — a mixed Duolingo-style session
@@ -55,7 +58,6 @@ function freshState() {
     quizMatchWrong: null,    // match: {left, right} flashing red, briefly
     quizMatchMisses: 0,      // match: wrong taps this question
     quizAnsweredAt: 0,
-    lastWaveReached: 1,
     clockMs: 0,               // internal clock warped by mode+selection, drives windup + instrumentation
     runStartMs: 0,            // wall-clock start of the run, for the end-screen summary
     pairAvailableAtClockMs: {},

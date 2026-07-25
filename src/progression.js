@@ -1,20 +1,9 @@
 "use strict";
 // ==============================================================================
-// progression.js — enemy scaling, upgrade costs, wave/run start, circle layout,
+// progression.js — enemy spawning, upgrade costs, run start, circle layout,
 // and upgrade purchases (buyDmg/buyHp).
 // ==============================================================================
 
-// Enemy scaling: each wave's skeleton has more HP and hits harder
-function enemyHPForWave(w) {
-  return Math.round(CONFIG.enemyBaseHP * Math.pow(CONFIG.enemyHPGrowth, w - 1));
-}
-function enemyDmgForWave(w) {
-  return Math.round(CONFIG.enemyBaseDmg * Math.pow(CONFIG.enemyDmgGrowth, w - 1));
-}
-function enemyCountForWave(w) {
-  const extra = Math.floor((w - 1) / CONFIG.enemyCountEveryWaves);
-  return Math.min(CONFIG.enemyMaxCount, CONFIG.enemiesBaseCount + extra);
-}
 function dmgUpgradeCost() {
   return Math.round(CONFIG.dmgUpgradeBaseCost * Math.pow(CONFIG.upgradeCostGrowth, state.dmgLevel));
 }
@@ -22,38 +11,73 @@ function hpUpgradeCost() {
   return Math.round(CONFIG.hpUpgradeBaseCost * Math.pow(CONFIG.upgradeCostGrowth, state.hpLevel));
 }
 
-// Send in a mob for wave `w`, with fresh words to trace. Every skeleton shares
-// the wave's HP/damage; they spawn off the right edge in a trailing column and
-// each walks to its own stop slot before it starts attacking.
-function startWave(w) {
-  state.wave = w;
-  const now = performance.now();
-  const count = enemyCountForWave(w);
-  const maxHP = enemyHPForWave(w);
-  const dmg = enemyDmgForWave(w);
-  // Spread the mob across every lane (round-robin), so a full rank streams in
-  // abreast; each lane trails its own column behind that.
-  state.enemies = [];
-  const laneFill = new Array(CONFIG.enemyLanes).fill(0);
-  for (let i = 0; i < count; i++) {
-    const lane = i % CONFIG.enemyLanes;
-    const rank = laneFill[lane]++;
-    state.enemies.push({
-      id: state.nextEnemyId++,
-      maxHP,
-      hp: maxHP,
-      dmg,
-      slot: i,
-      lane,
-      pos: CONFIG.enemySpawnTiles + rank * CONFIG.enemySpawnGapTiles, // tiles out, per-lane column
-      phase: "walk",              // walk | idle | attack | dying
-      phaseAt: now,
-      attackAt: 0,                // next time this skeleton lands a hit
-      attackAnimAt: 0,            // start of the current forward-jab animation
-    });
+// A random delay (ms) until the next skeleton walks in, drawn uniformly from
+// the configured [min, max] window.
+function randomSpawnDelay() {
+  const { enemySpawnMinMs: lo, enemySpawnMaxMs: hi } = CONFIG;
+  return lo + Math.random() * (hi - lo);
+}
+
+// Pick the lane for the next arrival. Lanes are dealt from a shuffled bag —
+// every lane is used exactly once per cycle (so all lanes get populated), and
+// the bag is reshuffled if it would repeat the previous lane back-to-back, so
+// no two consecutive skeletons ever share a lane.
+function nextSpawnLane() {
+  if (CONFIG.enemyLanes <= 1) return 0;
+  if (state.laneBag.length === 0) {
+    do {
+      state.laneBag = shuffleArray([...Array(CONFIG.enemyLanes).keys()]);
+    } while (state.laneBag[state.laneBag.length - 1] === state.lastSpawnLane);
   }
+  const lane = state.laneBag.pop();          // next lane to deal is the bag's tail
+  state.lastSpawnLane = lane;
+  return lane;
+}
+
+// Send in one lone skeleton off the right edge. Every skeleton is identical
+// (same HP/damage). It joins its dealt lane, queued a gap behind whoever is
+// already furthest out in that lane so arrivals never spawn on top of a corpse
+// or a straggler, then walks to its own stop slot before it starts attacking.
+function spawnEnemy(now) {
+  const id = state.nextEnemyId++;
+  const lane = nextSpawnLane();
+  // Spawn at the standard distance, but if this lane still has stragglers, drop
+  // in a gap behind the rearmost so the new one trails the column.
+  let pos = CONFIG.enemySpawnTiles;
+  for (const e of state.enemies) {
+    if (e.lane === lane) pos = Math.max(pos, e.pos + CONFIG.enemySpawnGapTiles);
+  }
+  state.enemies.push({
+    id,
+    maxHP: CONFIG.enemyBaseHP,
+    hp: CONFIG.enemyBaseHP,
+    dmg: CONFIG.enemyBaseDmg,
+    slot: id,                     // per-enemy constant, only used to de-sync the idle animation
+    lane,
+    pos,
+    phase: "walk",                // walk | idle | attack | struck | dying
+    phaseAt: now,
+    attackAt: 0,                  // next time this skeleton lands a hit
+    attackAnimAt: 0,              // start of the current forward-jab animation
+    struckUntil: 0,               // while `struck`: when the bolt lands and it collapses
+  });
+}
+
+// A run: fixed build (persists between runs), fight the endless trickle until
+// death. Build/gold are meta-progression and are NOT reset here.
+function startRun() {
+  state.kills = 0;
+  state.heroHP = state.heroMaxHP;
+  state.wrongMatchCount = 0;
+  state.runStartMs = performance.now();
+  state.runActive = true;
+  state.screen = "combat";
+  const now = performance.now();
+  state.enemies = [];
+  state.nextSpawnAt = now + CONFIG.enemyFirstSpawnMs;
+  state.laneBag = [];
+  state.lastSpawnLane = -1;
   state.castTargetId = null;
-  state.pendingWaveEnd = false;
   state.castAt = 0;
   state.castChords = null;
   state.tapTraceUntil = 0;
@@ -61,18 +85,6 @@ function startWave(w) {
   state.tapTraceTo = null;
   state.pendingShapeAt = 0;
   populateCircle(drawLoadout());
-}
-
-// A run: fixed build (persists between runs), fight escalating waves until
-// death. Build/gold are meta-progression and are NOT reset here.
-function startRun() {
-  state.wave = 1;
-  state.heroHP = state.heroMaxHP;
-  state.wrongMatchCount = 0;
-  state.runStartMs = performance.now();
-  state.runActive = true;
-  state.screen = "combat";
-  startWave(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,4 +131,4 @@ function buyHp() {
   state._structuralDirty = true;
 }
 
-window.Incanto.progression = { enemyHPForWave, enemyDmgForWave, enemyCountForWave, dmgUpgradeCost, hpUpgradeCost, startWave, startRun, layoutCircle, shuffleArray, buyDmg, buyHp };
+window.Incanto.progression = { dmgUpgradeCost, hpUpgradeCost, randomSpawnDelay, nextSpawnLane, spawnEnemy, startRun, layoutCircle, shuffleArray, buyDmg, buyHp };

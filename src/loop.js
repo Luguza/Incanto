@@ -26,6 +26,15 @@ function getEffectiveDt(rawDt) {
   return rawDt;
 }
 
+// Drip a new skeleton into the arena on the random schedule, unless we're
+// already at the on-screen cap. Either way, re-arm the timer for the next
+// arrival so the trickle keeps a steady but irregular rhythm.
+function updateSpawns(now) {
+  if (now < state.nextSpawnAt) return;
+  if (livingEnemies().length < CONFIG.enemyMaxCount) spawnEnemy(now);
+  state.nextSpawnAt = now + randomSpawnDelay();
+}
+
 // March the mob one frame. Each lane is resolved independently, front-to-back
 // (nearest the hero first), so a skeleton is blocked by the standoff line or by
 // whoever is ahead of it *in its own lane*, always leaving > 1 tile between
@@ -35,6 +44,15 @@ function getEffectiveDt(rawDt) {
 // — each keeps its own timer. Finished deaths are culled.
 function updateEnemies(now, dt) {
   const step = CONFIG.enemyWalkTilesPerMs * dt;
+  // A struck skeleton stands its ground until the bolt lands, then it collapses:
+  // that's when the death animation begins (phaseAt resets so the dissolve runs
+  // cleanly from here).
+  for (const e of state.enemies) {
+    if (e.phase === "struck" && now >= e.struckUntil) {
+      e.phase = "dying";
+      e.phaseAt = now;
+    }
+  }
   const lanes = new Map();
   for (const e of state.enemies) {
     if (!lanes.has(e.lane)) lanes.set(e.lane, []);
@@ -44,10 +62,11 @@ function updateEnemies(now, dt) {
     group.sort((a, b) => a.pos - b.pos);
     let limit = CONFIG.enemyStandoffTiles; // how far forward the next skeleton may advance
     let chainSettled = true;               // is everything ahead in this lane settled against the hero?
+    let frontRank = true;                  // only the lane's leading skeleton stands in melee
     for (const e of group) {
-      if (e.phase === "dying") {
-        // a crumbling skeleton still holds its tile until it's culled, so the
-        // ranks behind it can't walk through the corpse
+      if (e.phase === "dying" || e.phase === "struck") {
+        // a doomed/crumbling skeleton still holds its tile until it's culled, so
+        // the ranks behind it can't walk through the corpse
         limit = e.pos + CONFIG.enemyGapTiles;
         chainSettled = false;
         continue;
@@ -56,10 +75,12 @@ function updateEnemies(now, dt) {
       const blocked = newPos <= limit + 1e-3;
       e.pos = newPos;
       const settled = chainSettled && blocked;
-      if (!blocked) {
-        e.phase = "walk";
-      } else if (settled && e.pos <= CONFIG.enemyAttackRangeTiles + 1e-3) {
+      // Only the front skeleton in the lane actually reaches melee and swings;
+      // everyone queued behind it just idles until it falls and they advance.
+      if (frontRank && settled && e.pos <= CONFIG.enemyAttackRangeTiles + 1e-3) {
         if (e.phase !== "attack") { e.phase = "attack"; e.attackAt = now + CONFIG.enemyFirstAttackMs; }
+      } else if (!blocked) {
+        e.phase = "walk";
       } else {
         e.phase = "idle";
       }
@@ -70,6 +91,7 @@ function updateEnemies(now, dt) {
       }
       limit = e.pos + CONFIG.enemyGapTiles;   // next skeleton stays a gap behind this one
       chainSettled = settled;                 // a still-moving skeleton breaks the settled chain
+      frontRank = false;                      // everyone after the leader is a back rank
     }
   }
   state.enemies = state.enemies.filter(
@@ -86,13 +108,8 @@ function rafLoop(now) {
   if (state.screen === "combat") {
     const effectiveDt = getEffectiveDt(rawDt);
     state.clockMs += effectiveDt;
+    updateSpawns(now);
     updateEnemies(now, effectiveDt);
-    // The last skeleton fell and its death + the killing cast have finished
-    // animating → the next, stronger mob walks in. The build stays fixed for the
-    // whole run; upgrades only happen between runs.
-    if (state.pendingWaveEnd && state.castAt === 0 && state.enemies.length === 0) {
-      startWave(state.wave + 1);
-    }
     if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {
       state.pendingRefill = false;
       populateCircle(drawLoadout());
