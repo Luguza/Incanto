@@ -117,9 +117,19 @@ function updateCamera(now, dt) {
   if (!scene) return;
   const boundary = scene.artW * CONFIG.heroWalkClearFraction;
   let clear = true;
-  for (const e of livingEnemies()) {
-    if (scene.enemyLineX + e.pos * TILE < boundary) { clear = false; break; }
+  for (const e of state.enemies) {
+    // A skeleton taking its killing blow or mid-collapse pins the hero wherever
+    // it stands: its death has to play out against a static floor, otherwise the
+    // corpse (fixed to its screen-x) appears to slide backwards as the corridor
+    // scrolls under it. Skeletons still on their feet only block once they've
+    // reached the near stretch.
+    const busy = e.phase === "struck" || e.phase === "dying";
+    if (busy || scene.enemyLineX + e.pos * TILE < boundary) { clear = false; break; }
   }
+  // Hold position while a spell is charging or its bolt is in flight, so the
+  // cast and its impact land against a still background instead of streaking
+  // across a moving one.
+  if (state.castAt) clear = false;
   // Ease the pan velocity toward its target (full speed when clear, 0 when a
   // skeleton is near) with a frame-rate-independent time constant, so the hero
   // accelerates into his stride and coasts to a stop instead of snapping.
