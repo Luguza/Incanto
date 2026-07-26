@@ -45,14 +45,15 @@ const CONFIG = {
   enemySpawnMaxMs: 10200,    // longest gap between arrivals
   enemyFirstSpawnMs: 400,    // the first skeleton of a run walks in almost at once
   // Progressive spawn rate: the trickle starts slow and then picks up
-  // exponentially the further the hero gets into a run. Each arrival's delay is
-  // multiplied by a factor that decays GEOMETRICALLY from `enemySpawnRampStartMult`
-  // (at 0 kills) down to 1 (once the hero has racked up `enemySpawnRampKills`
-  // kills) — mult = startMult^(1 - progress). A geometric decay of the gap means
-  // the spawn *rate* (1/gap) grows exponentially with progress, so early
-  // skeletons are extra sparse and the pressure ramps up ever faster.
+  // exponentially, with no ceiling — the only real cap is `enemyMaxCount` (how
+  // many skeletons fit on screen at once). Each arrival's delay is multiplied by
+  // a factor that decays GEOMETRICALLY from `enemySpawnRampStartMult` (at 0
+  // kills): mult = startMult^(1 - progress), where progress = kills/rampKills is
+  // NOT clamped. It reaches 1 (full base speed) at `enemySpawnRampKills` kills
+  // and keeps shrinking past that, so the spawn *rate* (1/gap) grows
+  // exponentially forever, throttled only by the on-screen skeleton cap.
   enemySpawnRampStartMult: 4,   // at run start, gaps between arrivals are this much longer
-  enemySpawnRampKills: 45,      // kills over which the trickle ramps up to full speed
+  enemySpawnRampKills: 45,      // kills to reach full base speed (mult=1); accelerates beyond
   enemyLanes: 3,             // parallel depth rows the mob streams in on
   // March + melee. A skeleton's `pos` is measured in TILES to the right of the
   // hero's front edge (0 = touching the hero). One pos-unit maps to exactly one

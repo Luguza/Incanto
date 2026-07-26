@@ -17,13 +17,17 @@ function randomSpawnDelay() {
 }
 
 // Delay multiplier for the current run progress: high early (slower spawns),
-// settling to 1 once the hero is deep enough into the run. The decay is
-// geometric — mult = startMult^(1 - progress) — so the spawn *rate* (1/gap)
-// grows exponentially: sparse at the start, then picking up faster and faster.
+// then shrinking without bound as the run goes on. The decay is geometric —
+// mult = startMult^(1 - progress) — so the spawn *rate* (1/gap) grows
+// exponentially: sparse at the start, hitting full speed at `enemySpawnRampKills`
+// kills (mult = 1), and continuing to accelerate past that point. There is no
+// rate ceiling — the only real cap is `enemyMaxCount` (how many skeletons can
+// be on screen at once), enforced in updateSpawns. `progress` is intentionally
+// NOT clamped so the gaps keep tightening the deeper the hero gets.
 function spawnRateRampMult() {
   const { enemySpawnRampStartMult: startMult, enemySpawnRampKills: rampKills } = CONFIG;
   if (rampKills <= 0) return 1;
-  const progress = Math.min(1, state.kills / rampKills);
+  const progress = state.kills / rampKills;
   return Math.pow(startMult, 1 - progress);
 }
 
