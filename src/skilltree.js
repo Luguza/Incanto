@@ -50,49 +50,48 @@ const TREE_RINGS = 22;                 // number of rings (tiers) per sector
 const TREE_DR = 150;                   // tree-space distance between rings
 const VAL_PER_RING = 0.5;              // effect grows by this fraction of base per ring out
 const COST_PER_RING = 1.25;            // cost multiplies by this per ring out
+const NODE_MIN_DIST = 80;              // guaranteed minimum centre-to-centre gap (no overlaps)
+const WEDGE_FRAC = 0.66;               // fraction of a sector's slice its nodes span (rest = gap)
 
-// Sectors: base angle (screen degrees, y-down) + the effect archetypes that
-// repeat outward. Each archetype is a reusable "node type"; `rare` ones (AoE,
-// fail-protection) only appear on deep rings so the strong mechanics stay far
-// from the seed.
+// Sectors: the effect archetypes that repeat outward. The seven sectors are laid
+// out evenly around the full circle (see buildSkillTree), so every angle is used
+// and there are no empty wedges. Each archetype is a reusable "node type"; `rare`
+// ones (AoE, fail-protection) only appear on deep rings so the strong mechanics
+// stay far from the seed.
 const TREE_SECTORS = [
-  { key: "off", theme: "offense", angle: 270, arch: [
+  { key: "off", theme: "offense", arch: [
     { stat: "flatDmg", base: 2, cost: 28, maxRank: 4, title: "Schneide", blurb: "Schärft deinen Grundschaden." },
     { stat: "pctDmg", base: 0.05, cost: 42, maxRank: 3, title: "Zorn", blurb: "Verstärkt allen Schaden prozentual." },
   ]},
-  { key: "vit", theme: "vitality", angle: 90, arch: [
+  { key: "vit", theme: "vitality", arch: [
     { stat: "flatHp", base: 16, cost: 24, maxRank: 4, title: "Zähigkeit", blurb: "Erhöht deine maximalen Lebenspunkte." },
     { stat: "pctHp", base: 0.05, cost: 40, maxRank: 3, title: "Lebenskraft", blurb: "Mehr Lebenspunkte prozentual." },
   ]},
-  { key: "cri", theme: "crit", angle: 315, arch: [
+  { key: "cri", theme: "crit", arch: [
     { stat: "critChance", base: 0.03, cost: 40, maxRank: 4, title: "Präzision", blurb: "Chance auf kritische Treffer." },
     { stat: "critMult", base: 0.12, cost: 46, maxRank: 3, title: "Wucht", blurb: "Kritische Treffer schlagen härter zu." },
   ]},
-  { key: "arc", theme: "arcane", angle: 225, arch: [
+  { key: "arc", theme: "arcane", arch: [
     { stat: "pctDmg", base: 0.05, cost: 44, maxRank: 3, title: "Fokus", blurb: "Arkane Bündelung — verstärkt deinen Schaden." },
     { stat: "aoeExtra", base: 1, cost: 220, growth: 1.8, maxRank: 1, rare: true, title: "Splitterzauber",
       blurb: "Dein Zauber trifft ein zusätzliches Ziel (mehr Kacheln)." },
   ]},
-  { key: "war", theme: "ward", angle: 180, arch: [
+  { key: "war", theme: "ward", arch: [
     { stat: "thorns", base: 0.12, cost: 38, maxRank: 3, title: "Dornen", blurb: "Wirft einen Teil des erlittenen Schadens zurück." },
     { special: "shield", cost: 48, maxRank: 3, title: "Schildzauber", blurb: "Manche Zauber gewähren einen absorbierenden Schild." },
     { stat: "spellFailProt", base: 0.07, cost: 70, growth: 1.5, maxRank: 2, rare: true, title: "Schutzzauber",
       blurb: "Chance, den Fehlschlag-Rückschlag ganz abzuwehren." },
   ]},
-  { key: "sus", theme: "sustain", angle: 0, arch: [
+  { key: "sus", theme: "sustain", arch: [
     { stat: "regen", base: 0.4, cost: 40, maxRank: 4, title: "Genesung", blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
     { stat: "leech", base: 0.05, cost: 52, maxRank: 3, title: "Aderlass", blurb: "Heilt dich für einen Teil des Zauberschadens." },
   ]},
-  { key: "for", theme: "fortune", angle: 45, arch: [
+  { key: "for", theme: "fortune", arch: [
     { stat: "coinMult", base: 0.08, cost: 44, maxRank: 4, title: "Glückssträhne", blurb: "Mehr Gold für richtig gelöste Vokabeln." },
     { stat: "walkMult", base: 0.06, cost: 46, maxRank: 3, title: "Flinkheit", blurb: "Der Held schreitet zügiger voran." },
   ]},
 ];
 
-function thash(a, b, c) {
-  let h = (Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(c, 83492791)) >>> 0;
-  return h;
-}
 function angDiff(a, b) {
   let d = a - b;
   while (d > Math.PI) d -= 2 * Math.PI;
@@ -109,25 +108,25 @@ function buildSkillTree() {
   const pos = { root: { x: TREE_CENTER, y: TREE_CENTER } };
   const edges = [];
 
-  const minSpacing = 84;
-  const wedge = (2 * Math.PI / TREE_SECTORS.length) * 0.86; // leave a gap between sectors
+  const N = TREE_SECTORS.length;
+  const slice = (2 * Math.PI) / N;               // one sector's share of the full circle
+  const wedge = slice * WEDGE_FRAC;              // nodes span this; the rest is the inter-sector gap
   const half = wedge / 2;
 
-  for (const sec of TREE_SECTORS) {
-    const A = (sec.angle * Math.PI) / 180;
+  TREE_SECTORS.forEach((sec, idx) => {
+    const A = -Math.PI / 2 + idx * slice;        // sectors evenly spaced — every angle is filled
     const ringNodes = [[]]; // ringNodes[r] = [{id, ang}]
     for (let r = 1; r <= TREE_RINGS; r++) {
       const Rr = r * TREE_DR;
-      const maxByArc = Math.max(1, Math.floor((wedge * Rr) / minSpacing));
-      const width = Math.min(Math.max(1, Math.round(0.8 * r)), maxByArc, 13);
+      // How many nodes fit on this ring's wedge arc while staying >= NODE_MIN_DIST
+      // apart. Spanning the full wedge with <= this many nodes guarantees no
+      // overlap; ring spacing (TREE_DR) already exceeds NODE_MIN_DIST radially.
+      const capacity = Math.floor((wedge * Rr) / NODE_MIN_DIST) + 1;
+      const width = Math.min(Math.max(1, Math.round(0.8 * r)), capacity, 16);
       const arr = [];
       for (let i = 0; i < width; i++) {
         const frac = width === 1 ? 0.5 : i / (width - 1);
-        const h = thash(sec.angle + 1, r, i + 1);
-        const jA = ((h % 100) / 100 - 0.5) * wedge * 0.05;
-        const jR = (((h >> 8) % 100) / 100 - 0.5) * TREE_DR * 0.26;
-        const ang = A - half + frac * (2 * half) + jA;
-        const rr = Rr + jR;
+        const ang = A - half + frac * (2 * half);   // no jitter — spacing is guaranteed
         const id = `${sec.key}_${r}_${i}`;
 
         // Pick an archetype; the simple flat stat (arch[0]) anchors each ring's
@@ -151,40 +150,27 @@ function buildSkillTree() {
         const cost = Math.max(5, Math.round(a.cost * Math.pow(COST_PER_RING, r - 1)));
         nodes[id] = { title: a.title, theme: sec.theme, ring: r, maxRank: a.maxRank || 3,
           cost, growth: a.growth || 1.4, effect, blurb: a.blurb };
-        pos[id] = { x: TREE_CENTER + rr * Math.cos(ang), y: TREE_CENTER + rr * Math.sin(ang) };
+        pos[id] = { x: TREE_CENTER + Rr * Math.cos(ang), y: TREE_CENTER + Rr * Math.sin(ang) };
         arr.push({ id, ang });
       }
       ringNodes[r] = arr;
     }
 
-    // Edges: each node links to its nearest parent one ring in (ring 1 → root);
-    // every third node gets a second parent, and alternate same-ring neighbours
-    // are joined — enough to weave a web without turning it into a solid mesh.
+    // A strict tree: ring-1 nodes hang off the seed, and every other node takes
+    // the single nearest node one ring in as its parent — one parent each, no
+    // lateral or cross-sector links, so branches fan out without ever closing a
+    // loop.
     for (let r = 1; r <= TREE_RINGS; r++) {
       const arr = ringNodes[r];
-      for (let k = 0; k < arr.length; k++) {
-        const cur = arr[k];
+      for (const cur of arr) {
         if (r === 1) { edges.push(["root", cur.id]); continue; }
         const inner = ringNodes[r - 1];
-        let best = inner[0], bd = Infinity, second = null, sd = Infinity;
-        for (const n of inner) {
-          const d = Math.abs(angDiff(n.ang, cur.ang));
-          if (d < bd) { sd = bd; second = best; bd = d; best = n; }
-          else if (d < sd) { sd = d; second = n; }
-        }
+        let best = inner[0], bd = Infinity;
+        for (const n of inner) { const d = Math.abs(angDiff(n.ang, cur.ang)); if (d < bd) { bd = d; best = n; } }
         edges.push([best.id, cur.id]);
-        if (k % 3 === 0 && second) edges.push([second.id, cur.id]);
       }
-      for (let k = 0; k + 1 < arr.length; k += 2) edges.push([arr[k].id, arr[k + 1].id]);
     }
-  }
-
-  // Weave the sectors together with an inner ring across their tier-1 bases.
-  for (let s = 0; s < TREE_SECTORS.length; s++) {
-    const a = `${TREE_SECTORS[s].key}_1_0`;
-    const b = `${TREE_SECTORS[(s + 1) % TREE_SECTORS.length].key}_1_0`;
-    if (pos[a] && pos[b]) edges.push([a, b]);
-  }
+  });
 
   return { nodes, pos, edges };
 }
