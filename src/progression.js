@@ -6,9 +6,10 @@
 
 // A random delay (ms) until the next skeleton walks in, drawn uniformly from
 // the configured [min, max] window, then stretched by a progress ramp so the
-// trickle starts slow and quickens the further the hero gets. The multiplier
-// eases linearly from `enemySpawnRampStartMult` at 0 kills down to 1 once the
-// hero has `enemySpawnRampKills` kills (and stays at 1 thereafter).
+// trickle starts slow and then quickens ever faster the further the hero gets.
+// The multiplier decays geometrically from `enemySpawnRampStartMult` at 0 kills
+// down to 1 once the hero has `enemySpawnRampKills` kills (and stays at 1
+// thereafter).
 function randomSpawnDelay() {
   const { enemySpawnMinMs: lo, enemySpawnMaxMs: hi } = CONFIG;
   const base = lo + Math.random() * (hi - lo);
@@ -16,12 +17,14 @@ function randomSpawnDelay() {
 }
 
 // Delay multiplier for the current run progress: high early (slower spawns),
-// settling to 1 once the hero is deep enough into the run.
+// settling to 1 once the hero is deep enough into the run. The decay is
+// geometric — mult = startMult^(1 - progress) — so the spawn *rate* (1/gap)
+// grows exponentially: sparse at the start, then picking up faster and faster.
 function spawnRateRampMult() {
   const { enemySpawnRampStartMult: startMult, enemySpawnRampKills: rampKills } = CONFIG;
   if (rampKills <= 0) return 1;
   const progress = Math.min(1, state.kills / rampKills);
-  return 1 + (startMult - 1) * (1 - progress);
+  return Math.pow(startMult, 1 - progress);
 }
 
 // Pick the lane for the next arrival. Lanes are dealt from a shuffled bag —
