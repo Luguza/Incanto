@@ -173,9 +173,15 @@ function rafLoop(now) {
     if (state.runActive && state.heroHP > 0) {
       const effectiveDt = getEffectiveDt(rawDt);
       state.clockMs += effectiveDt;
-      // Sustain: trickle HP back while the run is live.
-      if (state.mods.regen > 0 && state.heroHP < state.heroMaxHP) {
-        healHero(state.mods.regen * effectiveDt / 1000);
+      // Sustain: trickle HP back while the run is live — but only up to a
+      // fraction of max HP, never to full (see CONFIG.regenMaxHpFraction). Regen
+      // is a safety net between fights, not a hands-off autopilot: past the
+      // threshold you must actually fight to climb, so no build idles forever.
+      if (state.mods.regen > 0) {
+        const regenCap = state.heroMaxHP * CONFIG.regenMaxHpFraction;
+        if (state.heroHP < regenCap) {
+          state.heroHP = Math.min(regenCap, state.heroHP + state.mods.regen * effectiveDt / 1000);
+        }
       }
       updateSpawns(now);
       updateEnemies(now, effectiveDt);

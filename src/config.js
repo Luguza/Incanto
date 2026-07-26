@@ -7,8 +7,11 @@
 // CONFIG — every gameplay number, flag, and color lives here.
 // ---------------------------------------------------------------------------
 const CONFIG = {
-  // Hero: small HP pool, starts weak, upgrades bought with gold
-  heroBaseHP: 10,
+  // Hero: small HP pool, starts weak, upgrades bought with gold. Base survives a
+  // couple of skeleton blows so the very first upgradeless run is a real fight
+  // (not an instant death) — a few cheap early nodes then tip a lone skeleton in
+  // the hero's favour; see CONFIG.caps for why stacking past that plateaus.
+  heroBaseHP: 14,
   heroBaseDmg: 3,
   dmgPerLevel: 2,
   hpPerLevel: 25,
@@ -36,7 +39,7 @@ const CONFIG = {
   // HP, same damage (no per-wave scaling).
   enemyBaseHP: 10,
   enemyBaseDmg: 6,
-  wrongPenaltyFraction: 0.2, // a wrong match backfires for this fraction of the hero's MAX HP
+  wrongPenaltyFraction: 0.15, // a wrong match backfires for this fraction of the hero's MAX HP
   enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
   // Random trickle: the next skeleton arrives after a delay drawn uniformly from
   // [min, max] ms, capped at `enemyMaxCount` alive so the arena never overflows.
@@ -67,7 +70,7 @@ const CONFIG = {
   enemyStandoffTiles: 1.6,      // how far in front of the hero the front rank stops
   enemyGapTiles: 1.15,          // min tiles between two skeletons (> 1 → never the same tile)
   enemyAttackRangeTiles: 4.1,   // a stopped skeleton within this reach of the hero attacks; farther ones idle
-  enemyFirstAttackMs: 1400,     // windup before a skeleton's first hit after engaging
+  enemyFirstAttackMs: 2000,     // windup before a skeleton's first hit after engaging (a beat to react on first engage)
   enemyAttackIntervalMs: 3400,  // steady cadence between a skeleton's hits
   enemyAttackLungeMs: 260,      // length of the forward jab drawn on each hit
   runeCount: 6,
@@ -85,6 +88,32 @@ const CONFIG = {
   // Floating damage numbers that pop over a fighter on each hit, then rise + fade
   dmgFloatMs: 850,      // how long a damage number lingers before it's culled
   dmgFloatRisePx: 16,   // art pixels it drifts upward across its life
+  // Sustain / anti-AFK. Regen only trickles the hero back up to this fraction of
+  // his max HP — never to full. That keeps Genesung a between-fights safety net
+  // (it patches a rough patch, then you must fight to climb higher) instead of a
+  // hands-off autopilot: once a real mob forms, incoming damage outpaces a
+  // capped regen that can't even reach full, so no build can idle forever.
+  regenMaxHpFraction: 0.6,
+  // Balance ceilings. The skill tree is ~1300 nodes whose effect grows the
+  // farther out they sit, so without limits a stacked build snowballs into an
+  // unkillable, AFK-able hero. recomputeMods runs every summed stat through
+  // these: the flat/percent pools use a soft cap (near-linear while small, so
+  // early upgrades feel strong, then asymptoting so each extra point returns
+  // less), and the sustain/crit stats use hard ceilings. Enemies never scale, so
+  // these caps are what keep the fight a fight no matter how deep the tree goes.
+  caps: {
+    flatHp: 60,         // soft-cap on summed +flat HP (before % HP)
+    flatDmg: 22,        // soft-cap on summed +flat damage (before % damage)
+    pctHp: 1.0,         // soft-cap on summed % HP  (approaches +100%)
+    pctDmg: 1.0,        // soft-cap on summed % damage (approaches +100%)
+    critChance: 0.6,    // hard ceiling on crit chance
+    critMult: 1.5,      // hard ceiling on bonus crit damage (max crit ×3.0)
+    regen: 2.0,         // hard ceiling on HP/s regen (below a full mob's DPS)
+    thorns: 0.35,       // hard ceiling on reflected fraction of a blow
+    leech: 0.5,         // hard ceiling on life-leech fraction
+    shieldChance: 0.5,  // hard ceiling on per-cast shield chance
+    spellFailProt: 0.6, // hard ceiling on backfire-ward chance
+  },
   circleCenter: { x: 300, y: 300 },
   circleRadius: 215,
   runeRadius: 48,

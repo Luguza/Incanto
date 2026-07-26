@@ -49,7 +49,7 @@ const TREE_VIEW = 900;                 // SVG viewBox size = the pan/zoom window
 const TREE_RADIUS = 2250;              // how far the tree reaches from the seed
 const NODE_STEP = 90;                  // spacing a branch advances per node
 const NODE_MIN_DIST = 72;              // guaranteed minimum centre-to-centre gap (no overlaps)
-const VAL_PER_RING = 0.5;              // effect grows by this fraction of base per tier out
+const VAL_PER_RING = 0.3;              // effect grows by this fraction of base per tier out (caps bound the total — see CONFIG.caps)
 const COST_PER_RING = 1.25;            // cost multiplies by this per tier out
 
 // Sectors: the effect archetypes that repeat outward. The seven sectors are laid
@@ -142,10 +142,15 @@ function buildSkillTree() {
     return TREE_SECTORS[Math.floor(a / (TWO_PI / N)) % N];
   };
 
-  function addNode(id, x, y, parentId) {
+  // `secOverride` pins a node to a specific sector instead of deriving it from
+  // its angle. The seed shoots use it because they sit exactly on the wedge
+  // boundaries sectorAtAngle divides on, where floating-point rounding would
+  // otherwise drop a shoot into its neighbour's sector (mis-theming it and
+  // desyncing its id prefix). Growth nodes pass nothing and derive geometrically.
+  function addNode(id, x, y, parentId, secOverride) {
     const dx = x - C, dy = y - C, rad = Math.hypot(dx, dy);
     const ring = Math.max(1, Math.round(rad / NODE_STEP));   // tier ~ distance from seed
-    const sec = sectorAtAngle(Math.atan2(dy, dx));
+    const sec = secOverride || sectorAtAngle(Math.atan2(dy, dx));
     const seed = ((ring * 2654435761) ^ (Math.round(x) * 40503) ^ Math.round(y)) >>> 0;
     let a = sec.arch[(ring + (seed % 3)) % sec.arch.length];
     if (a.rare && !(ring >= 6 && seed % 5 === 0)) a = sec.arch[0];   // rare types stay deep
@@ -189,10 +194,13 @@ function buildSkillTree() {
   }
 
   // Seven initial shoots so the seed branches out in every direction at once.
+  // Each is pinned to its own sector (its angle lands on the sector boundary, so
+  // geometric derivation is ambiguous) — that keeps a shoot's theme, effect, and
+  // `${key}_0` id all in agreement.
   let counter = 0;
   for (let idx = 0; idx < N; idx++) {
     const A = -Math.PI / 2 + idx * (TWO_PI / N), rr = HOLE + NODE_STEP * 0.6;
-    addNode(`${TREE_SECTORS[idx].key}_0`, C + rr * Math.cos(A), C + rr * Math.sin(A), "root");
+    addNode(`${TREE_SECTORS[idx].key}_0`, C + rr * Math.cos(A), C + rr * Math.sin(A), "root", TREE_SECTORS[idx]);
   }
 
   // Grow: each round, every node pulled by ≥1 attractor sprouts one child toward
@@ -277,7 +285,23 @@ function nodeCost(node, rank) {
 // ---------------------------------------------------------------------------
 // Stat model — sum every purchased rank's effect into `state.mods`, then derive
 // the two legacy fields (heroMaxHP / heroDmg) the rest of combat already reads.
+// The summed pools are run through CONFIG.caps so a deep, stacked tree hits
+// smooth diminishing returns instead of snowballing (see CONFIG.caps).
 // ---------------------------------------------------------------------------
+// Soft cap with a linear knee: the first half of the pool (up to `cap`/2) counts
+// at full value, so a few early upgrades land exactly as advertised and feel
+// strong; only the excess beyond the knee suffers diminishing returns, bending
+// the total over to asymptote at `cap` (it can never reach or exceed it). This
+// gives the shape the design wants — early points matter, deep stacking plateaus.
+function softCap(x, cap) {
+  if (cap <= 0) return 0;
+  if (x <= 0) return 0;
+  const knee = cap / 2;
+  if (x <= knee) return x;                 // full value while under the knee
+  const over = x - knee;                   // excess gets diminishing returns
+  return knee + (knee * over) / (over + knee);
+}
+
 function recomputeMods() {
   const sum = {
     flatDmg: 0, flatHp: 0, pctDmg: 0, pctHp: 0,
@@ -296,22 +320,28 @@ function recomputeMods() {
       }
     }
   }
+  const caps = CONFIG.caps;
   state.mods = {
-    critChance: Math.min(1, sum.critChance),
-    critMult: 1.5 + sum.critMult,        // base ×1.5 on a crit
+    critChance: Math.min(caps.critChance, sum.critChance),
+    critMult: 1.5 + Math.min(caps.critMult, sum.critMult),  // base ×1.5 on a crit
     aoeExtra: Math.round(sum.aoeExtra),
-    leech: sum.leech,
-    regen: sum.regen,
+    leech: Math.min(caps.leech, sum.leech),
+    regen: Math.min(caps.regen, sum.regen),
     walkMult: 1 + sum.walkMult,
     coinMult: 1 + sum.coinMult,
-    shieldChance: Math.min(1, sum.shieldChance),
+    shieldChance: Math.min(caps.shieldChance, sum.shieldChance),
     shieldAmount: sum.shieldAmount,
     shieldMax: sum.shieldMax,
-    thorns: sum.thorns,
-    spellFailProt: Math.min(0.9, sum.spellFailProt),
+    thorns: Math.min(caps.thorns, sum.thorns),
+    spellFailProt: Math.min(caps.spellFailProt, sum.spellFailProt),
   };
-  state.heroMaxHP = Math.round((CONFIG.heroBaseHP + sum.flatHp) * (1 + sum.pctHp));
-  state.heroDmg = Math.max(1, Math.round((CONFIG.heroBaseDmg + sum.flatDmg) * (1 + sum.pctDmg)));
+  // Flat + percent pools soft-cap so a wall of stacked HP/damage nodes plateaus.
+  const flatHp = softCap(sum.flatHp, caps.flatHp);
+  const flatDmg = softCap(sum.flatDmg, caps.flatDmg);
+  const pctHp = softCap(sum.pctHp, caps.pctHp);
+  const pctDmg = softCap(sum.pctDmg, caps.pctDmg);
+  state.heroMaxHP = Math.round((CONFIG.heroBaseHP + flatHp) * (1 + pctHp));
+  state.heroDmg = Math.max(1, Math.round((CONFIG.heroBaseDmg + flatDmg) * (1 + pctDmg)));
   if (state.heroShield == null) state.heroShield = 0;
   if (state.heroShield > state.mods.shieldMax) state.heroShield = state.mods.shieldMax;
 }
