@@ -154,8 +154,8 @@ function applySavedProgress() {
       // migrate the very old flat dmgLevel/hpLevel onto the two entry nodes
       state.nodeRanks = {};
       const nd = (typeof TREE_NODES !== "undefined") ? TREE_NODES : {};
-      if (asCount(data.dmgLevel) > 0 && nd.off_1_0) state.nodeRanks.off_1_0 = Math.min(asCount(data.dmgLevel), nd.off_1_0.maxRank);
-      if (asCount(data.hpLevel) > 0 && nd.vit_1_0) state.nodeRanks.vit_1_0 = Math.min(asCount(data.hpLevel), nd.vit_1_0.maxRank);
+      if (asCount(data.dmgLevel) > 0 && nd.off_0) state.nodeRanks.off_0 = Math.min(asCount(data.dmgLevel), nd.off_0.maxRank);
+      if (asCount(data.hpLevel) > 0 && nd.vit_0) state.nodeRanks.vit_0 = Math.min(asCount(data.hpLevel), nd.vit_0.maxRank);
     }
   }
   if (typeof recomputeMods === "function") recomputeMods();

@@ -44,14 +44,13 @@ const RUNE_GLYPHS = {
 // the screen. Each sector repeats its `arch` (archetype) list outward; a node's
 // effect value scales with its ring (stronger further out), as does its cost.
 // ---------------------------------------------------------------------------
-const TREE_CENTER = 3500;
-const TREE_VIEW = 900;
-const TREE_RINGS = 22;                 // number of rings (tiers) per sector
-const TREE_DR = 150;                   // tree-space distance between rings
-const VAL_PER_RING = 0.5;              // effect grows by this fraction of base per ring out
-const COST_PER_RING = 1.25;            // cost multiplies by this per ring out
-const NODE_MIN_DIST = 80;              // guaranteed minimum centre-to-centre gap (no overlaps)
-const WEDGE_FRAC = 0.66;               // fraction of a sector's slice its nodes span (rest = gap)
+const TREE_CENTER = 2600;              // seed sits at the middle of the tree-space
+const TREE_VIEW = 900;                 // SVG viewBox size = the pan/zoom window
+const TREE_RADIUS = 2250;              // how far the tree reaches from the seed
+const NODE_STEP = 90;                  // spacing a branch advances per node
+const NODE_MIN_DIST = 72;              // guaranteed minimum centre-to-centre gap (no overlaps)
+const VAL_PER_RING = 0.5;              // effect grows by this fraction of base per tier out
+const COST_PER_RING = 1.25;            // cost multiplies by this per tier out
 
 // Sectors: the effect archetypes that repeat outward. The seven sectors are laid
 // out evenly around the full circle (see buildSkillTree), so every angle is used
@@ -92,85 +91,149 @@ const TREE_SECTORS = [
   ]},
 ];
 
-function angDiff(a, b) {
-  let d = a - b;
-  while (d > Math.PI) d -= 2 * Math.PI;
-  while (d < -Math.PI) d += 2 * Math.PI;
-  return d;
+// Small seeded PRNG so the generated tree is identical on every load (node ids
+// must stay stable — saves reference them).
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-// Build the whole tree once at load: node metadata, absolute positions, edges.
+// Build the whole tree once at load via SPACE COLONISATION: scatter "attractor"
+// points across a disc, grow branches from the seed toward them, and let a
+// branch fork wherever attractors spread out around it. That yields an organic,
+// always-branching tree (never a straight radial run) that fills the whole disc
+// (no empty wedges), while a hard minimum-separation check keeps nodes from ever
+// overlapping. Distance from the seed still sets a node's tier (stronger + more
+// expensive further out); its theme comes from the angular sector it lands in.
 function buildSkillTree() {
+  const rng = mulberry32(0x9E3779B1);
+  const C = TREE_CENTER, N = TREE_SECTORS.length, TWO_PI = Math.PI * 2;
+  const HOLE = 140;                 // clear radius around the seed
+  const INFLUENCE = 300;            // an attractor pulls the nearest node within this
+  const KILL = 98;                  // an attractor is consumed once a node gets this close
+  const MIN_SEP = NODE_MIN_DIST;    // never place a node closer than this to another
+
   const nodes = {
     root: { title: "Ursprung", theme: "origin", ring: 0, maxRank: 0, cost: 0, growth: 1.4, effect: {},
       blurb: "Der Quell deiner Macht. Von hier verzweigen sich alle Pfade." },
   };
-  const pos = { root: { x: TREE_CENTER, y: TREE_CENTER } };
+  const pos = { root: { x: C, y: C } };
   const edges = [];
 
-  const N = TREE_SECTORS.length;
-  const slice = (2 * Math.PI) / N;               // one sector's share of the full circle
-  const wedge = slice * WEDGE_FRAC;              // nodes span this; the rest is the inter-sector gap
-  const half = wedge / 2;
-
-  TREE_SECTORS.forEach((sec, idx) => {
-    const A = -Math.PI / 2 + idx * slice;        // sectors evenly spaced — every angle is filled
-    const ringNodes = [[]]; // ringNodes[r] = [{id, ang}]
-    for (let r = 1; r <= TREE_RINGS; r++) {
-      const Rr = r * TREE_DR;
-      // How many nodes fit on this ring's wedge arc while staying >= NODE_MIN_DIST
-      // apart. Spanning the full wedge with <= this many nodes guarantees no
-      // overlap; ring spacing (TREE_DR) already exceeds NODE_MIN_DIST radially.
-      const capacity = Math.floor((wedge * Rr) / NODE_MIN_DIST) + 1;
-      const width = Math.min(Math.max(1, Math.round(0.8 * r)), capacity, 16);
-      const arr = [];
-      for (let i = 0; i < width; i++) {
-        const frac = width === 1 ? 0.5 : i / (width - 1);
-        const ang = A - half + frac * (2 * half);   // no jitter — spacing is guaranteed
-        const id = `${sec.key}_${r}_${i}`;
-
-        // Pick an archetype; the simple flat stat (arch[0]) anchors each ring's
-        // first node, the rest alternate. Rare ones only surface on deep rings.
-        let a = sec.arch[((r - 1) + i) % sec.arch.length];
-        if (a.rare && !(r >= 7 && ((r * 3 + i) % 6 === 0))) a = sec.arch[0];
-
-        const tier = 1 + VAL_PER_RING * (r - 1);   // magnitude multiplier for this ring
-        let effect;
-        if (a.special === "shield") {
-          effect = { shieldChance: Math.min(0.3, 0.1 + 0.005 * r), shieldAmount: Math.round(4 * tier), shieldMax: Math.round(6 * tier) };
-        } else if (a.stat === "aoeExtra") {
-          effect = { aoeExtra: 1 };
-        } else {
-          let v = a.base * tier;
-          if (a.stat === "flatDmg" || a.stat === "flatHp") v = Math.max(1, Math.round(v));
-          else if (a.stat === "regen") v = Math.round(v * 10) / 10;
-          else v = Math.round(v * 1000) / 1000;
-          effect = { [a.stat]: v };
-        }
-        const cost = Math.max(5, Math.round(a.cost * Math.pow(COST_PER_RING, r - 1)));
-        nodes[id] = { title: a.title, theme: sec.theme, ring: r, maxRank: a.maxRank || 3,
-          cost, growth: a.growth || 1.4, effect, blurb: a.blurb };
-        pos[id] = { x: TREE_CENTER + Rr * Math.cos(ang), y: TREE_CENTER + Rr * Math.sin(ang) };
-        arr.push({ id, ang });
-      }
-      ringNodes[r] = arr;
+  // Spatial hash over the growing node set (cells sized to the influence radius).
+  const nodeById = new Map();
+  const grid = new Map();
+  const ckey = (x, y) => `${Math.floor((x - C) / INFLUENCE)},${Math.floor((y - C) / INFLUENCE)}`;
+  function nearby(x, y) {
+    const cx = Math.floor((x - C) / INFLUENCE), cy = Math.floor((y - C) / INFLUENCE), out = [];
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const a = grid.get(`${cx + i},${cy + j}`);
+      if (a) for (const nd of a) out.push(nd);
     }
+    return out;
+  }
+  const sectorAtAngle = (ang) => {
+    let a = ((ang + Math.PI / 2) % TWO_PI + TWO_PI) % TWO_PI;
+    return TREE_SECTORS[Math.floor(a / (TWO_PI / N)) % N];
+  };
 
-    // A strict tree: ring-1 nodes hang off the seed, and every other node takes
-    // the single nearest node one ring in as its parent — one parent each, no
-    // lateral or cross-sector links, so branches fan out without ever closing a
-    // loop.
-    for (let r = 1; r <= TREE_RINGS; r++) {
-      const arr = ringNodes[r];
-      for (const cur of arr) {
-        if (r === 1) { edges.push(["root", cur.id]); continue; }
-        const inner = ringNodes[r - 1];
-        let best = inner[0], bd = Infinity;
-        for (const n of inner) { const d = Math.abs(angDiff(n.ang, cur.ang)); if (d < bd) { bd = d; best = n; } }
-        edges.push([best.id, cur.id]);
-      }
+  function addNode(id, x, y, parentId) {
+    const dx = x - C, dy = y - C, rad = Math.hypot(dx, dy);
+    const ring = Math.max(1, Math.round(rad / NODE_STEP));   // tier ~ distance from seed
+    const sec = sectorAtAngle(Math.atan2(dy, dx));
+    const seed = ((ring * 2654435761) ^ (Math.round(x) * 40503) ^ Math.round(y)) >>> 0;
+    let a = sec.arch[(ring + (seed % 3)) % sec.arch.length];
+    if (a.rare && !(ring >= 6 && seed % 5 === 0)) a = sec.arch[0];   // rare types stay deep
+    const tier = 1 + VAL_PER_RING * (ring - 1);
+    let effect;
+    if (a.special === "shield") {
+      effect = { shieldChance: Math.min(0.3, 0.1 + 0.005 * ring), shieldAmount: Math.round(4 * tier), shieldMax: Math.round(6 * tier) };
+    } else if (a.stat === "aoeExtra") {
+      effect = { aoeExtra: 1 };
+    } else {
+      let v = a.base * tier;
+      if (a.stat === "flatDmg" || a.stat === "flatHp") v = Math.max(1, Math.round(v));
+      else if (a.stat === "regen") v = Math.round(v * 10) / 10;
+      else v = Math.round(v * 1000) / 1000;
+      effect = { [a.stat]: v };
     }
+    const cost = Math.max(5, Math.round(a.cost * Math.pow(COST_PER_RING, ring - 1)));
+    nodes[id] = { title: a.title, theme: sec.theme, ring, maxRank: a.maxRank || 3,
+      cost, growth: a.growth || 1.4, effect, blurb: a.blurb };
+    pos[id] = { x, y };
+    const nd = { id, x, y };
+    nodeById.set(id, nd);
+    const k = ckey(x, y);
+    (grid.get(k) || grid.set(k, []).get(k)).push(nd);
+    if (parentId) edges.push([parentId, id]);
+    return nd;
+  }
+  const tooClose = (x, y) => nearby(x, y).some((nd) => {
+    const dx = x - nd.x, dy = y - nd.y; return dx * dx + dy * dy < MIN_SEP * MIN_SEP;
   });
+
+  // Attractors on a jittered grid filling the disc (minus the central hole).
+  const attractors = [];
+  const g = NODE_STEP * 0.92;
+  for (let x = -TREE_RADIUS; x <= TREE_RADIUS; x += g) {
+    for (let y = -TREE_RADIUS; y <= TREE_RADIUS; y += g) {
+      const jx = x + (rng() - 0.5) * g * 0.7, jy = y + (rng() - 0.5) * g * 0.7;
+      const r = Math.hypot(jx, jy);
+      if (r > HOLE && r < TREE_RADIUS) attractors.push({ x: C + jx, y: C + jy, dead: false });
+    }
+  }
+
+  // Seven initial shoots so the seed branches out in every direction at once.
+  let counter = 0;
+  for (let idx = 0; idx < N; idx++) {
+    const A = -Math.PI / 2 + idx * (TWO_PI / N), rr = HOLE + NODE_STEP * 0.6;
+    addNode(`${TREE_SECTORS[idx].key}_0`, C + rr * Math.cos(A), C + rr * Math.sin(A), "root");
+  }
+
+  // Grow: each round, every node pulled by ≥1 attractor sprouts one child toward
+  // their mean direction; then attractors close to any node are consumed.
+  for (let iter = 0; iter < 500; iter++) {
+    const influence = new Map();
+    let any = false;
+    for (const at of attractors) {
+      if (at.dead) continue;
+      let best = null, bd = INFLUENCE * INFLUENCE;
+      for (const nd of nearby(at.x, at.y)) {
+        const dx = at.x - nd.x, dy = at.y - nd.y, d = dx * dx + dy * dy;
+        if (d < bd) { bd = d; best = nd; }
+      }
+      if (best) {
+        any = true;
+        const dx = at.x - best.x, dy = at.y - best.y, l = Math.hypot(dx, dy) || 1;
+        let e = influence.get(best.id);
+        if (!e) { e = [0, 0]; influence.set(best.id, e); }
+        e[0] += dx / l; e[1] += dy / l;
+      }
+    }
+    if (!any) break;
+    let grew = false;
+    for (const [nid, e] of influence) {
+      const n = nodeById.get(nid), l = Math.hypot(e[0], e[1]) || 1;
+      const nx = n.x + (e[0] / l) * NODE_STEP, ny = n.y + (e[1] / l) * NODE_STEP;
+      if (Math.hypot(nx - C, ny - C) > TREE_RADIUS + NODE_STEP) continue;
+      if (tooClose(nx, ny)) continue;
+      addNode(`${sectorAtAngle(Math.atan2(ny - C, nx - C)).key}_${++counter}`, nx, ny, nid);
+      grew = true;
+    }
+    if (!grew) break;
+    for (const at of attractors) {
+      if (at.dead) continue;
+      for (const nd of nearby(at.x, at.y)) {
+        const dx = at.x - nd.x, dy = at.y - nd.y;
+        if (dx * dx + dy * dy < KILL * KILL) { at.dead = true; break; }
+      }
+    }
+  }
 
   return { nodes, pos, edges };
 }
@@ -184,10 +247,10 @@ const TREE_EDGES = _TREE.edges;
 // the current inner nodes so a little saved progress carries across. Deeper old
 // ids simply drop (the tree was regenerated). Unknown ids are ignored on load.
 const LEGACY_NODE_IDS = {
-  dmg1: "off_1_0", o1: "off_1_0", hp1: "vit_1_0", v1: "vit_1_0",
-  crit1: "cri_1_0", c1: "cri_1_0", sus1: "sus_1_0", s1: "sus_1_0",
-  for1: "for_1_0", f1: "for_1_0", ward1: "war_1_0", w1: "war_1_0",
-  arc1: "arc_1_0", a1: "arc_1_0",
+  dmg1: "off_0", o1: "off_0", off_1_0: "off_0", hp1: "vit_0", v1: "vit_0", vit_1_0: "vit_0",
+  crit1: "cri_0", c1: "cri_0", cri_1_0: "cri_0", sus1: "sus_0", s1: "sus_0", sus_1_0: "sus_0",
+  for1: "for_0", f1: "for_0", for_1_0: "for_0", ward1: "war_0", w1: "war_0", war_1_0: "war_0",
+  arc1: "arc_0", a1: "arc_0", arc_1_0: "arc_0",
 };
 
 const NEIGHBORS = {};
@@ -307,7 +370,7 @@ function treeClamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 function nodeRadius(id) { return id === "root" ? 34 : 28; }
 
 function initTreeView(resetSelection) {
-  const s = 0.9;                        // default zoom — seed + inner rings big
+  const s = 0.72;                       // default zoom — shows the seed + several tiers of branches
   const c = TREE_VIEW / 2;              // viewBox centre
   const keep = (!resetSelection && state.tree) ? state.tree.selected : null;
   state.tree = { scale: s, tx: c - TREE_CENTER * s, ty: c - TREE_CENTER * s, selected: keep };

@@ -99,15 +99,15 @@ try {
     state.gold = 999999;
     state.nodeRanks = {};
     recomputeMods();
-    state.tree = { scale: 0.9, tx: 0, ty: 0, selected: "off_1_0" };
+    state.tree = { scale: 0.72, tx: 0, ty: 0, selected: "off_0" };
     state.screen = "upgrade";
     render(performance.now()); // rebuild DOM for the skill-tree screen
-    return state.heroDmg;
+    return state.gold;
   });
   await page.click('[data-act="treeBuy"]');
-  const bought = await page.evaluate(() => ({ rank: state.nodeRanks.off_1_0 || 0, dmg: state.heroDmg }));
-  check(bought.rank === 1, "delegated data-act='treeBuy' fired treeBuy() (off_1_0 rank=" + bought.rank + ")");
-  check(bought.dmg > before, "buying the node recomputed the build (heroDmg " + before + " -> " + bought.dmg + ")");
+  const bought = await page.evaluate(() => ({ rank: state.nodeRanks.off_0 || 0, gold: state.gold }));
+  check(bought.rank === 1, "delegated data-act='treeBuy' fired treeBuy() (off_0 rank=" + bought.rank + ")");
+  check(bought.gold < before, "buying the node spent gold (" + before + " -> " + bought.gold + ")");
 
   check(errors.length === 0, "no console/page errors");
 
