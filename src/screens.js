@@ -1,8 +1,8 @@
 "use strict";
 // ==============================================================================
 // screens.js — full-screen DOM renderers (innerHTML into #app). Owns:
-// renderQuizFull + body renderers, renderUpgradeFull, renderCombatFull,
-// patchCombatContinuous, renderEndFull.
+// renderQuizFull + body renderers, renderCombatFull, patchCombatContinuous,
+// renderEndFull. (The upgrade screen is the skill tree — see skilltree.js.)
 // ==============================================================================
 
 
@@ -175,32 +175,8 @@ function renderQuizActions(q) {
   return `${check}${reveal}`;
 }
 
-// Upgrade shop — spend quiz gold on permanent build upgrades, then run again
-function renderUpgradeFull() {
-  const dmgCost = dmgUpgradeCost();
-  const hpCost = hpUpgradeCost();
-  const canDmg = state.gold >= dmgCost;
-  const canHp = state.gold >= hpCost;
-  app.innerHTML = `
-    <div class="screen upgrade-screen">
-      <h1>Dein Arsenal</h1>
-      <p class="gold-big"><span class="coin">◈</span> ${state.gold} Gold</p>
-      <div class="upg-cards">
-        <button class="upg-card ${canDmg ? "" : "poor"}" data-act="buyDmg">
-          <div class="upg-name">⚔ Angriff</div>
-          <div class="upg-stat">${state.heroDmg} → ${state.heroDmg + CONFIG.dmgPerLevel} Schaden</div>
-          <div class="upg-cost"><span class="coin">◈</span> ${dmgCost}</div>
-        </button>
-        <button class="upg-card ${canHp ? "" : "poor"}" data-act="buyHp">
-          <div class="upg-name">✚ Vitalität</div>
-          <div class="upg-stat">${state.heroMaxHP} → ${state.heroMaxHP + CONFIG.hpPerLevel} max. LP</div>
-          <div class="upg-cost"><span class="coin">◈</span> ${hpCost}</div>
-        </button>
-      </div>
-      <p class="upg-hp">Aufbau: ${state.heroMaxHP} LP · ${state.heroDmg} Schaden</p>
-      <button class="fight-btn next-wave-btn" data-act="startRun">Lauf starten →</button>
-    </div>`;
-}
+// The upgrade phase is now the rune skill tree — see src/skilltree.js, which
+// owns renderUpgradeFull (the loop router calls it for the "upgrade" screen).
 
 function renderCombatFull() {
   const { x: cx, y: cy } = CONFIG.circleCenter;
@@ -349,7 +325,9 @@ function patchCombatContinuous(now) {
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
   root.classList.toggle("rune-flash", now < state.runeFlashUntil);
-  document.getElementById("hero-hp-text").textContent = `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}`;
+  const shield = Math.floor(state.heroShield || 0);
+  document.getElementById("hero-hp-text").textContent =
+    `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}` + (shield > 0 ? ` ⛨${shield}` : "");
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
   // The enemy bar tracks the frontmost skeleton — the one the next spell will
   // hit — while the label shows this run's kill tally and how many are on screen.
@@ -433,4 +411,4 @@ function renderEndFull() {
       <button class="fight-btn study-btn" data-act="goToQuiz">Lernen &amp; Gold verdienen →</button>
     </div>`;
 }
-window.Incanto.screens = { renderQuizFull, renderUpgradeFull, renderCombatFull, patchCombatContinuous, renderEndFull };
+window.Incanto.screens = { renderQuizFull, renderCombatFull, patchCombatContinuous, renderEndFull };
