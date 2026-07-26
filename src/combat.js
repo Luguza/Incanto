@@ -170,9 +170,14 @@ function hitPlayer(n) {
   }
   if (n <= 0) return;
   state.heroHP = Math.max(0, state.heroHP - n);
-  if (state.heroHP <= 0 && state.screen === "combat") {
-    state.runActive = false;   // run is over — the combat nav will start a fresh one
-    state.screen = "defeat";
+  if (state.heroHP <= 0 && state.runActive) {
+    // The run is over the instant the hero falls — even if the fight was playing
+    // out in the background while the player studied or shopped. Only pull them
+    // to the defeat screen if they're actually watching combat; otherwise leave
+    // them where they are (the dead run simply won't resume, and the next trip to
+    // combat starts fresh).
+    state.runActive = false;
+    if (state.screen === "combat") state.screen = "defeat";
   }
 }
 

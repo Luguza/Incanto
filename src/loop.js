@@ -11,14 +11,6 @@ function logAttempt(correct, first, second, secondsAvailable) {
   );
 }
 
-function restart() {
-  // Hard reset: wipes meta-progression (including the saved game) and starts a
-  // fresh run from the base build
-  clearProgress();
-  newGame();
-  startRun();
-}
-
 // ---------------------------------------------------------------------------
 // Game loop — combat always runs in real time.
 // ---------------------------------------------------------------------------
@@ -89,7 +81,10 @@ function updateEnemies(now, dt) {
         e.attackAnimAt = now;                 // fire the forward-jab animation
         e.attackAt = now + CONFIG.enemyAttackIntervalMs;
         // Pop the damage number over the hero, in sync with the skeleton's jab.
-        if (scene) {
+        // Only while the fight is on screen — off-screen (background) combat has
+        // no one to show the numbers to, and they'd pile up unseen.
+        const onScreen = scene && state.screen === "combat";
+        if (onScreen) {
           spawnDmgFloat({
             value: e.dmg,
             color: CONFIG.colors.dmgFloat.hero,
@@ -98,16 +93,18 @@ function updateEnemies(now, dt) {
           });
         }
         // Thorns: reflect a slice of the blow back onto the attacker.
-        if (state.mods.thorns > 0 && e.phase === "attack") {
+        if (state.mods.thorns > 0) {
           const refl = Math.max(1, Math.round(e.dmg * state.mods.thorns));
           hitEnemy(e, refl);
-          spawnDmgFloat({
-            value: refl,
-            color: CONFIG.colors.dmgFloat.enemy,
-            targetId: e.id,
-            x: scene ? scene.enemyLineX + e.pos * TILE : 0,
-            y: scene ? (scene.laneY[e.lane] ?? scene.feetY) - SHEET.skeletIdle.h - 3 : 0,
-          });
+          if (onScreen) {
+            spawnDmgFloat({
+              value: refl,
+              color: CONFIG.colors.dmgFloat.enemy,
+              targetId: e.id,
+              x: scene.enemyLineX + e.pos * TILE,
+              y: (scene.laneY[e.lane] ?? scene.feetY) - SHEET.skeletIdle.h - 3,
+            });
+          }
           if (e.hp <= 0) { e.phase = "dying"; e.phaseAt = now; state.kills++; }
         }
       }
@@ -168,23 +165,29 @@ function rafLoop(now) {
     const rawDt = now - lastRafNow;
     lastRafNow = now;
 
-    if (state.screen === "combat") {
+    // A live run plays out in real time even while the player is off on the
+    // quiz or upgrade screen — the fight continues in the background, so the
+    // hero keeps taking hits (which is what limits how long you can linger away
+    // studying). Simulation stops the moment the hero falls (runActive clears in
+    // hitPlayer) or when there's no run to advance.
+    if (state.runActive && state.heroHP > 0) {
       const effectiveDt = getEffectiveDt(rawDt);
       state.clockMs += effectiveDt;
       // Sustain: trickle HP back while the run is live.
-      if (state.mods.regen > 0 && state.heroHP > 0 && state.heroHP < state.heroMaxHP) {
+      if (state.mods.regen > 0 && state.heroHP < state.heroMaxHP) {
         healHero(state.mods.regen * effectiveDt / 1000);
       }
       updateSpawns(now);
       updateEnemies(now, effectiveDt);
       updateCamera(now, effectiveDt);
+      // Rune refill + the deferred tap-cast only make progress at the circle
+      // (the player can't cast from another screen), so both are gated on the
+      // combat screen — running them in the background would desync the board.
       if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {
         state.pendingRefill = false;
         populateCircle(drawLoadout());
       }
-      // Third pair matched by tap: once the staff has traced to the 2nd rune,
-      // release the spell.
-      if (state.pendingShapeAt && now >= state.pendingShapeAt) {
+      if (state.pendingShapeAt && state.screen === "combat" && now >= state.pendingShapeAt) {
         state.pendingShapeAt = 0;
         onShapeComplete(now);
       }

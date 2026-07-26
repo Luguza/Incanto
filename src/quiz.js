@@ -21,6 +21,27 @@ function sampleN(arr, n, keep) {
   return pool.slice(0, n);
 }
 
+// Draw n words whose translations are distinct on BOTH sides, so a set never
+// contains two entries that share a word (a handful of German meanings — "gut"
+// = buono/bene, "schlecht" = cattivo/male — map to more than one Italian word).
+// Without this a match board could show two indistinguishable tiles.
+function sampleDistinctWords(n) {
+  const seenIt = new Set(), seenDe = new Set(), out = [];
+  for (const p of shuffleArray(WORD_POOL.slice())) {
+    if (seenIt.has(p.it) || seenDe.has(p.de)) continue;
+    seenIt.add(p.it); seenDe.add(p.de);
+    out.push(p);
+    if (out.length === n) break;
+  }
+  return out;
+}
+
+// Every acceptable answer-side word for a prompt, so synonyms that share the
+// prompt (e.g. both buono and bene translate "gut") all count as correct.
+function synonymsFor(pair, promptKey, answerKey) {
+  return [...new Set(WORD_POOL.filter((p) => p[promptKey] === pair[promptKey]).map((p) => p[answerKey]))];
+}
+
 // --- per-type question builders ---------------------------------------------
 function makeChoose(dir) {
   // dir: "it2de" (show Italian, pick German) or "de2it" (show German, pick Italian)
@@ -28,7 +49,10 @@ function makeChoose(dir) {
   const promptKey = dir === "it2de" ? "it" : "de";
   const answerKey = dir === "it2de" ? "de" : "it";
   const answer = pair[answerKey];
-  const distractors = sampleN(WORD_POOL, CONFIG.quizOptionCount - 1, (p) => p[answerKey] !== answer)
+  // Exclude any word that shares the prompt (a synonym would be an equally
+  // correct option) as well as one that repeats the answer text.
+  const distractors = sampleN(WORD_POOL, CONFIG.quizOptionCount - 1,
+    (p) => p[answerKey] !== answer && p[promptKey] !== pair[promptKey])
     .map((p) => p[answerKey]);
   return { type: "choose", dir, prompt: pair[promptKey], answer, options: shuffleArray([answer, ...distractors]) };
 }
@@ -37,12 +61,13 @@ function makeType(dir) {
   const pair = sampleN(WORD_POOL, 1)[0];
   const promptKey = dir === "it2de" ? "it" : "de";
   const answerKey = dir === "it2de" ? "de" : "it";
-  return { type: "type", dir, prompt: pair[promptKey], answer: pair[answerKey] };
+  return { type: "type", dir, prompt: pair[promptKey], answer: pair[answerKey],
+    accept: synonymsFor(pair, promptKey, answerKey) };
 }
 
 function makeMatch() {
   const n = CONFIG.quizMatchPairs;
-  const pairs = sampleN(WORD_POOL, n).map((p, i) => ({ id: i, it: p.it, de: p.de }));
+  const pairs = sampleDistinctWords(n).map((p, i) => ({ id: i, it: p.it, de: p.de }));
   return {
     type: "match",
     pairs,
@@ -206,15 +231,12 @@ function quizCheckType() {
   if (state.quizChecked) return;
   const q = state.quizList[state.quizIndex];
   if (normAnswer(state.quizTyped) === "") return; // ignore empty submissions
-  settleQuiz(typedMatches(state.quizTyped, q.answer));
+  // A word can have more than one valid translation (`accept`); any counts.
+  const accepted = q.accept && q.accept.length ? q.accept : [q.answer];
+  settleQuiz(accepted.some((a) => typedMatches(state.quizTyped, a)));
 }
-
-function quizFillCheckType() {
-  if (state.quizChecked) return;
-  const q = state.quizList[state.quizIndex];
-  if (normAnswer(state.quizTyped) === "") return;
-  settleQuiz(typedMatches(state.quizTyped, q.answer));
-}
+// Fill-the-blank typing shares the exact same check as free typing.
+function quizFillCheckType() { quizCheckType(); }
 
 function quizMatchTap(col, idx) {
   if (state.quizChecked || state.quizMatchWrong) return;
