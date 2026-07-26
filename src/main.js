@@ -15,13 +15,6 @@ window.addEventListener("resize", () => {
   scene = null; // re-measure and rebuild the scene at the new integer scale
 });
 
-window.addEventListener("keydown", (e) => {
-  if (e.key === "r" || e.key === "R") {
-    // Hard reset (wipes upgrades) — only from menus, never mid-combat
-    if (state.screen !== "combat") restart();
-  }
-});
-
 // ---------------------------------------------------------------------------
 // Delegated UI actions. Screen templates and the bottom nav carry `data-act`
 // (+ optional `data-args` as a JSON array) instead of inline on* handlers, so
