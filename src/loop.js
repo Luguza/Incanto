@@ -130,9 +130,19 @@ function updateCamera(now, dt) {
   if (!scene) return;
   const boundary = scene.artW * CONFIG.heroWalkClearFraction;
   let clear = true;
-  for (const e of livingEnemies()) {
-    if (scene.enemyLineX + e.pos * TILE < boundary) { clear = false; break; }
+  for (const e of state.enemies) {
+    // A skeleton taking its killing blow or mid-collapse pins the hero wherever
+    // it stands: its death has to play out against a static floor, otherwise the
+    // corpse (fixed to its screen-x) appears to slide backwards as the corridor
+    // scrolls under it. Skeletons still on their feet only block once they've
+    // reached the near stretch.
+    const busy = e.phase === "struck" || e.phase === "dying";
+    if (busy || scene.enemyLineX + e.pos * TILE < boundary) { clear = false; break; }
   }
+  // Hold position while a spell is charging or its bolt is in flight, so the
+  // cast and its impact land against a still background instead of streaking
+  // across a moving one.
+  if (state.castAt) clear = false;
   // Ease the pan velocity toward its target (full speed when clear, 0 when a
   // skeleton is near) with a frame-rate-independent time constant, so the hero
   // accelerates into his stride and coasts to a stop instead of snapping.
@@ -148,33 +158,42 @@ function updateCamera(now, dt) {
 
 let lastRafNow = null;
 function rafLoop(now) {
-  if (lastRafNow === null) lastRafNow = now;
-  const rawDt = now - lastRafNow;
-  lastRafNow = now;
+  // The whole frame is wrapped so a single stray exception can never kill the
+  // loop. If it did, the screen would freeze while the input handlers keep
+  // mutating state — clicks (the phase nav especially) would change `state`
+  // but never repaint, so the game looks dead / the nav looks broken. Log the
+  // error, skip the bad frame, and always reschedule so the loop self-heals.
+  try {
+    if (lastRafNow === null) lastRafNow = now;
+    const rawDt = now - lastRafNow;
+    lastRafNow = now;
 
-  if (state.screen === "combat") {
-    const effectiveDt = getEffectiveDt(rawDt);
-    state.clockMs += effectiveDt;
-    // Sustain: trickle HP back while the run is live.
-    if (state.mods.regen > 0 && state.heroHP > 0 && state.heroHP < state.heroMaxHP) {
-      healHero(state.mods.regen * effectiveDt / 1000);
+    if (state.screen === "combat") {
+      const effectiveDt = getEffectiveDt(rawDt);
+      state.clockMs += effectiveDt;
+      // Sustain: trickle HP back while the run is live.
+      if (state.mods.regen > 0 && state.heroHP > 0 && state.heroHP < state.heroMaxHP) {
+        healHero(state.mods.regen * effectiveDt / 1000);
+      }
+      updateSpawns(now);
+      updateEnemies(now, effectiveDt);
+      updateCamera(now, effectiveDt);
+      if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {
+        state.pendingRefill = false;
+        populateCircle(drawLoadout());
+      }
+      // Third pair matched by tap: once the staff has traced to the 2nd rune,
+      // release the spell.
+      if (state.pendingShapeAt && now >= state.pendingShapeAt) {
+        state.pendingShapeAt = 0;
+        onShapeComplete(now);
+      }
     }
-    updateSpawns(now);
-    updateEnemies(now, effectiveDt);
-    updateCamera(now, effectiveDt);
-    if (state.pendingRefill && state.screen === "combat" && now >= state.shapeFlashUntil) {
-      state.pendingRefill = false;
-      populateCircle(drawLoadout());
-    }
-    // Third pair matched by tap: once the staff has traced to the 2nd rune,
-    // release the spell.
-    if (state.pendingShapeAt && now >= state.pendingShapeAt) {
-      state.pendingShapeAt = 0;
-      onShapeComplete(now);
-    }
+
+    render(now);
+  } catch (err) {
+    console.error("rafLoop frame error (loop kept alive):", err);
   }
-
-  render(now);
   requestAnimationFrame(rafLoop);
 }
 

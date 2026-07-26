@@ -5,10 +5,23 @@
 // ==============================================================================
 
 // A random delay (ms) until the next skeleton walks in, drawn uniformly from
-// the configured [min, max] window.
+// the configured [min, max] window, then stretched by a progress ramp so the
+// trickle starts slow and quickens the further the hero gets. The multiplier
+// eases linearly from `enemySpawnRampStartMult` at 0 kills down to 1 once the
+// hero has `enemySpawnRampKills` kills (and stays at 1 thereafter).
 function randomSpawnDelay() {
   const { enemySpawnMinMs: lo, enemySpawnMaxMs: hi } = CONFIG;
-  return lo + Math.random() * (hi - lo);
+  const base = lo + Math.random() * (hi - lo);
+  return base * spawnRateRampMult();
+}
+
+// Delay multiplier for the current run progress: high early (slower spawns),
+// settling to 1 once the hero is deep enough into the run.
+function spawnRateRampMult() {
+  const { enemySpawnRampStartMult: startMult, enemySpawnRampKills: rampKills } = CONFIG;
+  if (rampKills <= 0) return 1;
+  const progress = Math.min(1, state.kills / rampKills);
+  return 1 + (startMult - 1) * (1 - progress);
 }
 
 // Pick the lane for the next arrival. Lanes are dealt from a shuffled bag —
@@ -106,4 +119,4 @@ function shuffleArray(arr) {
   return arr;
 }
 
-window.Incanto.progression = { randomSpawnDelay, nextSpawnLane, spawnEnemy, startRun, layoutCircle, shuffleArray };
+window.Incanto.progression = { randomSpawnDelay, spawnRateRampMult, nextSpawnLane, spawnEnemy, startRun, layoutCircle, shuffleArray };
