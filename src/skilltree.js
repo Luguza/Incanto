@@ -142,10 +142,15 @@ function buildSkillTree() {
     return TREE_SECTORS[Math.floor(a / (TWO_PI / N)) % N];
   };
 
-  function addNode(id, x, y, parentId) {
+  // `secOverride` pins a node to a specific sector instead of deriving it from
+  // its angle. The seed shoots use it because they sit exactly on the wedge
+  // boundaries sectorAtAngle divides on, where floating-point rounding would
+  // otherwise drop a shoot into its neighbour's sector (mis-theming it and
+  // desyncing its id prefix). Growth nodes pass nothing and derive geometrically.
+  function addNode(id, x, y, parentId, secOverride) {
     const dx = x - C, dy = y - C, rad = Math.hypot(dx, dy);
     const ring = Math.max(1, Math.round(rad / NODE_STEP));   // tier ~ distance from seed
-    const sec = sectorAtAngle(Math.atan2(dy, dx));
+    const sec = secOverride || sectorAtAngle(Math.atan2(dy, dx));
     const seed = ((ring * 2654435761) ^ (Math.round(x) * 40503) ^ Math.round(y)) >>> 0;
     let a = sec.arch[(ring + (seed % 3)) % sec.arch.length];
     if (a.rare && !(ring >= 6 && seed % 5 === 0)) a = sec.arch[0];   // rare types stay deep
@@ -189,10 +194,13 @@ function buildSkillTree() {
   }
 
   // Seven initial shoots so the seed branches out in every direction at once.
+  // Each is pinned to its own sector (its angle lands on the sector boundary, so
+  // geometric derivation is ambiguous) — that keeps a shoot's theme, effect, and
+  // `${key}_0` id all in agreement.
   let counter = 0;
   for (let idx = 0; idx < N; idx++) {
     const A = -Math.PI / 2 + idx * (TWO_PI / N), rr = HOLE + NODE_STEP * 0.6;
-    addNode(`${TREE_SECTORS[idx].key}_0`, C + rr * Math.cos(A), C + rr * Math.sin(A), "root");
+    addNode(`${TREE_SECTORS[idx].key}_0`, C + rr * Math.cos(A), C + rr * Math.sin(A), "root", TREE_SECTORS[idx]);
   }
 
   // Grow: each round, every node pulled by ≥1 attractor sprouts one child toward
