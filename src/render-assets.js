@@ -128,9 +128,13 @@ function tileHash(a, b) {
   return Math.abs(h ^ (h >> 16));
 }
 
-// Cut one frame of a sheet entry to its own canvas; optionally flip or
-// recolor to a flat silhouette (for the hit flash).
-function cutFrame(img, rect, frame, { flip = false, silhouette = null } = {}) {
+// Cut one frame of a sheet entry to its own canvas; optionally flip, recolor to
+// a flat silhouette (for the hit flash), or wash it with a translucent `tint`
+// (for the darker enemy variants). The tint is laid over the sprite's own
+// pixels only — `source-atop` leaves the transparent surround alone, so the
+// silhouette keeps its shape and no getImageData is needed (that would taint
+// the canvas under file://).
+function cutFrame(img, rect, frame, { flip = false, silhouette = null, tint = null } = {}) {
   const cv = document.createElement("canvas");
   cv.width = rect.w;
   cv.height = rect.h;
@@ -144,6 +148,10 @@ function cutFrame(img, rect, frame, { flip = false, silhouette = null } = {}) {
   if (silhouette) {
     ctx.globalCompositeOperation = "source-in";
     ctx.fillStyle = silhouette;
+    ctx.fillRect(flip ? -rect.w : 0, 0, rect.w * 2, rect.h);
+  } else if (tint) {
+    ctx.globalCompositeOperation = "source-atop";
+    ctx.fillStyle = tint;
     ctx.fillRect(flip ? -rect.w : 0, 0, rect.w * 2, rect.h);
   }
   return cv;
@@ -202,6 +210,20 @@ function buildAssets() {
     shadow: shadowToCanvas(9, 3, 0.5),
     shadowSm: shadowToCanvas(8, 3, 0.45),
   };
+  // Per-variant frame sets: the same skeleton art washed with the variant's
+  // `tint` (a brute is darker — older, heavier bone — so it reads as a tougher
+  // thing even before its size registers). Untinted variants just alias the base
+  // frames instead of baking a duplicate. The white hit flash stays shared: it's
+  // a flash, and tinting it would mute the very thing it's there to show.
+  ASSETS.enemy = {};
+  for (const t of CONFIG.enemyTypes) {
+    ASSETS.enemy[t.id] = t.tint
+      ? {
+          idle: frames(SHEET.skeletIdle, { flip: true, tint: t.tint }),
+          run: frames(SHEET.skeletRun, { flip: true, tint: t.tint }),
+        }
+      : { idle: ASSETS.skelet, run: ASSETS.skeletRun };
+  }
 }
 
 window.Incanto.renderAssets = { buildAssets };

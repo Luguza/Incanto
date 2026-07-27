@@ -351,7 +351,8 @@ function renderScene(now) {
     const art = enemyArt(e);
     const skelY = ly - art.h;
     const walking = e.phase === "walk";
-    const frameSet = walking ? ASSETS.skeletRun : ASSETS.skelet;
+    const skin = ASSETS.enemy[e.type] || { idle: ASSETS.skelet, run: ASSETS.skeletRun };
+    const frameSet = walking ? skin.run : skin.idle;
     // Frame cadence sets the three moods apart: a brisk run cycle, a calm idle,
     // and an agitated (fast) shuffle while attacking.
     const frameMs = walking ? 110 : e.phase === "attack" ? 90 : 160;
