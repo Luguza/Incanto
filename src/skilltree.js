@@ -567,7 +567,7 @@ function renderUpgradeFull() {
         <button class="tz-btn" data-act="treeReset" aria-label="Ansicht zurücksetzen">&#8635;</button>
       </div>
       <div id="tree-info-slot">${renderTreeInfo()}</div>
-      <button class="fight-btn tree-run-btn" data-act="startRun">Lauf starten →</button>
+      <button class="fight-btn tree-reset-btn" data-act="resetProgress">Fortschritt zurücksetzen</button>
     </div>`;
 
   attachTreeInteractions();
@@ -610,6 +610,19 @@ function treeZoomAt(vx, vy, factor) {
 // Toolbar buttons (rebuild is fine — not per-frame).
 function treeZoom(factor) { treeZoomAt(450, 450, factor); state._structuralDirty = true; }
 function treeReset() { initTreeView(false); state._structuralDirty = true; }
+
+// Wipe all meta-progression (gold + purchased tree nodes) after confirming, then
+// rebuild a fresh state from the now-empty save and rerender the upgrade screen.
+function resetProgress() {
+  const ok = (typeof window !== "undefined" && typeof window.confirm === "function")
+    ? window.confirm("Gesamten Fortschritt wirklich zurücksetzen? Gold und alle Runen gehen verloren.")
+    : true;
+  if (!ok) return;
+  clearProgress();
+  newGame();
+  initTreeView(true);
+  state._structuralDirty = true;
+}
 
 // Pan (one pointer), pinch (two pointers), wheel zoom, and tap-to-select — all
 // bound to the freshly rendered SVG. Pan/zoom mutate the transform live and
@@ -686,6 +699,6 @@ function attachTreeInteractions() {
 }
 
 window.Incanto.skilltree = {
-  TREE_NODES, TREE_EDGES, recomputeMods, treeBuy, treeZoom, treeReset,
+  TREE_NODES, TREE_EDGES, recomputeMods, treeBuy, treeZoom, treeReset, resetProgress,
   renderUpgradeFull, nodeRevealed, nodeCost, nodeRank,
 };

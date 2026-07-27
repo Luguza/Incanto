@@ -133,10 +133,12 @@
   .tree-buy:disabled, .tree-buy.poor {
     background: #2a2540; color: #6f6a82; box-shadow: none; cursor: default;
   }
-  .tree-run-btn {
+  .tree-reset-btn {
     flex: 0 0 auto; margin: 0 auto 10px; width: min(340px, 88vw);
-    background: linear-gradient(180deg, #7ff0ed, #4de3e0); box-shadow: 0 0 24px rgba(77, 227, 224, 0.3);
+    background: linear-gradient(180deg, #e5484d, #b83239); color: #fff2f2;
+    box-shadow: 0 0 24px rgba(229, 72, 77, 0.3);
   }
+  .tree-reset-btn:active { background: #ff6b70; }
 
   /* End screens */
   .end-screen { cursor: pointer; padding: 16px; text-align: center; }
