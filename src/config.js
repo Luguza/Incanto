@@ -20,22 +20,20 @@ const CONFIG = {
   upgradeCostGrowth: 1.6,
   // Hallway travel: the hero holds his spot on screen while the corridor scrolls
   // past (the camera pans right), reading as him striding deeper down the hall.
-  // He travels ONLY between camps — the moment one musters he plants and fights,
-  // and sets off again once it's dead and gone. Distance therefore never grows
-  // during a fight, which is what lets the encounter plan trigger purely on
+  // He walks ONLY between camps — the moment anything musters he plants and
+  // fights, and sets off again once it's dead and gone. Distance therefore never
+  // grows during a fight, which is what lets the encounter plan trigger purely on
   // metres walked without two camps ever stacking (see updateCamera).
   //
-  // He covers the gap at a brisk clip rather than a stroll: the walk between
-  // camps plus the camp's stride into frame has to fit inside `enemyMaxEmptyMs`,
-  // or the corridor reads as empty while he's still getting there. At this pace
-  // the plan's 6-8 m gaps take ~0.4-0.55 s.
-  heroWalkPxPerMs: 0.03,          // base pace (~1.9 tiles/sec) before the travel multiplier
-  heroTravelMult: 8,              // between-camps stride multiplier (~15 tiles/sec)
-  heroTravelMaxPxPerMs: 0.36,     // ceiling on travel pace (~22 tiles/sec), walk-speed nodes included:
-                                  // past this a single frame's coast into a stop could carry him over
-                                  // the next mark, and `mods.walkMult` has no cap of its own
-  heroTravelEaseMs: 130,          // wind-up into the stride (short, or a brief gap never reaches pace)
-  heroHaltEaseMs: 140,            // plant when a camp musters, so he pulls up on his mark
+  // It's an ordinary walk, not a dash: covering the gap to the next camp takes a
+  // few seconds, and the quiet is filled by a lone skeleton rather than by
+  // hurrying the hero along (see enemyMaxEmptyMs).
+  heroWalkPxPerMs: 0.03,          // walking pace (~1.9 tiles/sec)
+  heroWalkMaxPxPerMs: 0.12,       // ceiling on pace with walk-speed nodes included: past this a single
+                                  // frame's coast into a stop could carry him over the next camp's
+                                  // mark, and `mods.walkMult` has no cap of its own
+  heroWalkEaseMs: 260,            // wind-up into the stride
+  heroHaltEaseMs: 140,            // plant when something musters, so he pulls up on his mark
   heroStridePx: 4.5,              // corridor pixels per radian of footstep bob (cadence follows ground covered)
   // Currency is earned only in the post-death vocab quiz, then spent between
   // runs on permanent build upgrades
@@ -93,22 +91,25 @@ const CONFIG = {
   // the *live* frame edge, so a wide viewport pushes the muster line out to match
   // instead of popping packs in over open floor.
   enemyApproachTiles: 0.3,
-  // No dead air: the corridor must never stand visibly bare for as long as a
-  // second. The hero only advances while the near stretch is clear, so a build
-  // that clears slowly can end up short of the next mark with nothing on screen;
-  // once that has lasted this long, updateSpawns pulls the next pack forward.
-  // Order and composition are untouched — only the timing moves.
+  // No dead air. Walking to the next camp takes a few seconds, so the corridor
+  // does go quiet in between; once nothing has been on camera this long,
+  // updateSpawns sends in a single skeleton to keep it alive.
   //
-  // A pulled-forward pack lands at the far end of the visible track (see
-  // progression.trackEdgeTiles) rather than off camera, which is what bounds the
-  // empty stretch at `enemyMaxEmptyMs` plus a frame. Landing it off camera can't
-  // hold that bound: the hero's spell auto-targets the frontmost living skeleton
-  // whether or not it's visible, so a player casting into an empty-looking hall
-  // snipes the arrival before it ever walks into view and the screen stays bare
-  // for another whole budget. In frame it's safe either way — a kill on arrival
-  // plays its dissolve on camera, which is not dead air. It appears flush
-  // against the right border, half-under the 16px edge vignette.
-  enemyMaxEmptyMs: 900,      // longest the screen may sit empty before the next pack is pulled in
+  // A LONE FILLER, never the next camp. Pulling a camp forward would spend a
+  // designed encounter to patch a quiet moment and land it somewhere other than
+  // the metre it was authored for; a filler costs the plan nothing, so the marks
+  // stay exactly where they were written.
+  //
+  // The filler lands at the far end of the visible track (see
+  // progression.trackEdgeTiles) rather than off camera, which is what makes this
+  // number the real bound rather than the bound plus a walk-in. Off camera it
+  // wouldn't hold at all: the hero's spell auto-targets the frontmost living
+  // skeleton whether or not it's visible, so a player casting into an
+  // empty-looking hall snipes the arrival before it ever appears and the screen
+  // stays bare through another whole budget. In frame it's safe either way — a
+  // kill on arrival plays its dissolve on camera, which is not dead air. It shows
+  // up flush against the right border, half-under the 16px edge vignette.
+  enemyMaxEmptyMs: 1500,     // longest the screen may sit empty before a filler skeleton walks in
   enemyLanes: 4,             // parallel depth rows the mob streams in on
   // March + melee. A skeleton's `pos` is measured in TILES to the right of the
   // hero's front edge (0 = touching the hero). One pos-unit maps to exactly one

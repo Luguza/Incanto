@@ -28,11 +28,17 @@ function getEffectiveDt(rawDt) {
 // There is no check here on what is still alive, because there doesn't need to
 // be: updateCamera only lets the hero travel while the hall is empty, so by the
 // time distance reaches the next mark the previous camp is already dead and
-// gone. The marks are spaced to that rhythm (see ENCOUNTER_PLAN), which is what
-// keeps two camps from ever stacking without the spawner having to arbitrate it.
+// gone. That is what keeps two camps from ever stacking without the spawner
+// having to arbitrate it.
 //
 // `state.packIndex` walks the plan and never rewinds, so every camp is met in
 // order, at its own mark.
+//
+// The walk between camps is a real walk, not a dash, so the corridor can stand
+// empty for a few seconds on the way. That gap is filled by a LONE SKELETON —
+// not by the next camp. Pulling a camp forward would spend a designed encounter
+// to patch a quiet moment and land it somewhere other than its mark; a filler
+// costs the plan nothing, so the marks stay exactly where they were authored.
 function updateSpawns(now) {
   // Track how long the corridor has been visibly bare — dissolving skeletons
   // still count as occupied, since they're drawn.
@@ -44,26 +50,28 @@ function updateSpawns(now) {
   }
   const starved = empty && now - state.emptySinceMs >= CONFIG.enemyMaxEmptyMs;
 
-  // Safety net, not a second trigger. The travel pace and the mark spacing are
-  // chosen so the walk between camps plus a camp's stride into frame fits inside
-  // `enemyMaxEmptyMs`; if something still leaves the player staring down an
-  // empty corridor, act rather than let it sit. With a camp inbound but not yet
-  // in frame that means closing the gap on it — never sending another camp in on
-  // top, which would burn a designed encounter and stack the very fight this is
-  // all built to keep separate.
+  // Something is already on its way but hasn't made it into frame. Close the gap
+  // on it rather than send anything new — whatever is inbound is about to arrive.
   if (starved && state.enemies.length) { advanceInboundPack(); return; }
 
   const next = encounterAt(state.packIndex);
-  if (state.distance < next.at && !starved) return;
-  spawnPack(now, next, starved);
-  state.packIndex++;
-  // DECISION: the bare-stretch clock is deliberately NOT restarted here. A pack
-  // that spawns off camera still leaves the screen empty for the half second it
-  // takes to stride in, and that half second is part of the same stretch the
-  // player has been staring at. Restarting the clock would hand it a fresh full
-  // budget and let a single gap run to nearly twice `enemyMaxEmptyMs`. Leaving
-  // it running means an unusually long gap trips the pull-forward and lands the
-  // next pack in frame instead — the whole point of the rule.
+  if (state.distance >= next.at) {
+    spawnPack(now, next);
+    state.packIndex++;
+    return;
+  }
+
+  // Still short of the next mark with an empty hall: send one skeleton to keep
+  // the corridor alive. It lands in frame rather than off camera, so the bare
+  // stretch really does end at `enemyMaxEmptyMs` instead of running on through
+  // its walk-in — and so it can't be sniped before it ever appears, since the
+  // hero's spell auto-targets the frontmost living skeleton whether or not it's
+  // on screen. Restart the clock so its arrival isn't immediately followed by
+  // another.
+  if (starved) {
+    spawnFiller(now);
+    state.emptySinceMs = now;
+  }
 }
 
 // Clearance (in tiles) between two neighbours queued in the same lane. Bodies
@@ -176,12 +184,13 @@ function updateEnemies(now, dt) {
 // so an enemy's screen x is `enemyLineX + pos * TILE`, independent of the scroll
 // (no feedback).
 //
-// He moves ONLY while the hall is empty. The moment a camp musters he plants and
-// fights it, and he doesn't set off again until the last of it is dead and its
-// dissolve has finished. That single rule is what lets updateSpawns trigger on
-// distance alone: with no ground gained during a fight, the hero physically
-// cannot walk far enough to trip the next camp's mark while the current one is
-// still standing, so two camps can never stack.
+// He moves ONLY while the hall is empty — of anything, a camp or a lone filler
+// skeleton alike. The moment something musters he plants and fights it, and he
+// doesn't set off again until it's dead and its dissolve has finished. That
+// single rule is what lets updateSpawns trigger on distance alone: with no ground
+// gained during a fight, the hero physically cannot walk far enough to trip the
+// next camp's mark while the current one is still standing, so two camps can
+// never stack.
 //
 // It holds for reasons a wider mark spacing would not. The ground he'd otherwise
 // cover while a camp closed on him scales with `mods.walkMult` (uncapped — the
@@ -201,19 +210,18 @@ function updateCamera(now, dt) {
   // freeze the hero for as long as they studied — and since travel is what
   // triggers every camp, the whole background run would stall with it.
   if (state.castAt && state.screen === "combat") clear = false;
-  // Travel pace. Fortune's walk-speed nodes scale it, up to a ceiling: past that
+  // Walking pace. Fortune's walk-speed nodes scale it, up to a ceiling: past that
   // a single frame's coast on the way to a stop could carry the hero over the
   // next mark, which is the one thing this design must not allow.
-  const travel = Math.min(
-    CONFIG.heroWalkPxPerMs * CONFIG.heroTravelMult * state.mods.walkMult,
-    CONFIG.heroTravelMaxPxPerMs
+  const pace = Math.min(
+    CONFIG.heroWalkPxPerMs * state.mods.walkMult,
+    CONFIG.heroWalkMaxPxPerMs
   );
-  const targetVel = clear ? travel : 0;
-  // Ease with a frame-rate-independent time constant so he strides off and pulls
-  // up rather than snapping. Setting off is quicker than a walk's ramp (a gap is
-  // crossed in well under a second, so a slow ramp would never reach pace);
-  // planting at a camp is quicker still, so he arrives on his mark.
-  const k = 1 - Math.exp(-dt / (clear ? CONFIG.heroTravelEaseMs : CONFIG.heroHaltEaseMs));
+  const targetVel = clear ? pace : 0;
+  // Ease with a frame-rate-independent time constant so he sets off and pulls up
+  // rather than snapping. Planting is quicker than setting off, so he arrives on
+  // his mark rather than drifting past it.
+  const k = 1 - Math.exp(-dt / (clear ? CONFIG.heroWalkEaseMs : CONFIG.heroHaltEaseMs));
   state.cameraVel += (targetVel - state.cameraVel) * k;
   if (state.cameraVel < 1e-4) state.cameraVel = 0;
   let advanced = state.cameraVel * dt;

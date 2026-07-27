@@ -56,19 +56,18 @@ function enemyTypeById(id) {
 // holding its shape. Returns how many actually made it in.
 //
 // The pack forms up just off the right edge of frame and strides into view
-// inside half a second (`enemyApproachTiles`) — short enough that the corridor
-// never reads as empty while a pack is inbound, long enough that skeletons walk
-// in rather than appear. `inFrame` is the no-dead-air pull-forward (see
-// updateSpawns): the front rank lands right at the edge of frame instead, on
-// camera immediately, fading in through the 16px edge vignette.
-function spawnPack(now, entry, inFrame = false) {
+// (`enemyApproachTiles`) — long enough that skeletons walk in rather than
+// appear, short enough that the corridor doesn't read as empty while a camp is
+// already inbound. A camp is only ever sent in by reaching its mark; quiet
+// stretches are covered by spawnFiller instead, so there is no case here where a
+// camp needs landing early.
+function spawnPack(now, entry) {
   const ranks = packRanks(entry);
   const lanes = new Set();
   for (const rank of ranks) for (const m of rank) lanes.add(clampLane(m.lane));
-  // Measured against the front rank's own bodies, so a pull-forward lands a
-  // brute fully in frame rather than half-clipped by the right border.
-  const edge = trackEdgeTiles(rankScale(ranks[0]));
-  let front = inFrame ? edge : edge + CONFIG.enemyApproachTiles;
+  // Measured against the front rank's own bodies, so a rank of brutes musters
+  // fully clear of the right border rather than half-clipped by it.
+  let front = trackEdgeTiles(rankScale(ranks[0])) + CONFIG.enemyApproachTiles;
   // Never form up on top of a straggler. If anything the pack shares a lane with
   // is still standing at or behind the muster line, shift the WHOLE pack back as
   // a unit — pushing just the colliding members would break the designed shape,
@@ -134,6 +133,24 @@ function spawnEnemy(now, lane, pos, typeId) {
   });
 }
 
+// One lone skeleton to fill a quiet stretch of corridor (see updateSpawns). It
+// is NOT part of the encounter plan: the plan isn't advanced, no designed camp is
+// spent, and the next camp still waits at exactly its own mark. Always the plain
+// variant — a filler is there to keep the hall from standing empty, not to be an
+// encounter of its own.
+//
+// It lands right at the edge of frame, on camera immediately, for the same
+// reason a camp's arrival is measured there: off camera it could be sniped by
+// the hero's auto-targeted spell before it ever showed up, and the corridor
+// would stay bare through another whole budget.
+//
+// Lanes rotate rather than roll: consecutive fillers spread across the floor
+// instead of trooping down one lane, and the run stays free of randomness.
+function spawnFiller(now) {
+  state.fillerLane = (state.fillerLane + 1) % Math.max(1, CONFIG.enemyLanes);
+  spawnEnemy(now, clampLane(state.fillerLane), trackEdgeTiles(), DEFAULT_TYPE);
+}
+
 // Close the gap on a pack that is already marching in but hasn't reached frame
 // yet: slide the whole formation up until its leader sits exactly at the edge of
 // frame. Every skeleton moves by the same amount, so the shape the plan designed
@@ -173,6 +190,7 @@ function startRun() {
   state.cameraVel = 0;
   state.stridePhase = 0;
   state.packIndex = 0;        // back to the top of the encounter plan
+  state.fillerLane = -1;      // so the first filler skeleton walks into lane 0
   state.emptySinceMs = now;   // the corridor starts bare — the no-dead-air clock is already ticking
   state.castTargetId = null;
   state.castAt = 0;
@@ -207,4 +225,4 @@ function shuffleArray(arr) {
   return arr;
 }
 
-window.Incanto.progression = { spawnPack, spawnEnemy, enemyTypeById, rankScale, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };
+window.Incanto.progression = { spawnPack, spawnFiller, spawnEnemy, enemyTypeById, rankScale, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };
