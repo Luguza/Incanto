@@ -34,9 +34,10 @@ function freshState() {
     // Derived combat modifiers (see skilltree.recomputeMods). Safe defaults so
     // combat never touches an undefined field before the first recompute.
     mods: {
-      critChance: 0, critMult: 1.5, aoeExtra: 0, leech: 0, regen: 0,
+      critChance: 0, critMult: 1.5, leech: 0, regen: 0,
       walkMult: 1, coinMult: 1, shieldChance: 0, shieldAmount: 0, shieldMax: 0,
       thorns: 0, spellFailProt: 0,
+      spellsUnlocked: {}, spellPct: {}, spellParam: {},
     },
     gold: 0,
     // Designed packs walk in from the right as the hero passes their metre marks
@@ -55,7 +56,15 @@ function freshState() {
     distance: 0,              // metres walked this run (cameraX / TILE) — triggers the encounter plan
     cameraVel: 0,             // current pan speed (px/ms), eased toward its target so starts/stops aren't abrupt
     stridePhase: 0,           // corridor px covered on foot — drives the footstep bob's cadence
-    castTargetId: null,       // which enemy the in-flight fireball is aimed at
+    castTargetId: null,       // which enemy the in-flight spell is aimed at (null for the untargeted ones)
+    // The spell book (see spells.js / spellbook.js). `activeSpell` is the page
+    // it's open at — the spell a completed shape casts — and `bookSpread` is
+    // which leaf is showing, which is pure UI and deliberately not persisted.
+    activeSpell: STARTER_SPELL,
+    bookSpread: 0,
+    spellFx: [],              // queued scene effects for render-spells (bolts, arcs, meteors, auras)
+    castSpell: STARTER_SPELL, // which spell the in-progress cast animation belongs to
+    spellPrimeUntil: 0,       // a Frostkegel primes the next cast to shatter frozen bodies
     poolIndex: 0,
     wrongMatchCount: 0,
     // Post-death vocab quiz — a mixed Duolingo-style session
@@ -113,6 +122,7 @@ function saveProgress() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       gold: state.gold,
       nodeRanks: state.nodeRanks,
+      activeSpell: state.activeSpell,
     }));
   } catch (e) { /* storage unavailable (private mode/quota) — play without saving */ }
 }
@@ -161,6 +171,18 @@ function applySavedProgress() {
     }
   }
   if (typeof recomputeMods === "function") recomputeMods();
+  // The open page is restored only if its unlock node is still bought — a wiped
+  // or regenerated tree must never leave the book open at a spell the hero can
+  // no longer cast (activeSpellId falls back on its own, this just keeps the
+  // saved value honest so the book doesn't show a sealed page as active).
+  if (data && data.activeSpell && typeof spellUnlocked === "function" && spellUnlocked(data.activeSpell)) {
+    state.activeSpell = data.activeSpell;
+  }
+  // Open the book at the spread the active page sits on.
+  if (typeof SPELLS !== "undefined") {
+    const idx = SPELLS.findIndex((s) => s.id === state.activeSpell);
+    if (idx >= 0) state.bookSpread = Math.floor(idx / 2);
+  }
   state.heroHP = state.heroMaxHP;
 }
 

@@ -391,6 +391,16 @@ function renderScene(now) {
     const shw = Math.round(ASSETS.shadowSm.width * art.s);
     ctx.drawImage(ASSETS.shadowSm, cx - Math.round(shw / 2), ly - 2, shw, ASSETS.shadowSm.height);
     ctx.drawImage(frameSet[ef], sx, skelY, art.w, art.h);
+    // Struck: the body blinks white for a beat wherever a spell connects. The
+    // flash is stamped by the hit itself (see applySpellHit), not by the cast,
+    // so a chain's fifth hop and a meteor landing behind the line punch exactly
+    // like the bolt that hits the front rank does.
+    if (e.hitFlashAt && now >= e.hitFlashAt && now - e.hitFlashAt < 210 &&
+        Math.floor((now - e.hitFlashAt) / 70) % 2 === 0) {
+      ctx.drawImage(ASSETS.skeletHit[sf], sx, skelY, art.w, art.h);
+    }
+    // Frozen by a Frostkegel: rime over the body while it's held fast.
+    if (now < (e.frozenUntil || 0)) drawFrostRime(ctx, now, e, ef, sx, skelY, art.w, art.h);
     ctx.restore();
   }
 
@@ -398,32 +408,21 @@ function renderScene(now) {
   // mirrored as a tilted disc in front of the wizard. While tracing, it shows
   // node dots plus the chords drawn so far; on completion it flares with a
   // semi-transparent disc, then puffs away as the fireball launches from it.
+  // The cast: the rune the player traced charges, flares and puffs away. That
+  // part is the same whatever is being cast — what actually flies out of it is
+  // the active spell's effect, queued by its resolver and drawn by
+  // render-spells.js (see renderSpellFx below), so this block no longer knows
+  // anything about fireballs specifically.
   if (state.castAt) {
     const t = now - state.castAt;
     const charge = CONFIG.castChargeMs;
     const puff = CONFIG.runePuffMs;
-    const flight = CONFIG.fireballFlightMs;
-    const impact = CONFIG.fireballImpactMs;
-    const f = CONFIG.colors.fireball;
-    // Aim at the skeleton this cast targeted; cache its chest so the fireball
-    // still lands if the target has already dissolved by the time it arrives.
-    const target = state.enemies.find((e) => e.id === state.castTargetId);
-    let chest;
-    if (target) {
-      const ta = enemyArt(target);
-      const ty = (scene.laneY[target.lane] ?? feetY) - ta.h;
-      chest = { x: Math.round(sceneX(target.pos)), y: ty + ta.chest };
-      scene.castChest = chest;
-    } else {
-      chest = scene.castChest || { x: scene.enemyLineX, y: (feetY - skl.h) + 9 };
-    }
-
     if (t < charge) {
       // charge: disc fades in behind the completed rune, lines go white-hot
       const q = t / charge;
       drawSceneRune(ctx, now, state.castChords, { disc: 0.14 + q * 0.26, bright: q, scale: 1 });
     } else if (t < charge + puff) {
-      // puff: the rune expands and dissolves
+      // puff: the rune expands and dissolves as the spell leaves it
       const q = (t - charge) / puff;
       drawSceneRune(ctx, now, state.castChords, {
         disc: 0.4 * (1 - q),
@@ -431,38 +430,9 @@ function renderScene(now) {
         scale: 1 + q * 0.7,
         alpha: 1 - q,
       });
-    }
-
-    if (t >= charge && t <= charge + flight) {
-      const p = (t - charge) / flight;
-      const ap = domeProject(0, 0, 1);        // launch from the shield's lit apex
-      const x = Math.round(ap.x + (chest.x - ap.x) * p);
-      const y = Math.round(ap.y + (chest.y - ap.y) * p - Math.sin(p * Math.PI) * 10);
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      ctx.drawImage(ASSETS.glowFireball, x - 9, y - 9);
-      ctx.restore();
-      ctx.drawImage(ASSETS.fireball, x - 5, y - 3);
-    } else if (t > charge + flight && t <= charge + flight + impact) {
-      const q = (t - charge - flight) / impact;
-      if (target && Math.floor((t - charge - flight) / 70) % 2 === 0) {
-        const ta = enemyArt(target);
-        const ty = (scene.laneY[target.lane] ?? feetY) - ta.h;
-        const tx = Math.round(sceneX(target.pos)) - Math.round(ta.w / 2);
-        ctx.drawImage(ASSETS.skeletHit[sf], tx, ty, ta.w, ta.h);
-      }
-      const r = Math.round(2 + q * 10);
-      ctx.fillStyle = f.y;
-      ctx.fillRect(chest.x - r, chest.y, 2, 1);
-      ctx.fillRect(chest.x + r, chest.y, 2, 1);
-      ctx.fillRect(chest.x, chest.y - r, 1, 2);
-      ctx.fillRect(chest.x, chest.y + r, 1, 2);
-      ctx.fillStyle = f.O;
-      ctx.fillRect(chest.x - r + 1, chest.y - r + 1, 1, 1);
-      ctx.fillRect(chest.x + r - 1, chest.y - r + 1, 1, 1);
-      ctx.fillRect(chest.x - r + 1, chest.y + r - 1, 1, 1);
-      ctx.fillRect(chest.x + r - 1, chest.y + r - 1, 1, 1);
-    } else if (t > charge + flight + impact) {
+    } else {
+      // The rune is spent. Effects outlive it (a meteor shower runs for over a
+      // second), so they're culled on their own clock, not on this one.
       state.castAt = 0;
       state.castChords = null;
     }
@@ -475,6 +445,10 @@ function renderScene(now) {
   // Mis-cast backfire: the traced rune shatters in red over the wizard and its
   // broken magic detonates around him.
   if (now < state.heroBlastUntil) drawHeroBackfire(ctx, now);
+
+  // The active spell's effects — bolts, arcs, meteors, auras — over the bodies
+  // they're landing on (see render-spells.js).
+  renderSpellFx(ctx, now);
 
   // Floating damage numbers, drawn last so they sit above every fighter.
   renderDmgFloats(ctx, now);
@@ -1055,16 +1029,21 @@ function drawWizardStaff(ctx, now) {
   ctx.scale(S, S);
   ctx.drawImage(spr, -Math.round(spr.width / 2), -spr.height);
   ctx.restore();
-  // the gem blazes with an additive teal halo while tracing/casting
-  drawGemGlow(ctx, now, Math.round(gemx), Math.round(gemy), glow);
+  // The gem blazes while tracing/casting — in the rune's teal normally, but in
+  // the active spell's own colour once a cast is under way, so the staff tells
+  // you what is about to come off it.
+  const gemRGB = state.castAt
+    ? (CONFIG.colors.spell[state.castSpell] || {}).rgb || CONFIG.colors.staff.glowRGB
+    : CONFIG.colors.staff.glowRGB;
+  drawGemGlow(ctx, now, Math.round(gemx), Math.round(gemy), glow, gemRGB);
 }
 
-// An additive teal halo on the staff's gem at (tx,ty); strength tracks `glow`
-// in [0,1], with a flicked spark while it blazes. The gem body itself comes
-// from the sprite — this only lights it up.
-function drawGemGlow(ctx, now, tx, ty, glow) {
+// An additive halo on the staff's gem at (tx,ty); strength tracks `glow` in
+// [0,1], with a flicked spark while it blazes. The gem body itself comes from
+// the sprite — this only lights it up. `rgb` is the halo's colour: the rune's
+// teal at rest, the casting spell's own colour while one is going off.
+function drawGemGlow(ctx, now, tx, ty, glow, rgb = CONFIG.colors.staff.glowRGB) {
   if (glow <= 0.05) return;
-  const rgb = CONFIG.colors.staff.glowRGB;
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const halo = 0.18 + 0.55 * glow;

@@ -122,6 +122,16 @@ function updateEnemies(now, dt) {
         chainSettled = false;
         continue;
       }
+      // Frozen by a Frostkegel: it neither advances nor swings, but it still
+      // holds its tile so the rank behind piles up against the ice rather than
+      // walking through it. Breaking the settled chain here is what stops that
+      // rank from taking over the melee slot while the leader is iced.
+      if (now < (e.frozenUntil || 0)) {
+        e.phase = "frozen";
+        limit = e.pos + laneSpacing(e, behind);
+        chainSettled = false;
+        continue;
+      }
       const newPos = Math.max(e.pos - step, limit);
       const blocked = newPos <= limit + 1e-3;
       e.pos = newPos;

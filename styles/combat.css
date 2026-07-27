@@ -1,11 +1,24 @@
 /* combat.css — combat screen: scene, HUD, rune circle, chords, flashes. */
 
-  /* Combat screen — banner (fight) on top, rune circle filling the rest */
+  /* Combat screen — scene on top, rune circle filling the rest, and the open
+     spell book pinned along the bottom edge with the circle nested in its V.
+
+     The circle and the book have to line up at every viewport size, so both are
+     laid out from ONE width (--board-w) and both draw in a 600-unit-wide
+     viewBox — that gives them a shared scale. The rest follows from the book's
+     600x232 art box: its height is 232/600 of that width, and the arena's
+     bottom margin (93/600 of it) is what drops the wheel's lower edge into the
+     notch between the two pages. The margin is measured against the wheel's
+     REAL bottom — the rune bubbles hang 48 below the ring they sit on, so the
+     art reaches viewBox y≈570, not the ring's 522. Re-derive both fractions if
+     the book geometry in spellbook.js moves. */
   .combat-screen {
     position: relative;
     display: flex; flex-direction: column;
     justify-content: flex-start;
     width: 100%; height: 100%;
+    --board-w: min(100%, 520px);
+    --book-h: calc(var(--board-w) * 0.3867);
   }
   .combat-screen::after {
     content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -53,12 +66,60 @@
   svg.arena {
     flex: 1 1 auto;
     min-height: 0;
-    width: 100%;
+    width: var(--board-w);
+    /* Bottom-aligned (xMidYMax), so the wheel always sits down against the book
+       instead of floating in the middle of whatever height is left over. */
+    margin-bottom: calc(var(--board-w) * 0.155);
     display: block;
     /* Runes are dragged with the pointer — don't let a drag scroll/pan the page */
     touch-action: none;
     -webkit-user-select: none; user-select: none;
   }
+
+  /* ---- Spell book -------------------------------------------------------
+     An open book lying along the bottom edge: two page planes tilted up and
+     out so their top edges make a shallow V, spine in the middle. Geometry is
+     in spellbook.js; this is only the palette and the interaction states. */
+  .spellbook {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: var(--board-w); height: var(--book-h);
+    display: block; z-index: 3;
+    /* Only the pages and the thumb tabs are hit targets — the rest of the box
+       is transparent art the rune circle overlaps into. */
+    pointer-events: none;
+    filter: drop-shadow(0 -3px 10px rgba(6, 4, 12, 0.6));
+  }
+  .bk-cover { fill: #3a2a1e; stroke: #14100c; stroke-width: 2; stroke-linejoin: round; }
+  .bk-stack { fill: #d9cfae; stroke: #8d8264; stroke-width: 0.8; }
+  .bk-leaf {
+    fill: #efe6c8; stroke: #9a8f6d; stroke-width: 1.6; stroke-linejoin: round;
+    transition: fill 140ms linear, stroke 140ms linear;
+  }
+  .bk-page.locked .bk-leaf { fill: #2a2438; stroke: #4a4360; }
+  .bk-page.blank .bk-leaf { fill: #e4dbbd; }
+  .bk-page[data-act] { pointer-events: auto; cursor: pointer; }
+  .bk-page[data-act]:active .bk-leaf { fill: #fff8dd; }
+  .bk-page.active .bk-leaf { stroke-width: 3; filter: url(#softGlow); }
+  .bk-spine { stroke: #14100c; stroke-width: 7; stroke-linecap: round; }
+  .bk-spine-hl { stroke: #6b4f36; stroke-width: 2.5; stroke-linecap: round; }
+  /* Page contents: line art in the spell's own colour, ringed by the same
+     procedural runic glyphs the wheel above is written in. */
+  .book-glyph { fill: none; stroke-width: 1.7; opacity: 0.55; stroke-linecap: round; stroke-linejoin: round; }
+  .bk-page.active .book-glyph { opacity: 0.95; }
+  .bk-art { opacity: 0.95; }
+  .bk-name {
+    font-family: var(--display-font);
+    font-size: 15px; font-weight: 700; letter-spacing: 0.4px;
+    paint-order: stroke; stroke: rgba(24, 18, 10, 0.5); stroke-width: 2.5px;
+  }
+  .bk-sealmark { font-family: var(--display-font); font-size: 22px; font-weight: 700; fill: #6d6484; }
+  .bk-ribbon { opacity: 0.9; }
+  /* Thumb tabs that turn a leaf, tucked under the book's outer wings. */
+  .bk-tab[data-act] { pointer-events: auto; cursor: pointer; }
+  .bk-tabbg { fill: #241d31; stroke: #4de3e0; stroke-width: 1.6; opacity: 0.92; }
+  .bk-tabarrow { fill: none; stroke: #8ff7f3; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .bk-tab[data-act]:active .bk-tabbg { fill: #33294a; }
+  .bk-tab.off { opacity: 0.28; }
   /* The static arcane wheel is a baked high-fidelity image; live SVG on top
      draws only what changes: word bubbles, chords, filigree, sparks, and the
      rotating inner script ring */

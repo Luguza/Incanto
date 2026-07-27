@@ -128,6 +128,45 @@ const CONFIG = {
   enemyFirstAttackMs: 2000,     // windup before a skeleton's first hit after engaging (a beat to react on first engage)
   enemyAttackIntervalMs: 3400,  // steady cadence between a skeleton's hits
   enemyAttackLungeMs: 260,      // length of the forward jab drawn on each hit
+  // SPELLS. Completing a rune shape casts whatever spell the hero's book is
+  // open at (see spells.js for the registry and the resolvers, spellbook.js for
+  // the book). Every spell reads the SAME `state.heroDmg` and scales it by its
+  // own `dmgMult`, so a generic +damage node lifts the whole book while a
+  // spell-specific node lifts only its page — that pairing is the point of the
+  // split (see skilltree.js: each sector now carries one spell's nodes).
+  //
+  // Only Feuerball is known at the start; the other five are unique unlock
+  // nodes buried a few tiers out in their own sector of the tree.
+  spells: {
+    // A Frostkegel leaves the hero's next spell "primed": it shatters frozen
+    // bodies for primeMult damage and reaches every frozen skeleton, not just
+    // the ones the spell would normally touch. This window is how long that
+    // charge keeps — long enough to solve one more loadout, not two.
+    primeWindowMs: 7000,
+    // Feuerball — the starting spell. Hits the N nearest skeletons for FULL
+    // damage each (no falloff — that's Blitzschlag's trade). Target count is the
+    // upgrade; `maxTargets` caps it so a stacked build can't wipe a whole camp.
+    fireball: { dmgMult: 1.0, targets: 1, maxTargets: 8, boltStaggerMs: 90 },
+    // Blitzschlag — arcs from body to body, each hop weaker than the last. Far
+    // more reach than Feuerball, paid for in falloff.
+    lightning: { dmgMult: 0.95, chain: 3, maxChain: 14, falloff: 0.72, hopMs: 85, holdMs: 260 },
+    // Frostkegel — a cone off the staff that shoves the front ranks back down
+    // the hall and freezes them where they land. Barely damages; it buys time
+    // and sets up the shatter (see primeWindowMs).
+    frost: { dmgMult: 0.35, coneTiles: 6.5, pushTiles: 2.4, freezeMs: 2600, maxFreezeMs: 6000,
+             primeMult: 2.4, castMs: 620 },
+    // Meteoritenschauer — rocks fall on random spots across the WHOLE visible
+    // track, not on chosen targets. Low per-hit damage over a wide, random area:
+    // it thins a spread-out mob rather than deleting a front rank.
+    meteor: { dmgMult: 0.5, count: 4, maxCount: 18, radiusTiles: 1.7, laneRadius: 1.4,
+              spreadMs: 900, fallMs: 380, impactMs: 260 },
+    // Bannschild — absorb, not damage. Its pool is derived from spell power the
+    // same way damage is, and it stacks onto whatever Ward nodes already grant.
+    shield: { dmgMult: 1.6, capMult: 2.2, castMs: 700 },
+    // Heilwort — the same conversion, into HP. Part flat spell power, part a
+    // slice of the pool, so it stays useful on both a small and a large hero.
+    heal: { dmgMult: 1.1, maxFrac: 0.16, castMs: 760 },
+  },
   runeCount: 6,
   pairsPerLoadout: 3,
   wrongFlashDurationMs: 200,
@@ -157,6 +196,10 @@ const CONFIG = {
     pctDmg: 1.0,        // soft-cap on summed % damage (approaches +100%)
     critChance: 0.6,    // hard ceiling on crit chance
     critMult: 1.5,      // hard ceiling on bonus crit damage (max crit ×3.0)
+    // Per-spell % damage. Soft-capped like the generic pools, and separately —
+    // a page's own nodes plateau on their own, so pouring an entire sector into
+    // one spell still leaves the other five worth visiting.
+    spellPct: 1.2,
     regen: 2.0,         // hard ceiling on HP/s regen (below a full mob's DPS)
     // No thorns entry: reflection is bounded by supply instead of by a ceiling —
     // only five unique nodes in the whole tree grant it, 10% each (see skilltree.js).
@@ -202,6 +245,17 @@ const CONFIG = {
       enemy: "255, 236, 200",
       hero: "255, 92, 96",
       crit: "255, 214, 90",   // a crit bites gold
+    },
+    // One signature colour per spell page, shared by the book art, the scene
+    // effect and the spell's skill-tree sector so a page, its nodes and its
+    // bolt all read as the same magic.
+    spell: {
+      fireball:  { core: "#fff2c4", mid: "#f2a83a", rgb: "242, 168, 58" },
+      lightning: { core: "#f2fbff", mid: "#7fb8ff", rgb: "127, 184, 255" },
+      frost:     { core: "#eafcff", mid: "#79d8ee", rgb: "121, 216, 238" },
+      meteor:    { core: "#ffe6c8", mid: "#e5673a", rgb: "229, 103, 58" },
+      shield:    { core: "#eef0ff", mid: "#9a8ff0", rgb: "154, 143, 240" },
+      heal:      { core: "#eaffe9", mid: "#6ed08a", rgb: "110, 208, 138" },
     },
     fireball: {
       C: "#fff7d9", // core

@@ -102,55 +102,16 @@ function handleRuneClick(id, viaTap = false) {
 }
 
 function onShapeComplete(now) {
-  // The three completed chords lighting up together *is* the cast. Fire the
-  // spell animation, then resolve damage against the frontmost skeleton (plus
-  // any extra Area-of-Effect targets), rolling crits and applying leech/shields
-  // from the skill tree.
+  // The three completed chords lighting up together *is* the cast. The rune
+  // charge, the flash and the refill are the same whatever is being cast; WHAT
+  // goes off is the page the hero's book is open at, so the resolution itself is
+  // handed to spells.js (which also applies leech and Ward's chance shield).
   state.shapeFlashUntil = now + CONFIG.shapeFlashDurationMs;
   state.castAt = now;
+  state.castSpell = activeSpellId();                     // drives the cast's colour + effect
   state.castChords = state.chords.map((c) => ({ ...c })); // survives the refill
 
-  const m = state.mods;
-  const impactAt = now + CONFIG.castChargeMs + CONFIG.fireballFlightMs;
-
-  // Front skeleton first, then the next-nearest for each extra AoE target.
-  const targets = livingEnemies().sort((a, b) => a.pos - b.pos).slice(0, 1 + (m.aoeExtra || 0));
-  state.castTargetId = targets.length ? targets[0].id : null;
-
-  let dealt = 0;
-  for (const target of targets) {
-    const crit = Math.random() < m.critChance;
-    const dmg = Math.max(1, Math.round(state.heroDmg * (crit ? m.critMult : 1)));
-    hitEnemy(target, dmg);
-    dealt += dmg;
-    // Pop the damage number over the skeleton the moment the fireball lands, not
-    // when the cast starts — the pop is re-anchored to the body each frame.
-    spawnDmgFloat({
-      value: dmg,
-      color: crit ? CONFIG.colors.dmgFloat.crit : CONFIG.colors.dmgFloat.enemy,
-      born: impactAt,
-      targetId: target.id,
-      x: scene ? scene.enemyLineX + target.pos * TILE : 0,
-      y: scene ? (scene.laneY[target.lane] ?? scene.feetY) - enemyArt(target).h - 3 : 0,
-    });
-    if (target.hp <= 0) {
-      // Killed — but don't play the death animation yet. The fireball is still
-      // charging + flying; the skeleton stays standing (marked `struck`) until
-      // the bolt actually lands, then it collapses (see updateEnemies). Count the
-      // kill now, since it's already decided.
-      target.phase = "struck";
-      target.phaseAt = now;
-      target.struckUntil = impactAt;
-      state.kills++;
-    }
-  }
-
-  // Life leech heals for a slice of the damage dealt.
-  if (m.leech > 0 && dealt > 0) healHero(dealt * m.leech);
-  // Ward: some casts conjure a shield that absorbs the next hits, up to a cap.
-  if (m.shieldChance > 0 && Math.random() < m.shieldChance) {
-    state.heroShield = Math.min(m.shieldMax, state.heroShield + m.shieldAmount);
-  }
+  castActiveSpell(now);
 
   // Always deal a fresh loadout after a cast — there's always another skeleton
   // walking in behind this one.

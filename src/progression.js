@@ -130,6 +130,7 @@ function spawnEnemy(now, lane, pos, typeId) {
     attackAt: 0,                  // next time this skeleton lands a hit
     attackAnimAt: 0,              // start of the current forward-jab animation
     struckUntil: 0,               // while `struck`: when the bolt lands and it collapses
+    frozenUntil: 0,               // held fast by a Frostkegel until this moment (see updateEnemies)
   });
 }
 
@@ -195,6 +196,9 @@ function startRun() {
   state.castTargetId = null;
   state.castAt = 0;
   state.castChords = null;
+  state.spellFx = [];         // no bolts or meteors carried over from the last run
+  state.spellPrimeUntil = 0;  // and no Frostkegel charge banked from it either
+  state.heroShield = 0;
   state.tapTraceUntil = 0;
   state.tapTraceFrom = null;
   state.tapTraceTo = null;

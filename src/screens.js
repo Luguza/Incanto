@@ -310,12 +310,13 @@ function renderCombatFull() {
           <div class="hp-track enemy"><div class="hp-fill" id="enemy-hp-fill"></div></div>
         </div>
       </div>
-      <svg class="arena" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
+      <svg class="arena" viewBox="0 0 600 600" preserveAspectRatio="xMidYMax meet">
         ${arenaDefs}
         ${chordsHtml}
         ${dragLineHtml}
         ${runesHtml}
       </svg>
+      ${renderSpellbook()}
     </div>`;
 }
 
