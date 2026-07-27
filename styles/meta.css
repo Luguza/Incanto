@@ -114,6 +114,11 @@
   .ti-rune { display: inline-flex; }
   .ti-name { font-family: var(--display-font); font-size: 19px; letter-spacing: 1px; }
   .ti-tier { font-size: 11px; color: #8a8398; letter-spacing: 0.5px; }
+  /* Badge on the five unique thorn caches — sits where the rank pips would be. */
+  .ti-unique {
+    margin-left: auto; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
+    border: 1px solid currentColor; border-radius: 999px; padding: 2px 8px; opacity: 0.9;
+  }
   .ti-dots { margin-left: auto; display: inline-flex; gap: 4px; }
   .ti-dots .dot {
     width: 8px; height: 8px; border-radius: 50%; border: 1px solid currentColor;
