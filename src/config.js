@@ -80,13 +80,16 @@ const CONFIG = {
   // One metre = one 16px floor tile.
   enemyMaxCount: 18,         // safety cap on skeletons alive at once (a late pack can out-grow it)
   encounterLateSpacingMetres: 5, // metres between packs once the authored plan runs out
-  // How far past the edge of frame a pack forms up. At `enemyWalkTilesPerMs`
-  // that's a ~370ms approach: long enough that skeletons visibly walk in rather
-  // than appear, short enough to fit inside the no-dead-air budget below
-  // alongside the sprint across the gap. Measured from the *live* frame edge, so
-  // a wide viewport pushes the muster line out to match instead of popping packs
-  // in over open floor.
-  enemyApproachTiles: 1.0,
+  // How far past the edge of frame a pack forms up. This is a TIME budget wearing
+  // tile units: at `enemyWalkTilesPerMs` it's a ~370ms approach — long enough
+  // that skeletons visibly stride in rather than appear, short enough to fit
+  // inside the no-dead-air budget below alongside the sprint across the gap. It
+  // has to be re-derived whenever the march speed changes (0.4 tiles at the
+  // current 1.1 tiles/sec; at the old 2.7 it was 1.0), or a slow march spends the
+  // whole budget walking in and the screen sits bare through it. Measured from
+  // the *live* frame edge, so a wide viewport pushes the muster line out to match
+  // instead of popping packs in over open floor.
+  enemyApproachTiles: 0.4,
   // No dead air: the corridor must never stand visibly bare for as long as a
   // second. The hero only advances while the near stretch is clear, so a build
   // that clears slowly can end up short of the next mark with nothing on screen;
@@ -110,8 +113,7 @@ const CONFIG = {
   // so no two skeletons ever share a tile. They walk left until blocked (by the
   // standoff line or the skeleton ahead), stand idle if out of reach, and only
   // swing once within attack range.
-  enemyWalkTilesPerMs: 0.0027,  // march speed (~2.7 tiles/sec) — brisk, so a pack crosses the
-                                // open floor to the standoff line without dawdling
+  enemyWalkTilesPerMs: 0.00108, // march speed (~1.1 tiles/sec) — a slow, looming advance
   enemySpawnGapTiles: 1.7,      // depth between a pack's successive ranks (and the clearance
                                 // a pack musters behind any straggler in its lanes)
   enemyStandoffTiles: 1.6,      // how far in front of the hero the front rank stops
