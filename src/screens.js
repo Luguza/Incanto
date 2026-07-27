@@ -334,8 +334,12 @@ function patchCombatContinuous(now) {
   const remaining = livingEnemies();
   const front = frontEnemy();
   const count = remaining.length;
+  // Name the front skeleton's variant when it has one — the bar tracks that one,
+  // and a brute's doubled HP pool would otherwise look like a bar that's stuck.
+  const frontType = front && CONFIG.enemyTypes.find((t) => t.id === front.type);
+  const frontLabel = frontType && frontType.label ? ` · ${frontType.label}` : "";
   document.getElementById("wave-label").innerHTML =
-    `${state.kills} ERLEGT · ${count} SKELETT${count === 1 ? "" : "E"}`;
+    `${state.kills} ERLEGT · ${count} SKELETT${count === 1 ? "" : "E"}${frontLabel}`;
   const enemyPct = front ? (100 * front.hp / front.maxHP) : 0;
   document.getElementById("enemy-hp-fill").style.width = enemyPct.toFixed(1) + "%";
 

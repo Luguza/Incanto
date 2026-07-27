@@ -35,10 +35,28 @@ const CONFIG = {
   quizFeedbackMs: 650,   // how long a wrong match flashes red before clearing
   // Endless skeletons: instead of discrete waves, lone skeletons stream in at
   // random intervals and walk toward the hero; each only attacks once it reaches
-  // melee range, at its own steady cadence. Every skeleton is identical — same
-  // HP, same damage (no per-wave scaling).
+  // melee range, at its own steady cadence. There is no per-wave scaling — a
+  // skeleton's strength comes from its VARIANT (see `enemyTypes`), not from how
+  // deep the run is.
   enemyBaseHP: 10,
   enemyBaseDmg: 6,
+  // Enemy variants. Every arrival rolls one of these: `weight` is its relative
+  // chance (among the variants already unlocked), `minKills` is how far into the
+  // run it starts showing up, and the multipliers scale the base numbers above.
+  // `scale` is the drawn size of the 16x16 skeleton art and `tint` a wash laid
+  // over its pixels — together the tell that a tougher one just walked in, so it
+  // reads before it swings.
+  enemyTypes: [
+    { id: "skeleton", weight: 1, minKills: 0, hpMult: 1, dmgMult: 1, attackSpeedMult: 1, scale: 1, tint: null, label: null },
+    // Brute: a head taller, darker bone, twice the HP and damage, and swings
+    // ~40% faster. `label` is called out on the enemy HP bar while it leads the
+    // queue, so a slow-draining bar reads as "this one is tougher", not stuck.
+    {
+      id: "brute", weight: 0.28, minKills: 4,
+      hpMult: 2, dmgMult: 2, attackSpeedMult: 1.4,
+      scale: 1.375, tint: "rgba(26, 20, 34, 0.34)", label: "KNOCHENKOLOSS",
+    },
+  ],
   wrongPenaltyFraction: 0.15, // a wrong match backfires for this fraction of the hero's MAX HP
   enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
   // Random trickle: the next skeleton arrives after a delay drawn uniformly from

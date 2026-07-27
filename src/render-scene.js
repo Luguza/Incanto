@@ -7,6 +7,19 @@
 // Scene state: canvas element, integer pixel scale, layout, cached background
 let scene = null;
 
+// Drawn size of a skeleton: the same 16x16 sheet art, blown up by the variant's
+// `scale` (a brute stands a head taller than a plain skeleton). Everything
+// anchored to a body — the sprite, its shadow, the fireball's aim point, the
+// damage numbers — sizes itself through here rather than reading the sheet rect
+// directly, so a variant never draws with the wrong offsets. `chest` is the
+// aim/impact height measured down from the head, at the same fraction of the
+// body as the old fixed 9-of-16px offset.
+function enemyArt(e) {
+  const s = (e && e.scale) || 1;
+  const h = Math.round(SHEET.skeletIdle.h * s);
+  return { s, w: Math.round(SHEET.skeletIdle.w * s), h, chest: Math.round((h * 9) / 16) };
+}
+
 function setupScene(cv) {
   if (!tilesetImg.complete || !tilesetImg.naturalWidth) return false;
   if (!ASSETS) buildAssets();
@@ -335,9 +348,11 @@ function renderScene(now) {
   );
   for (const e of ordered) {
     const ly = laneFeetY(e);
-    const skelY = ly - skl.h;
+    const art = enemyArt(e);
+    const skelY = ly - art.h;
     const walking = e.phase === "walk";
-    const frameSet = walking ? ASSETS.skeletRun : ASSETS.skelet;
+    const skin = ASSETS.enemy[e.type] || { idle: ASSETS.skelet, run: ASSETS.skeletRun };
+    const frameSet = walking ? skin.run : skin.idle;
     // Frame cadence sets the three moods apart: a brisk run cycle, a calm idle,
     // and an agitated (fast) shuffle while attacking.
     const frameMs = walking ? 110 : e.phase === "attack" ? 90 : 160;
@@ -347,11 +362,11 @@ function renderScene(now) {
     let xJab = 0;
     if (e.phase === "attack" && e.attackAnimAt && now - e.attackAnimAt < CONFIG.enemyAttackLungeMs) {
       const p = (now - e.attackAnimAt) / CONFIG.enemyAttackLungeMs;
-      xJab = -Math.round(Math.sin(p * Math.PI) * 5);
+      xJab = -Math.round(Math.sin(p * Math.PI) * 5 * art.s);
     }
 
     const cx = Math.round(sceneX(e.pos));
-    const sx = cx - Math.round(skl.w / 2) + xJab;
+    const sx = cx - Math.round(art.w / 2) + xJab;
     let alpha = 1;
     if (e.phase === "dying") {
       const p = Math.min(1, (now - e.phaseAt) / CONFIG.enemyDeathMs);
@@ -361,8 +376,8 @@ function renderScene(now) {
       ctx.globalCompositeOperation = "lighter";
       for (let i = 0; i < 7; i++) {
         const h = (i * 97) % 13;
-        const ex = sx + 3 + ((i * 5) % skl.w);
-        const ey = skelY + skl.h - Math.round(p * (10 + h));
+        const ex = sx + 3 + ((i * 5) % art.w);
+        const ey = skelY + art.h - Math.round(p * (10 + h));
         ctx.fillStyle = `rgba(77, 227, 224, ${(alpha * 0.8).toFixed(2)})`;
         ctx.fillRect(ex, ey, 1, 1);
       }
@@ -370,8 +385,10 @@ function renderScene(now) {
     }
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.drawImage(ASSETS.shadowSm, cx - 8, ly - 2);
-    ctx.drawImage(frameSet[ef], sx, skelY);
+    // Shadow widens with the body so a brute doesn't float over a small one.
+    const shw = Math.round(ASSETS.shadowSm.width * art.s);
+    ctx.drawImage(ASSETS.shadowSm, cx - Math.round(shw / 2), ly - 2, shw, ASSETS.shadowSm.height);
+    ctx.drawImage(frameSet[ef], sx, skelY, art.w, art.h);
     ctx.restore();
   }
 
@@ -391,8 +408,9 @@ function renderScene(now) {
     const target = state.enemies.find((e) => e.id === state.castTargetId);
     let chest;
     if (target) {
-      const ty = (scene.laneY[target.lane] ?? feetY) - skl.h;
-      chest = { x: Math.round(sceneX(target.pos)), y: ty + 9 };
+      const ta = enemyArt(target);
+      const ty = (scene.laneY[target.lane] ?? feetY) - ta.h;
+      chest = { x: Math.round(sceneX(target.pos)), y: ty + ta.chest };
       scene.castChest = chest;
     } else {
       chest = scene.castChest || { x: scene.enemyLineX, y: (feetY - skl.h) + 9 };
@@ -426,8 +444,10 @@ function renderScene(now) {
     } else if (t > charge + flight && t <= charge + flight + impact) {
       const q = (t - charge - flight) / impact;
       if (target && Math.floor((t - charge - flight) / 70) % 2 === 0) {
-        const ty = (scene.laneY[target.lane] ?? feetY) - skl.h;
-        ctx.drawImage(ASSETS.skeletHit[sf], Math.round(sceneX(target.pos)) - Math.round(skl.w / 2), ty);
+        const ta = enemyArt(target);
+        const ty = (scene.laneY[target.lane] ?? feetY) - ta.h;
+        const tx = Math.round(sceneX(target.pos)) - Math.round(ta.w / 2);
+        ctx.drawImage(ASSETS.skeletHit[sf], tx, ty, ta.w, ta.h);
       }
       const r = Math.round(2 + q * 10);
       ctx.fillStyle = f.y;
@@ -507,7 +527,6 @@ function renderDmgFloats(ctx, now) {
   const floats = state.dmgFloats;
   if (!scene || !floats || !floats.length) return;
   const ttl = CONFIG.dmgFloatMs, rise = CONFIG.dmgFloatRisePx, s = 2;
-  const skl = SHEET.skeletIdle;
   const keep = [];
   for (const f of floats) {
     if (now < f.born) { keep.push(f); continue; }  // waiting on its delayed impact
@@ -522,7 +541,7 @@ function renderDmgFloats(ctx, now) {
       const e = state.enemies.find((en) => en.id === f.targetId);
       if (e) {
         ax = scene.enemyLineX + e.pos * TILE;
-        ay = (scene.laneY[e.lane] ?? scene.feetY) - skl.h - 3;
+        ay = (scene.laneY[e.lane] ?? scene.feetY) - enemyArt(e).h - 3;
       }
     }
     const topY = Math.round(ay - t * rise);
@@ -1061,4 +1080,4 @@ function drawGemGlow(ctx, now, tx, ty, glow) {
   ctx.restore();
 }
 
-window.Incanto.renderScene = { setupScene, renderScene, spawnDmgFloat };
+window.Incanto.renderScene = { setupScene, renderScene, spawnDmgFloat, enemyArt };
