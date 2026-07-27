@@ -53,26 +53,35 @@ const PACKS = {
 // tile). `reinforce` appends that many extra copies of the pack's LAST rank, so
 // a shape can be reused at a heavier weight without needing its own entry.
 //
-// Spacing is the pacing dial. The hero covers ~1.9 m/s and gains ~3.5 m while a
-// pack marches in, so a 6-8 m gap has him walking a beat or two between fights;
-// tighten it and the fights start running together, widen it much past 9 m and
-// the corridor starts to feel like a corridor rather than a fight (updateSpawns
-// pulls the next pack forward before it can go quiet — see enemyMaxEmptyMs).
+// Spacing is the pacing dial, and it is set against the dead-air rule rather
+// than by eye. The hero walks at ~1.9 m/s and only between camps, so a gap takes
+// gap/1.9 seconds of empty corridor; once that passes `enemyMaxEmptyMs` (1.5 s,
+// about 2.8 m) a filler skeleton walks in to cover the quiet. Gaps below that
+// threshold produce no fillers at all; gaps above it produce one EVERY time,
+// because the filler halts the hero and he has to clear it before setting off
+// again. There is no middle: measured across a 3-minute run, 2.5 m gaps give
+// ~100% of enemies and of separate fights from designed camps, while 3 m gaps
+// drop that to 85% / 52% and 8 m gaps to 57% / 26%.
+//
+// So camps sit ~2.5 m apart, comfortably inside the budget, and the filler goes
+// back to being what it should be — a safety net for the odd long gap, not the
+// game's main supply of skeletons. Widening these marks past ~2.8 m hands the
+// corridor back to the fillers.
 const ENCOUNTER_PLAN = [
-  { at: 0,  pack: "spaeher" },              //  1 — opens the run right away
-  { at: 6,  pack: "paar" },                 //  2
-  { at: 13, pack: "keil" },                 //  3
-  { at: 20, pack: "kolonne" },              //  3 — first pack that queues up behind itself
-  { at: 27, pack: "welle" },                //  4 — first time every lane is filled
-  { at: 34, pack: "koloss" },               //  1 — first brute, alone, so it reads before it's escorted
-  { at: 40, pack: "zange" },                //  4
-  { at: 47, pack: "reihe" },                //  4 — first solid wall of four
-  { at: 54, pack: "wache" },                //  3 — and now the brute has cover
-  { at: 61, pack: "trupp" },                //  6
-  { at: 68, pack: "mauer" },                //  8
-  { at: 75, pack: "bollwerk" },             //  6 — two brutes at the front
-  { at: 82, pack: "schwarm" },              // 10
-  { at: 90, pack: "mauer", reinforce: 1 },  // 12 — the authored run ends heavy
+  { at: 0,    pack: "spaeher" },              //  1 — opens the run right away
+  { at: 2.5,  pack: "paar" },                 //  2
+  { at: 5,    pack: "keil" },                 //  3
+  { at: 7.5,  pack: "kolonne" },              //  3 — first pack that queues up behind itself
+  { at: 10,   pack: "welle" },                //  4 — first time every lane is filled
+  { at: 12.5, pack: "koloss" },               //  1 — first brute, alone, so it reads before it's escorted
+  { at: 15,   pack: "zange" },                //  4
+  { at: 17.5, pack: "reihe" },                //  4 — first solid wall of four
+  { at: 20,   pack: "wache" },                //  3 — and now the brute has cover
+  { at: 22.5, pack: "trupp" },                //  6
+  { at: 25,   pack: "mauer" },                //  8
+  { at: 27.5, pack: "bollwerk" },             //  6 — two brutes at the front
+  { at: 30,   pack: "schwarm" },              // 10
+  { at: 32.5, pack: "mauer", reinforce: 1 },  // 12 — the authored run ends heavy
 ];
 
 // Past the last authored entry the plan continues forever, still with no

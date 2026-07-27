@@ -32,7 +32,8 @@ const CONFIG = {
   heroWalkMaxPxPerMs: 0.12,       // ceiling on pace with walk-speed nodes included: past this a single
                                   // frame's coast into a stop could carry him over the next camp's
                                   // mark, and `mods.walkMult` has no cap of its own
-  heroWalkEaseMs: 260,            // wind-up into the stride
+  heroWalkEaseMs: 120,            // wind-up into the stride (short: the ramp is charged against the
+                                  // dead-air budget, so a slow one costs usable camp spacing)
   heroHaltEaseMs: 140,            // plant when something musters, so he pulls up on his mark
   heroStridePx: 4.5,              // corridor pixels per radian of footstep bob (cadence follows ground covered)
   // Currency is earned only in the post-death vocab quiz, then spent between
@@ -80,16 +81,17 @@ const CONFIG = {
   // random: the same distance always produces the same fight, in the same lanes.
   // One metre = one 16px floor tile.
   enemyMaxCount: 18,         // safety cap on skeletons alive at once (a late pack can out-grow it)
-  encounterLateSpacingMetres: 5, // metres between packs once the authored plan runs out
+  encounterLateSpacingMetres: 2.5, // metres between packs once the authored plan runs out (see
+                                   // ENCOUNTER_PLAN: must stay inside the dead-air budget below, or
+                                   // every gap grows a filler skeleton)
   // How far past the edge of frame a pack forms up. This is a TIME budget wearing
-  // tile units: at `enemyWalkTilesPerMs` it's a ~370ms approach — long enough
-  // that skeletons visibly stride in rather than appear, short enough to fit
-  // inside the no-dead-air budget below alongside the sprint across the gap. It
-  // has to be re-derived whenever the march speed changes (0.3 tiles at the
-  // current 1.1 tiles/sec; at the old 2.7 it was 1.0), or a slow march spends the
-  // whole budget walking in and the screen sits bare through it. Measured from
-  // the *live* frame edge, so a wide viewport pushes the muster line out to match
-  // instead of popping packs in over open floor.
+  // tile units: at `enemyWalkTilesPerMs` it's a ~280ms approach — long enough
+  // that skeletons visibly stride in rather than appear, short enough that the
+  // corridor doesn't read as empty while a camp is already on its way. Re-derive
+  // it whenever the march speed changes (0.3 tiles at the current 1.1 tiles/sec;
+  // at the old 2.7 it was 1.0), or a slow march turns the walk-in into a wait.
+  // Measured from the *live* frame edge, so a wide viewport pushes the muster
+  // line out to match instead of popping packs in over open floor.
   enemyApproachTiles: 0.3,
   // No dead air. Walking to the next camp takes a few seconds, so the corridor
   // does go quiet in between; once nothing has been on camera this long,
