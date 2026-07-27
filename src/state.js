@@ -39,22 +39,23 @@ function freshState() {
       thorns: 0, spellFailProt: 0,
     },
     gold: 0,
-    // Endless trickle — lone skeletons walk in from the right at random
-    // intervals. An enemy: {id, maxHP, hp, dmg, slot, lane, pos, phase, phaseAt,
-    // attackAt, attackAnimAt, struckUntil}. `pos` is in tiles to the right of the
-    // hero (0 = at him); `phase` is walk | idle | attack | struck | dying.
-    // `struck` = fatally hit, standing until the bolt lands, then it collapses.
+    // Designed packs walk in from the right as the hero passes their metre marks
+    // (see encounters.js). An enemy: {id, maxHP, hp, dmg, slot, lane, pos, phase,
+    // phaseAt, attackAt, attackAnimAt, struckUntil}. `pos` is in tiles to the
+    // right of the hero (0 = at him); `phase` is walk | idle | attack | struck |
+    // dying. `struck` = fatally hit, standing until the bolt lands, then it
+    // collapses.
     kills: 0,                 // skeletons slain this run (score + quiz gold bonus)
     enemies: [],
     nextEnemyId: 1,
-    nextSpawnAt: 0,           // performance.now() timestamp for the next skeleton to walk in
-    laneBag: [],              // shuffled lanes left to deal this cycle (each lane used once per cycle)
-    lastSpawnLane: -1,        // lane of the previous spawn, so no two arrivals share a lane back-to-back
+    packIndex: 0,             // how far through the encounter plan this run has walked (see encounters.js)
     emptySinceMs: 0,          // when the corridor last went visibly bare (0 = something is on camera)
     cameraX: 0,               // hallway scroll (px): grows as the hero strides right down the corridor
-    distance: 0,              // metres walked this run (cameraX / TILE) — drives the spawn-rate ramp
+    distance: 0,              // metres walked this run (cameraX / TILE) — triggers the encounter plan
     cameraVel: 0,             // current pan speed (px/ms), eased toward its target so starts/stops aren't abrupt
     heroWalking: false,       // is the hero currently advancing (drives the walk bob)
+    heroSprinting: false,     // advancing at the clear-corridor run pace (see heroSprintMult)
+    stridePhase: 0,           // corridor px covered on foot — drives the footstep bob's cadence
     castTargetId: null,       // which enemy the in-flight fireball is aimed at
     poolIndex: 0,
     wrongMatchCount: 0,

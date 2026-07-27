@@ -4,63 +4,18 @@
 // build upgrades now live in the skill tree — see skilltree.js.)
 // ==============================================================================
 
-// A random delay (ms) until the next skeleton walks in, drawn uniformly from
-// the configured [min, max] window, then stretched by a progress ramp so the
-// trickle starts a touch slow and then quickens ever faster the deeper into the
-// corridor the hero gets. The multiplier decays geometrically from
-// `enemySpawnRampStartMult` at 0 m down to 1 once the hero has walked
-// `enemySpawnRampMetres`, and keeps shrinking beyond that.
-function randomSpawnDelay() {
-  const { enemySpawnMinMs: lo, enemySpawnMaxMs: hi } = CONFIG;
-  const base = lo + Math.random() * (hi - lo);
-  return base * spawnRateRampMult();
-}
-
-// Delay multiplier for the current run progress: higher early (slower spawns),
-// then shrinking without bound as the hero pushes down the hall. Progress is
-// measured in METRES WALKED (state.distance), not kills — the hero only advances
-// while the near stretch is clear, so distance is the honest "how deep am I"
-// signal, and it can't be farmed by standing in one spot trading blows. The
-// decay is geometric — mult = startMult^(1 - progress) — so the spawn *rate*
-// (1/gap) grows exponentially: sparser at the start, full base speed at
-// `enemySpawnRampMetres` (mult = 1), and accelerating past that point. There is
-// no rate ceiling — the only real cap is `enemyMaxCount` (how many skeletons can
-// be on screen at once), enforced in updateSpawns. `progress` is intentionally
-// NOT clamped so the gaps keep tightening the further the hero walks.
-function spawnRateRampMult() {
-  const { enemySpawnRampStartMult: startMult, enemySpawnRampMetres: rampMetres } = CONFIG;
-  if (rampMetres <= 0) return 1;
-  const progress = state.distance / rampMetres;
-  return Math.pow(startMult, 1 - progress);
-}
-
-// Pick the lane for the next arrival. Lanes are dealt from a shuffled bag —
-// every lane is used exactly once per cycle (so all lanes get populated), and
-// the bag is reshuffled if it would repeat the previous lane back-to-back, so
-// no two consecutive skeletons ever share a lane.
-function nextSpawnLane() {
-  if (CONFIG.enemyLanes <= 1) return 0;
-  if (state.laneBag.length === 0) {
-    do {
-      state.laneBag = shuffleArray([...Array(CONFIG.enemyLanes).keys()]);
-    } while (state.laneBag[state.laneBag.length - 1] === state.lastSpawnLane);
-  }
-  const lane = state.laneBag.pop();          // next lane to deal is the bag's tail
-  state.lastSpawnLane = lane;
-  return lane;
-}
-
 // The far end of the visible march track, in tiles from the hero: the largest
 // `pos` at which a skeleton's whole 1-tile-wide sprite still fits inside the
 // canvas. Beyond it the sprite is clipped by the right border, and a few pixels
 // of shoulder poking past the edge is not something the player can see or fight
 // — hence the full sprite width, not the bare canvas edge. Derived from the live
-// scene because the canvas (and so the track) grows with the viewport. Before
-// the scene exists, fall back to the spawn distance — that reads as "everything
-// is visible", which only ever suppresses the no-dead-air spawn below, never
-// triggers a spurious one.
+// scene because the canvas (and so the track) grows with the viewport, which is
+// also what keeps arrivals just off camera on a wide screen instead of popping
+// in over open floor. Before the scene exists (possible on the very first frame
+// of a run, ahead of the first render) fall back to a nominal off-screen mark.
+const FALLBACK_EDGE_TILES = 11;
 function trackEdgeTiles() {
-  if (!scene) return CONFIG.enemySpawnTiles;
+  if (!scene) return FALLBACK_EDGE_TILES;
   return (scene.artW - scene.enemyLineX) / TILE - 1;
 }
 
@@ -72,33 +27,61 @@ function sceneIsEmpty() {
   return !state.enemies.some((e) => e.pos <= edge);
 }
 
-// Send in one lone skeleton off the right edge. Every skeleton is identical
-// (same HP/damage). It joins its dealt lane, queued a gap behind whoever is
-// already furthest out in that lane so arrivals never spawn on top of a corpse
-// or a straggler, then walks to its own stop slot before it starts attacking.
+// Lanes are authored in the pack data (encounters.js), so a plan written for
+// four lanes still works if CONFIG.enemyLanes is dialled down — the outer lanes
+// fold into the last real one rather than marching in off the floor.
+function clampLane(lane) {
+  return Math.max(0, Math.min(lane | 0, CONFIG.enemyLanes - 1));
+}
+
+// Send in one designed pack: every rank of it, in the lanes the plan asked for,
+// one `enemySpawnGapTiles` step deeper per rank so the formation marches in
+// holding its shape. Returns how many actually made it in.
 //
-// `atEdge` is the no-dead-air arrival (see updateSpawns): it lands just inside
-// the right edge of frame — on camera immediately, fading in through the edge
-// vignette — instead of taking the usual multi-second off-screen approach. On a
-// viewport wide enough that the normal spawn distance is already in frame, that
-// distance is used unchanged. It also skips the trail-behind-stragglers rule:
-// those stragglers are by definition off camera and further out, so queueing
-// behind them would put this one off camera too, which is the whole thing we're
-// trying to avoid. Nothing overlaps — the new arrival is *ahead* of them, and
-// updateEnemies re-sorts the lane and holds the ones behind at a full gap.
-function spawnEnemy(now, atEdge = false) {
-  const id = state.nextEnemyId++;
-  const lane = nextSpawnLane();
-  // Spawn at the standard distance, but if this lane still has stragglers, drop
-  // in a gap behind the rearmost so the new one trails the column.
-  let pos = CONFIG.enemySpawnTiles;
-  if (atEdge) {
-    pos = Math.min(pos, trackEdgeTiles());
-  } else {
-    for (const e of state.enemies) {
-      if (e.lane === lane) pos = Math.max(pos, e.pos + CONFIG.enemySpawnGapTiles);
+// The pack forms up just off the right edge of frame and strides into view
+// inside half a second (`enemyApproachTiles`) — short enough that the corridor
+// never reads as empty while a pack is inbound, long enough that skeletons walk
+// in rather than appear. `inFrame` is the no-dead-air pull-forward (see
+// updateSpawns): the front rank lands right at the edge of frame instead, on
+// camera immediately, fading in through the 16px edge vignette.
+function spawnPack(now, entry, inFrame = false) {
+  const ranks = packRanks(entry);
+  const lanes = new Set();
+  for (const rank of ranks) for (const lane of rank) lanes.add(clampLane(lane));
+  const edge = trackEdgeTiles();
+  let front = inFrame ? edge : edge + CONFIG.enemyApproachTiles;
+  // Never form up on top of a straggler. If anything the pack shares a lane with
+  // is still standing at or behind the muster line, shift the WHOLE pack back as
+  // a unit — pushing just the colliding members would break the designed shape,
+  // which is the one thing the plan is for. Skeletons already ahead of the line
+  // (in melee, walking in) can't collide and are ignored.
+  for (const e of state.enemies) {
+    if (!lanes.has(e.lane)) continue;
+    front = Math.max(front, e.pos + CONFIG.enemySpawnGapTiles);
+  }
+  let sent = 0;
+  for (let r = 0; r < ranks.length; r++) {
+    const pos = front + r * CONFIG.enemySpawnGapTiles;
+    const seen = new Set();
+    for (const raw of ranks[r]) {
+      const lane = clampLane(raw);
+      if (seen.has(lane)) continue;          // two of a rank folded into one lane — keep the front one
+      seen.add(lane);
+      // The cap is a safety valve on how much fits on screen, not a design
+      // input: a late pack can out-grow it, and the overflow is simply dropped.
+      if (livingEnemies().length >= CONFIG.enemyMaxCount) return sent;
+      spawnEnemy(now, lane, pos);
+      sent++;
     }
   }
+  return sent;
+}
+
+// One skeleton, placed exactly where the pack wants it. Every skeleton is
+// identical (same HP/damage); it walks to its own stop slot before it starts
+// attacking.
+function spawnEnemy(now, lane, pos) {
+  const id = state.nextEnemyId++;
   state.enemies.push({
     id,
     maxHP: CONFIG.enemyBaseHP,
@@ -115,8 +98,32 @@ function spawnEnemy(now, atEdge = false) {
   });
 }
 
-// A run: fixed build (persists between runs), fight the endless trickle until
-// death. Build/gold are meta-progression and are NOT reset here.
+// Close the gap on a pack that is already marching in but hasn't reached frame
+// yet: slide the whole formation up until its leader sits exactly at the edge of
+// frame. Every skeleton moves by the same amount, so the shape the plan designed
+// is untouched — and since none of them are on camera, the shift itself is
+// invisible. What the player sees is simply the pack arriving.
+//
+// This is what the no-dead-air rule does when an encounter is already on its
+// way. Sending in ANOTHER pack instead would be worse twice over: it burns a
+// designed encounter early, and the newcomer just musters behind the pack
+// already inbound (spawnPack won't stack them), so it lands off camera too and
+// the screen stays bare — which cascades into pulling pack after pack forward.
+function advanceInboundPack() {
+  if (!state.enemies.length) return false;
+  const edge = trackEdgeTiles();
+  let lead = Infinity;
+  for (const e of state.enemies) lead = Math.min(lead, e.pos);
+  if (lead <= edge) return false;                  // already on camera, nothing to close
+  const shift = lead - edge;
+  for (const e of state.enemies) e.pos -= shift;
+  return true;
+}
+
+// A run: fixed build (persists between runs), walk the hall and fight the packs
+// the plan sends in until the hero falls. Build/gold are meta-progression and
+// are NOT reset here. Every run starts at metre 0 on plan index 0, so two runs
+// walk into exactly the same encounters in the same order.
 function startRun() {
   state.kills = 0;
   state.heroHP = state.heroMaxHP;
@@ -130,10 +137,10 @@ function startRun() {
   state.distance = 0;
   state.cameraVel = 0;
   state.heroWalking = false;
-  state.nextSpawnAt = now + CONFIG.enemyFirstSpawnMs;
+  state.heroSprinting = false;
+  state.stridePhase = 0;
+  state.packIndex = 0;        // back to the top of the encounter plan
   state.emptySinceMs = now;   // the corridor starts bare — the no-dead-air clock is already ticking
-  state.laneBag = [];
-  state.lastSpawnLane = -1;
   state.castTargetId = null;
   state.castAt = 0;
   state.castChords = null;
@@ -167,4 +174,4 @@ function shuffleArray(arr) {
   return arr;
 }
 
-window.Incanto.progression = { randomSpawnDelay, spawnRateRampMult, nextSpawnLane, spawnEnemy, trackEdgeTiles, sceneIsEmpty, startRun, layoutCircle, shuffleArray };
+window.Incanto.progression = { spawnPack, spawnEnemy, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };

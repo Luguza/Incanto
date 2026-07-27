@@ -18,39 +18,50 @@ function getEffectiveDt(rawDt) {
   return rawDt;
 }
 
-// Drip a new skeleton into the arena on the random schedule, unless we're
-// already at the on-screen cap. Either way, re-arm the timer for the next
-// arrival so the trickle keeps a fast but irregular rhythm.
+// Walk the hero into the next designed encounter. Enemies do not trickle in on
+// a timer any more: the run is a fixed sequence of PACKS laid out along the hall
+// at fixed metre marks (see encounters.js), and crossing a mark sends that pack
+// in. Nothing here is random, so the same distance always produces the same
+// fight — which is what makes the packs designable in the first place.
 //
-// DECISION: an arrival that lands while the arena is full is DROPPED, not
-// deferred to a quick retry. Retrying on a short timer would pin the population
-// to `enemyMaxCount` forever — every kill instantly backfilled — so a player who
-// out-kills the spawn rate could never thin the horde, never get a clear stretch
-// to walk into, and (now that the ramp reads distance) never progress again.
-// Dropping the arrival makes the cap a ceiling the player can push back from.
+// `state.packIndex` walks the plan, never rewinding, so a hero who covers a lot
+// of ground in one go still meets every pack in order rather than skipping to
+// whatever mark he happens to land on.
 function updateSpawns(now) {
-  // No dead air. The random schedule alone leaves the corridor visibly bare for
-  // long stretches — a slow draw early in a run, or the multi-second off-screen
-  // approach after the player clears the last skeleton — and an empty screen is
-  // just waiting. So the emptiness itself is on a timer: once nothing has been
-  // on camera for `enemyMaxEmptyMs`, an arrival is forced regardless of the
-  // schedule, and lands at the far edge of frame so it is on camera the very
-  // next frame instead of starting another long walk in from off screen. That
-  // bounds an empty screen at `enemyMaxEmptyMs` plus a frame.
-  if (sceneIsEmpty()) {
+  // Track how long the corridor has been visibly bare — dissolving skeletons
+  // still count as occupied, since they're drawn.
+  const empty = sceneIsEmpty();
+  if (empty) {
     if (!state.emptySinceMs) state.emptySinceMs = now;
-    if (now - state.emptySinceMs >= CONFIG.enemyMaxEmptyMs && livingEnemies().length < CONFIG.enemyMaxCount) {
-      spawnEnemy(now, true);
-      state.emptySinceMs = now;              // restart the clock; it's still bare for a beat longer
-      state.nextSpawnAt = now + randomSpawnDelay();
-      return;
-    }
   } else {
     state.emptySinceMs = 0;
   }
-  if (now < state.nextSpawnAt) return;
-  if (livingEnemies().length < CONFIG.enemyMaxCount) spawnEnemy(now);
-  state.nextSpawnAt = now + randomSpawnDelay();
+  if (livingEnemies().length >= CONFIG.enemyMaxCount) return;
+
+  const next = encounterAt(state.packIndex);
+  const reached = state.distance >= next.at;
+  // No dead air: the hero only advances while the near stretch is clear, so a
+  // slow build can end up short of the next mark with nothing on screen. Rather
+  // than leave him staring down an empty hall, pull that pack forward. This
+  // never changes WHAT comes next or in what order — only how early it arrives —
+  // so the plan stays a plan. It also bounds an empty screen at
+  // `enemyMaxEmptyMs` plus a frame, because a pulled-forward pack lands in frame
+  // rather than marching in from off camera.
+  const starved = empty && now - state.emptySinceMs >= CONFIG.enemyMaxEmptyMs;
+  // If a pack is already marching in when the budget runs out, it isn't a
+  // missing encounter — it's one that hasn't arrived yet. Close the gap on it
+  // instead of sending an unplanned one in on top.
+  if (starved && advanceInboundPack()) return;
+  if (!reached && !starved) return;
+  spawnPack(now, next, starved);
+  state.packIndex++;
+  // DECISION: the bare-stretch clock is deliberately NOT restarted here. A pack
+  // that spawns off camera still leaves the screen empty for the half second it
+  // takes to stride in, and that half second is part of the same stretch the
+  // player has been staring at. Restarting the clock would hand it a fresh full
+  // budget and let a single gap run to nearly twice `enemyMaxEmptyMs`. Leaving
+  // it running means an unusually long gap trips the pull-forward and lands the
+  // next pack in frame instead — the whole point of the rule.
 }
 
 // March the mob one frame. Each lane is resolved independently, front-to-back
@@ -170,19 +181,43 @@ function updateCamera(now, dt) {
   // skeleton is near) with a frame-rate-independent time constant, so the hero
   // accelerates into his stride and coasts to a stop instead of snapping.
   // Fortune's walk-speed nodes scale the stride pace.
+  //
+  // With nothing in the hall at all he breaks into a run. That is what
+  // reconciles designed packs with a screen that is never idle: the gap between
+  // two packs is a distance the plan chose, and sprinting it means the hero
+  // covers that ground in well under a second instead of trudging it for three.
+  // The stretch between fights stays a stretch — corridor rushing past — rather
+  // than turning into dead air the spawner has to paper over with an unplanned
+  // arrival.
+  //
+  // The gate is "no skeletons exist", not "none on camera": the moment a pack
+  // musters off the right edge he drops back to a walk, so he isn't still
+  // sprinting through the half-second they take to stride into frame. That also
+  // keeps him from blowing through the NEXT pack's mark during that half second
+  // and stacking two encounters into one.
   const walkSpeed = CONFIG.heroWalkPxPerMs * state.mods.walkMult;
-  const targetVel = clear ? walkSpeed : 0;
-  const k = 1 - Math.exp(-dt / CONFIG.heroWalkEaseMs);
+  const pace = walkSpeed * (state.enemies.length === 0 ? CONFIG.heroSprintMult : 1);
+  const targetVel = clear ? pace : 0;
+  // Winding up into the run is snappier than easing into a walk — a 6 m gap is
+  // over in well under a second, so a 380ms ramp would spend most of it still
+  // accelerating and never actually reach the sprint.
+  const ease = targetVel > walkSpeed ? CONFIG.heroSprintEaseMs : CONFIG.heroWalkEaseMs;
+  const k = 1 - Math.exp(-dt / ease);
   state.cameraVel += (targetVel - state.cameraVel) * k;
   if (state.cameraVel < 1e-4) state.cameraVel = 0;
   const advanced = state.cameraVel * dt;
   state.cameraX += advanced;
+  // Footstep cadence is driven by ground covered, not by wall time, so the bob
+  // quickens with the sprint and freezes when he plants — and never jumps phase
+  // the way retuning a time-based sine would.
+  state.stridePhase += advanced;
   // Metres walked this run: the same advance in tile units. This is the run's
-  // depth gauge — it drives the spawn-rate ramp (see spawnRateRampMult), so the
-  // horde thickens as the hero pushes down the hall rather than as he racks up
-  // kills standing still.
+  // depth gauge — it's what trips the encounter plan (see updateSpawns), so the
+  // hero meets packs by pushing down the hall rather than by racking up kills
+  // standing still.
   state.distance += advanced / TILE;
   state.heroWalking = state.cameraVel > walkSpeed * 0.15;
+  state.heroSprinting = state.cameraVel > walkSpeed * 1.2;
 }
 
 let lastRafNow = null;
