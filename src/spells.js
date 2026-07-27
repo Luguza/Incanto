@@ -76,6 +76,9 @@ function activeSpell() { return SPELL_BY_ID[activeSpellId()]; }
 // can be read but not cast from, so tapping one is a no-op rather than a swap.
 function spellSelect(id) {
   if (!SPELL_BY_ID[id] || !spellUnlocked(id)) return;
+  // A drag that turned a page fires a click too. Ignore it, or leafing through
+  // the book would also re-arm whichever spell the release landed on.
+  if (typeof bookDragUntil !== "undefined" && performance.now() < bookDragUntil) return;
   state.activeSpell = id;
   saveProgress();
   state._structuralDirty = true;

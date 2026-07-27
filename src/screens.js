@@ -318,6 +318,10 @@ function renderCombatFull() {
       </svg>
       ${renderSpellbook()}
     </div>`;
+
+  // The book is replaced wholesale by the innerHTML above, so its drag-to-turn
+  // handlers are rebound to the fresh SVG on every structural render.
+  attachSpellbookDrag();
 }
 
 function patchCombatContinuous(now) {

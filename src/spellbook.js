@@ -17,21 +17,43 @@
 
 // --- Page geometry -----------------------------------------------------------
 // The left page as a quad, corners clockwise from its outer top. The right page
-// is this mirrored about x = 300 (the spine). Tuned so the notch bottom (the
-// inner top corners, y = NOTCH_Y) sits low enough for the circle to nest in it.
-const BOOK_W = 600, BOOK_H = 232;
+// is this mirrored about x = 300 (the spine).
+//
+// The book is raked hard toward the player: the top edges climb ~22° from the
+// spine out to the wings, which is what makes the V deep enough for the rune
+// wheel to sit in. Paying for that angle in height would have pushed the book
+// halfway up the screen, so the pages simply RUN OFF THE BOTTOM — both lower
+// corners sit below the viewBox and are clipped away. Nothing is lost: the part
+// of a page below its illustration is blank vellum anyway.
+//
+// The consequence is that the book's thickness (cover rim + the slivers of
+// already-turned pages) is only ever visible along the OUTER edges, at the left
+// and right of the screen. There is no bottom edge on screen to show it on.
+const BOOK_W = 600, BOOK_H = 250;
 const SPINE_X = 300;
-const NOTCH_Y = 104;                   // where both pages meet at the top — the bottom of the V
+const NOTCH_Y = 126;                   // where both pages meet at the top — the bottom of the V
 const PAGE_L = [
-  { x: 30, y: 44 },                    // outer top   — the high corner of the wing
-  { x: SPINE_X, y: NOTCH_Y },          // inner top   — the notch
-  { x: SPINE_X, y: 206 },              // inner bottom— at the spine
-  { x: 12, y: 168 },                   // outer bottom
+  { x: 38, y: 20 },                    // outer top    — the high corner of the wing
+  { x: SPINE_X, y: NOTCH_Y },          // inner top    — the notch
+  { x: SPINE_X, y: 300 },              // inner bottom — below the viewBox, clipped
+  { x: 16, y: 262 },                   // outer bottom — below the viewBox, clipped
 ];
 // A page's content rides on the page plane, so it's rotated to match that
 // plane's tilt (the angle of its top edge) rather than sitting flat on screen.
 const PAGE_TILT = Math.atan2(NOTCH_Y - PAGE_L[0].y, SPINE_X - PAGE_L[0].x) * 180 / Math.PI;
-const CONTENT = { x: 160, y: 120, ring: 35, art: 24 };   // centre + radii, in left-page coords
+// Centre + radii of a page's contents, in left-page coords. The name sits ABOVE
+// the illustration (see spellPage), so the ring is set low enough on the page to
+// leave the title clear of the top edge once the whole group is tilted.
+const CONTENT = { x: 160, y: 170, ring: 37, art: 25 };
+// Foreshortening. Rotating the contents onto the page plane gets the direction
+// right but not the perspective: a page raked this far toward the player is
+// seen at a slant, so it should be squashed vertically too. Applied OUTSIDE the
+// rotation (translate → squash → rotate) so the squash is along screen-vertical
+// rather than along the page's own axis.
+const PAGE_SQUASH = 0.85;
+// How far a page must be dragged, as a fraction of the book's width, before
+// letting go turns the leaf instead of springing it back.
+const FLIP_THRESHOLD = 0.12;
 
 const mirror = (p) => ({ x: 2 * SPINE_X - p.x, y: p.y });
 const quad = (pts) => pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
@@ -108,12 +130,12 @@ const SPELL_ART = {
 // The runic glyph ring around an illustration. Reuses the rune circle's
 // procedural glyph templates (see rune-circle.js) so the book is written in the
 // same alphabet as the wheel the player traces on.
-function pageGlyphRing(seed, radius, count = 11) {
+function pageGlyphRing(seed, radius, count = 13) {
   let s = "";
   for (let i = 0; i < count; i++) {
-    // Leave the bottom of the ring open so the glyphs never collide with the
-    // spell's name — the arc runs over the top, not all the way round.
-    const ang = -186 + (i * 192) / (count - 1);
+    // A ring left open at the TOP, where the spell's name sits — the glyphs run
+    // down one side, under the illustration and back up the other.
+    const ang = 22 + (i * 316) / (count - 1);
     s += glyphAt(0, 0, radius, ang, 8, seed * 31 + i, "book-glyph");
   }
   return s;
@@ -154,10 +176,11 @@ function spellPage(spell, side) {
   }
 
   const name = unlocked ? spell.name : "Versiegelt";
-  // Long names (Meteoritenschauer) have to fit the page width; squeeze rather
-  // than clip, so every page keeps one line.
+  // The title heads the page, above the illustration and inside the gap left in
+  // the glyph ring. Long names (Meteoritenschauer) have to fit the page width;
+  // squeeze rather than clip, so every page keeps its title on one line.
   const nameSvg =
-    `<text class="bk-name" y="${CONTENT.ring + 20}" text-anchor="middle" ` +
+    `<text class="bk-name" y="${-(CONTENT.ring + 19)}" text-anchor="middle" ` +
     `fill="${unlocked ? c.core : "#6d6484"}" textLength="128" lengthAdjust="spacingAndGlyphs">${name}</text>`;
 
   // The ribbon marking the page the book is open at, hung over the outer edge.
@@ -168,29 +191,35 @@ function spellPage(spell, side) {
         { x: pts[0].x, y: pts[0].y + 34 }])}"/></g>`
     : "";
 
+  // `data-side` lets the drag handler find the leaf it should turn without
+  // re-deriving which spell is on it.
   const act = unlocked ? ` data-act="spellSelect" data-args='["${spell.id}"]'` : "";
-  return `<g class="bk-page${active ? " active" : ""}${unlocked ? "" : " locked"}"${act}>
+  return `<g class="bk-page${active ? " active" : ""}${unlocked ? "" : " locked"}" data-side="${side}"${act}>
       <polygon class="bk-leaf" points="${quad(pts)}"${active ? ` stroke="${c.mid}"` : ""}/>
       ${ribbon}
-      <g transform="translate(${cx},${CONTENT.y}) rotate(${tilt.toFixed(2)})">${inner}${nameSvg}</g>
+      <g transform="translate(${cx},${CONTENT.y}) scale(1,${PAGE_SQUASH}) rotate(${tilt.toFixed(2)})">${inner}${nameSvg}</g>
     </g>`;
 }
 
-// The stack of pages already turned on one side, drawn as a few edge slivers
-// behind the open leaf so the book reads as thick rather than as two flat cards.
+// The pages already turned on one side, drawn as a few slivers peeking out past
+// the open leaf's OUTER edge — the only place the book's thickness shows, since
+// its lower edge is clipped off the bottom of the screen. They also double as
+// the affordance for dragging: a fat stack on the right means more to turn to.
 function pageStack(side, count) {
   if (count <= 0) return "";
   const pts = side < 0 ? PAGE_L : PAGE_L.map(mirror);
   let s = "";
   for (let i = Math.min(4, count); i > 0; i--) {
-    const off = i * 2.5;
+    const off = i * 4.5;
+    // Pushed straight out toward the screen edge — no downward offset, or the
+    // slivers would fan out along a bottom edge that isn't there.
     const shifted = [
-      { x: pts[0].x - side * off, y: pts[0].y + off * 0.5 },
-      { x: pts[1].x, y: pts[1].y + off * 0.5 },
-      { x: pts[2].x, y: pts[2].y + off * 0.4 },
-      { x: pts[3].x - side * off, y: pts[3].y + off * 0.4 },
+      { x: pts[0].x - side * off, y: pts[0].y - off * 0.22 },
+      { x: pts[1].x, y: pts[1].y },
+      { x: pts[2].x, y: pts[2].y },
+      { x: pts[3].x - side * off, y: pts[3].y },
     ];
-    s += `<polygon class="bk-stack" points="${quad(shifted)}" opacity="${(0.5 - i * 0.08).toFixed(2)}"/>`;
+    s += `<polygon class="bk-stack" points="${quad(shifted)}" opacity="${(0.55 - i * 0.09).toFixed(2)}"/>`;
   }
   return s;
 }
@@ -205,25 +234,17 @@ function renderSpellbook() {
   const left = SPELLS[spread * 2];
   const right = SPELLS[spread * 2 + 1];
 
-  // Covers: the same quads pushed out and down, so a rim of leather shows past
-  // the pages on the outer and lower edges.
+  // Covers: the same quads pushed OUT only, so a rim of leather shows past the
+  // pages along the outer edges and the top of each wing. Nothing is pushed
+  // down — the bottom of the book is off screen.
   const coverPts = (side) => {
     const p = side < 0 ? PAGE_L : PAGE_L.map(mirror);
     return [
-      { x: p[0].x - side * 9, y: p[0].y - 4 },
-      { x: p[1].x, y: p[1].y - 2 },
-      { x: p[2].x, y: p[2].y + 9 },
-      { x: p[3].x - side * 9, y: p[3].y + 8 },
+      { x: p[0].x - side * 11, y: p[0].y - 6 },
+      { x: p[1].x, y: p[1].y - 1 },
+      { x: p[2].x, y: p[2].y },
+      { x: p[3].x - side * 13, y: p[3].y },
     ];
-  };
-
-  const tab = (dir, x) => {
-    const disabled = dir < 0 ? spread <= 0 : spread >= leaves - 1;
-    return `<g class="bk-tab${disabled ? " off" : ""}"${disabled ? "" :
-      ` data-act="spellbookFlip" data-args="[${dir}]"`} transform="translate(${x},213)">
-        <rect class="bk-tabbg" x="-19" y="-13" width="38" height="26" rx="9"/>
-        <path class="bk-tabarrow" d="${dir < 0 ? "M4 -6 L-4 0 L4 6" : "M-4 -6 L4 0 L-4 6"}"/>
-      </g>`;
   };
 
   return `
@@ -235,10 +256,8 @@ function renderSpellbook() {
       ${pageStack(1, SPELLS.length - spread * 2 - 2)}
       ${spellPage(left, -1)}
       ${spellPage(right, 1)}
-      <path class="bk-spine" d="M${SPINE_X} ${NOTCH_Y - 2} L${SPINE_X} 215"/>
-      <path class="bk-spine-hl" d="M${SPINE_X} ${NOTCH_Y + 6} L${SPINE_X} 200"/>
-      ${tab(-1, 96)}
-      ${tab(1, BOOK_W - 96)}
+      <path class="bk-spine" d="M${SPINE_X} ${NOTCH_Y - 2} L${SPINE_X} ${BOOK_H}"/>
+      <path class="bk-spine-hl" d="M${SPINE_X} ${NOTCH_Y + 6} L${SPINE_X} ${BOOK_H}"/>
     </svg>`;
 }
 
@@ -252,4 +271,85 @@ function spellbookFlip(dir) {
   state._structuralDirty = true;
 }
 
-window.Incanto.spellbook = { SPELL_ART, renderSpellbook, spellbookFlip };
+// ---------------------------------------------------------------------------
+// Drag to turn a page. There are no flip buttons: you tap a page to cast from
+// it and drag across the book to leaf through it, which is what you'd do to a
+// real book. Both gestures start with the same pointerdown, so the drag sets
+// `bookDragUntil` on release and spellSelect (spells.js) ignores the click that
+// a completed drag also fires — otherwise turning a page would select whatever
+// spell the release happened to land on.
+// ---------------------------------------------------------------------------
+let bookDragUntil = 0;
+
+// Bound to the freshly rendered book after every structural combat render (the
+// SVG is replaced wholesale, so there are no stale listeners to clean up).
+function attachSpellbookDrag() {
+  const svg = document.getElementById("spellbook");
+  if (!svg) return;
+  const leaves = Math.ceil(SPELLS.length / 2);
+  let startX = 0, dx = 0, down = false, turning = null;
+
+  // Which leaf a drag in this direction turns, and how far it has closed toward
+  // the spine (0 = flat open, 1 = shut). Dragging left turns the right-hand
+  // page over; dragging right turns the left-hand one back.
+  const leafFor = (d) => svg.querySelector(`.bk-page[data-side="${d < 0 ? 1 : -1}"]`);
+  const canTurn = (d) => (d < 0 ? (state.bookSpread || 0) < leaves - 1 : (state.bookSpread || 0) > 0);
+
+  const setTurn = (leaf, closed) => {
+    if (!leaf) return;
+    // Squeezing the page horizontally about the spine reads as it standing up
+    // and swinging over — the right motion for a book seen this close to flat.
+    leaf.setAttribute("transform",
+      `translate(${SPINE_X},0) scale(${Math.max(0.02, 1 - closed).toFixed(3)},1) translate(${-SPINE_X},0)`);
+  };
+  const release = () => {
+    if (turning) turning.removeAttribute("transform");
+    svg.classList.remove("dragging");
+    turning = null;
+  };
+
+  svg.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+    down = true; startX = e.clientX; dx = 0; turning = null;
+  });
+
+  svg.addEventListener("pointermove", (e) => {
+    if (!down) return;
+    dx = e.clientX - startX;
+    const w = svg.getBoundingClientRect().width || 1;
+    if (Math.abs(dx) < 4 || !canTurn(dx)) { release(); return; }
+    if (!turning) { turning = leafFor(dx); svg.classList.add("dragging"); }
+    setTurn(turning, Math.min(1, Math.abs(dx) / (w * 0.5)));
+  });
+
+  const onUp = (e) => {
+    if (!down) return;
+    down = false;
+    const w = svg.getBoundingClientRect().width || 1;
+    const flipped = Math.abs(dx) > w * FLIP_THRESHOLD && canTurn(dx);
+    release();
+    if (flipped) {
+      // Swallow the click this same gesture is about to fire, so turning a page
+      // never also re-arms the spell it let go over. Kept short — the click
+      // arrives right behind pointerup, and a longer window would start eating
+      // genuine taps made straight after a flip.
+      bookDragUntil = performance.now() + 250;
+      spellbookFlip(dx < 0 ? 1 : -1);
+      return;
+    }
+    // A tap. The pages still carry `data-act`, but the drag needs pointer
+    // capture on the SVG, and a captured pointer makes the browser dispatch the
+    // click to the CAPTURE TARGET — the SVG root — instead of to the leaf under
+    // the finger, so the delegated dispatch in main.js never sees it. Resolve
+    // the leaf here, exactly as attachTreeInteractions does for node taps.
+    if (Math.abs(dx) >= 8) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const g = el && el.closest ? el.closest(".bk-page[data-act]") : null;
+    if (g) spellSelect(JSON.parse(g.dataset.args)[0]);
+  };
+  svg.addEventListener("pointerup", onUp);
+  svg.addEventListener("pointercancel", onUp);
+}
+
+window.Incanto.spellbook = { SPELL_ART, renderSpellbook, spellbookFlip, attachSpellbookDrag };
