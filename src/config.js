@@ -18,21 +18,24 @@ const CONFIG = {
   dmgUpgradeBaseCost: 30,
   hpUpgradeBaseCost: 25,
   upgradeCostGrowth: 1.6,
-  // Hallway advance: the hero holds his spot on screen while the corridor scrolls
+  // Hallway travel: the hero holds his spot on screen while the corridor scrolls
   // past (the camera pans right), reading as him striding deeper down the hall.
-  // He walks whenever the near stretch of floor is clear and halts the moment a
-  // skeleton crosses into it — that's when he plants to fight.
-  heroWalkPxPerMs: 0.03,          // corridor pan speed while advancing (~1.9 tiles/sec)
-  heroWalkClearFraction: 2 / 3,   // no skeleton within this fraction from the left → advance
-  heroWalkEaseMs: 380,            // time-constant the pan velocity eases in/out over (no abrupt starts/stops)
-  // With nothing on camera at all the hero runs instead of walking, so the gap
-  // between two designed packs is crossed in a beat. This is what lets the
-  // encounter plan space packs at a readable 6-8 m apart AND keep the screen
-  // busy: without it the hero trudges those metres for three seconds of empty
-  // corridor, and the no-dead-air rule has to pull the next pack in early —
-  // which quietly turns the plan's distance marks into decoration.
-  heroSprintEaseMs: 130,          // the run winds up faster than the walk, so short gaps still reach speed
-  heroSprintMult: 5,              // stride multiplier while the corridor is clear of skeletons
+  // He travels ONLY between camps — the moment one musters he plants and fights,
+  // and sets off again once it's dead and gone. Distance therefore never grows
+  // during a fight, which is what lets the encounter plan trigger purely on
+  // metres walked without two camps ever stacking (see updateCamera).
+  //
+  // He covers the gap at a brisk clip rather than a stroll: the walk between
+  // camps plus the camp's stride into frame has to fit inside `enemyMaxEmptyMs`,
+  // or the corridor reads as empty while he's still getting there. At this pace
+  // the plan's 6-8 m gaps take ~0.4-0.55 s.
+  heroWalkPxPerMs: 0.03,          // base pace (~1.9 tiles/sec) before the travel multiplier
+  heroTravelMult: 8,              // between-camps stride multiplier (~15 tiles/sec)
+  heroTravelMaxPxPerMs: 0.36,     // ceiling on travel pace (~22 tiles/sec), walk-speed nodes included:
+                                  // past this a single frame's coast into a stop could carry him over
+                                  // the next mark, and `mods.walkMult` has no cap of its own
+  heroTravelEaseMs: 130,          // wind-up into the stride (short, or a brief gap never reaches pace)
+  heroHaltEaseMs: 140,            // plant when a camp musters, so he pulls up on his mark
   heroStridePx: 4.5,              // corridor pixels per radian of footstep bob (cadence follows ground covered)
   // Currency is earned only in the post-death vocab quiz, then spent between
   // runs on permanent build upgrades
@@ -84,12 +87,12 @@ const CONFIG = {
   // tile units: at `enemyWalkTilesPerMs` it's a ~370ms approach — long enough
   // that skeletons visibly stride in rather than appear, short enough to fit
   // inside the no-dead-air budget below alongside the sprint across the gap. It
-  // has to be re-derived whenever the march speed changes (0.4 tiles at the
+  // has to be re-derived whenever the march speed changes (0.3 tiles at the
   // current 1.1 tiles/sec; at the old 2.7 it was 1.0), or a slow march spends the
   // whole budget walking in and the screen sits bare through it. Measured from
   // the *live* frame edge, so a wide viewport pushes the muster line out to match
   // instead of popping packs in over open floor.
-  enemyApproachTiles: 0.4,
+  enemyApproachTiles: 0.3,
   // No dead air: the corridor must never stand visibly bare for as long as a
   // second. The hero only advances while the near stretch is clear, so a build
   // that clears slowly can end up short of the next mark with nothing on screen;

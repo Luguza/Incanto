@@ -53,8 +53,6 @@ function freshState() {
     cameraX: 0,               // hallway scroll (px): grows as the hero strides right down the corridor
     distance: 0,              // metres walked this run (cameraX / TILE) — triggers the encounter plan
     cameraVel: 0,             // current pan speed (px/ms), eased toward its target so starts/stops aren't abrupt
-    heroWalking: false,       // is the hero currently advancing (drives the walk bob)
-    heroSprinting: false,     // advancing at the clear-corridor run pace (see heroSprintMult)
     stridePhase: 0,           // corridor px covered on foot — drives the footstep bob's cadence
     castTargetId: null,       // which enemy the in-flight fireball is aimed at
     poolIndex: 0,

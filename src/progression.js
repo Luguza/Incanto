@@ -171,8 +171,6 @@ function startRun() {
   state.cameraX = 0;
   state.distance = 0;
   state.cameraVel = 0;
-  state.heroWalking = false;
-  state.heroSprinting = false;
   state.stridePhase = 0;
   state.packIndex = 0;        // back to the top of the encounter plan
   state.emptySinceMs = now;   // the corridor starts bare — the no-dead-air clock is already ticking
