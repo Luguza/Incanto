@@ -47,13 +47,34 @@ function nextSpawnLane() {
   return lane;
 }
 
-// Send in one lone skeleton off the right edge. Every skeleton is identical
-// (same HP/damage). It joins its dealt lane, queued a gap behind whoever is
-// already furthest out in that lane so arrivals never spawn on top of a corpse
-// or a straggler, then walks to its own stop slot before it starts attacking.
+// Roll the variant for the next arrival: a weighted pick among the entries of
+// CONFIG.enemyTypes whose `minKills` the run has already passed, so the tougher
+// ones only start turning up once the hero has a few kills behind him. Falls
+// back to the first entry (the plain skeleton) if nothing is unlocked yet.
+function pickEnemyType() {
+  const types = CONFIG.enemyTypes;
+  const pool = types.filter((t) => state.kills >= (t.minKills || 0));
+  if (!pool.length) return types[0];
+  const total = pool.reduce((sum, t) => sum + t.weight, 0);
+  let roll = Math.random() * total;
+  for (const t of pool) {
+    roll -= t.weight;
+    if (roll < 0) return t;
+  }
+  return pool[pool.length - 1];
+}
+
+// Send in one lone skeleton off the right edge. Its variant (see pickEnemyType)
+// decides how much HP and damage it carries, how fast it swings, and how big it
+// is drawn — everything else is identical. It joins its dealt lane, queued a gap
+// behind whoever is already furthest out in that lane so arrivals never spawn on
+// top of a corpse or a straggler, then walks to its own stop slot before it
+// starts attacking.
 function spawnEnemy(now) {
   const id = state.nextEnemyId++;
   const lane = nextSpawnLane();
+  const type = pickEnemyType();
+  const hp = Math.max(1, Math.round(CONFIG.enemyBaseHP * type.hpMult));
   // Spawn at the standard distance, but if this lane still has stragglers, drop
   // in a gap behind the rearmost so the new one trails the column.
   let pos = CONFIG.enemySpawnTiles;
@@ -62,9 +83,12 @@ function spawnEnemy(now) {
   }
   state.enemies.push({
     id,
-    maxHP: CONFIG.enemyBaseHP,
-    hp: CONFIG.enemyBaseHP,
-    dmg: CONFIG.enemyBaseDmg,
+    type: type.id,
+    maxHP: hp,
+    hp,
+    dmg: Math.max(1, Math.round(CONFIG.enemyBaseDmg * type.dmgMult)),
+    atkSpeed: type.attackSpeedMult || 1,  // multiplies swing rate (divides the interval)
+    scale: type.scale || 1,               // drawn size vs. the 16x16 sheet art
     slot: id,                     // per-enemy constant, only used to de-sync the idle animation
     lane,
     pos,
@@ -126,4 +150,4 @@ function shuffleArray(arr) {
   return arr;
 }
 
-window.Incanto.progression = { randomSpawnDelay, spawnRateRampMult, nextSpawnLane, spawnEnemy, startRun, layoutCircle, shuffleArray };
+window.Incanto.progression = { randomSpawnDelay, spawnRateRampMult, nextSpawnLane, pickEnemyType, spawnEnemy, startRun, layoutCircle, shuffleArray };

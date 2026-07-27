@@ -131,7 +131,7 @@ function onShapeComplete(now) {
       born: impactAt,
       targetId: target.id,
       x: scene ? scene.enemyLineX + target.pos * TILE : 0,
-      y: scene ? (scene.laneY[target.lane] ?? scene.feetY) - SHEET.skeletIdle.h - 3 : 0,
+      y: scene ? (scene.laneY[target.lane] ?? scene.feetY) - enemyArt(target).h - 3 : 0,
     });
     if (target.hp <= 0) {
       // Killed — but don't play the death animation yet. The fireball is still
