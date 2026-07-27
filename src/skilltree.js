@@ -19,9 +19,10 @@ const TREE_THEMES = {
   vitality: { color: "#5ecf8f", glow: "94,207,143"  }, // flat + % HP
   crit:     { color: "#f2c14e", glow: "242,193,78"  }, // crit chance + crit damage
   arcane:   { color: "#b07cff", glow: "176,124,255" }, // spell power + area of effect
-  ward:     { color: "#4de3e0", glow: "77,227,224"  }, // shields, thorns, fail-protection
+  ward:     { color: "#4de3e0", glow: "77,227,224"  }, // shields, fail-protection, bulk
   sustain:  { color: "#e5679a", glow: "229,103,154" }, // regen + life leech
   fortune:  { color: "#d9a441", glow: "217,164,65"  }, // gold + walk speed
+  thorn:    { color: "#ff3b30", glow: "255,59,48"   }, // the five unique thorn caches
   origin:   { color: "#eafffe", glow: "234,255,254" }, // the central seed node
 };
 
@@ -35,6 +36,7 @@ const RUNE_GLYPHS = {
   ward:     `<polygon points="0,-11 9,-6 9,4 0,11 -9,4 -9,-6"/>`,
   sustain:  `<path d="M0,-11 C7,-3 7,7 0,10 C-7,7 -7,-3 0,-11 Z"/>`,
   fortune:  `<circle cx="0" cy="0" r="9"/><polygon points="0,-4 4,0 0,4 -4,0"/>`,
+  thorn:    `<path d="M-10,9 C-4,4 4,-4 10,-9"/><path d="M-6,5 L-9,-1"/><path d="M-1,0 L2,-6"/><path d="M4,-5 L1,-11"/><path d="M-3,2 L-6,8"/><path d="M2,-3 L5,3"/>`,
   origin:   `<circle cx="0" cy="0" r="10"/><circle cx="0" cy="0" r="4"/><line x1="0" y1="-10" x2="0" y2="-14"/><line x1="0" y1="10" x2="0" y2="14"/><line x1="-10" y1="0" x2="-14" y2="0"/><line x1="10" y1="0" x2="14" y2="0"/>`,
 };
 
@@ -51,6 +53,17 @@ const NODE_STEP = 90;                  // spacing a branch advances per node
 const NODE_MIN_DIST = 72;              // guaranteed minimum centre-to-centre gap (no overlaps)
 const VAL_PER_RING = 0.3;              // effect grows by this fraction of base per tier out (caps bound the total — see CONFIG.caps)
 const COST_PER_RING = 1.25;            // cost multiplies by this per tier out
+
+// Unique thorn caches. Thorns used to be a stackable ward archetype that a
+// ceiling then clawed most of the value back out of, which made every thorn
+// rank past the first feel pointless. They're now five one-off nodes buried far
+// out in the web — no ranks, no cap, scattered so that stumbling onto one reads
+// like uncovering a hidden trove. All five together = 50% reflection, and that
+// total IS the ceiling (see recomputeMods — thorns is no longer capped).
+const THORN_COUNT = 5;                 // exactly this many exist in the whole tree
+const THORN_VALUE = 0.10;              // reflected fraction each one grants
+const THORN_RING_MIN = 16;             // never plant one closer to the seed than this tier
+const THORN_COST = 60;                 // base cost, scaled outward like any node
 
 // Sectors: the effect archetypes that repeat outward. The seven sectors are laid
 // out evenly around the full circle (see buildSkillTree), so every angle is used
@@ -76,7 +89,7 @@ const TREE_SECTORS = [
       blurb: "Dein Zauber trifft ein zusätzliches Ziel (mehr Kacheln)." },
   ]},
   { key: "war", theme: "ward", arch: [
-    { stat: "thorns", base: 0.12, cost: 38, maxRank: 3, title: "Dornen", blurb: "Wirft einen Teil des erlittenen Schadens zurück." },
+    { stat: "flatHp", base: 12, cost: 30, maxRank: 4, title: "Bollwerk", blurb: "Härtet dich gegen Schläge ab — mehr Lebenspunkte." },
     { special: "shield", cost: 48, maxRank: 3, title: "Schildzauber", blurb: "Manche Zauber gewähren einen absorbierenden Schild." },
     { stat: "spellFailProt", base: 0.07, cost: 70, growth: 1.5, maxRank: 2, rare: true, title: "Schutzzauber",
       blurb: "Chance, den Fehlschlag-Rückschlag ganz abzuwehren." },
@@ -243,7 +256,40 @@ function buildSkillTree() {
     }
   }
 
+  plantThorns(nodes, pos);
   return { nodes, pos, edges };
+}
+
+// Overwrite THORN_COUNT grown nodes far out in the web with the unique thorn
+// caches. Converting existing nodes (rather than grafting new ones on) keeps
+// every cache wired into the branch that reached it, so each one is genuinely
+// reachable — you just have to push deep enough down the right arm to reveal it.
+// Targets are spread evenly in angle and staggered in depth, so the five never
+// cluster in one wedge or sit on one ring.
+function plantThorns(nodes, pos) {
+  const C = TREE_CENTER, TWO_PI = Math.PI * 2;
+  const taken = {};
+  for (let i = 0; i < THORN_COUNT; i++) {
+    const ang = -Math.PI / 2 + (i + 0.5) * (TWO_PI / THORN_COUNT) + 0.35;
+    const rad = TREE_RADIUS * (0.70 + 0.06 * (i % 3));
+    const tx = C + rad * Math.cos(ang), ty = C + rad * Math.sin(ang);
+    let best = null, bd = Infinity;
+    for (const id in nodes) {
+      if (taken[id] || nodes[id].ring < THORN_RING_MIN) continue;
+      const p = pos[id], dx = p.x - tx, dy = p.y - ty, d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = id; }
+    }
+    if (!best) continue;
+    taken[best] = true;
+    const ring = nodes[best].ring;
+    nodes[best] = {
+      title: "Dornenkrone", theme: "thorn", ring, maxRank: 1, unique: true,
+      cost: Math.max(5, Math.round(THORN_COST * Math.pow(COST_PER_RING, ring - 1))),
+      growth: 1, effect: { thorns: THORN_VALUE },
+      blurb: "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes " +
+        "erlittenen Schlages fährt in den Angreifer zurück.",
+    };
+  }
 }
 
 const _TREE = buildSkillTree();
@@ -314,7 +360,10 @@ function recomputeMods() {
     for (const id in state.nodeRanks) {
       const node = TREE_NODES[id];
       if (!node) continue;
-      const rank = state.nodeRanks[id] || 0;
+      // Clamp to the node's current maxRank: a save written before a node was
+      // reshaped (thorns went from a 3-rank archetype to a unique) must not
+      // keep paying out ranks the node no longer has.
+      const rank = Math.min(node.maxRank, state.nodeRanks[id] || 0);
       for (const k in node.effect) {
         if (k in sum) sum[k] += node.effect[k] * rank;
       }
@@ -332,7 +381,9 @@ function recomputeMods() {
     shieldChance: Math.min(caps.shieldChance, sum.shieldChance),
     shieldAmount: sum.shieldAmount,
     shieldMax: sum.shieldMax,
-    thorns: Math.min(caps.thorns, sum.thorns),
+    // Uncapped on purpose: only five unique nodes grant thorns at all, so the
+    // sum can never exceed THORN_COUNT × THORN_VALUE = 50%.
+    thorns: sum.thorns,
     spellFailProt: Math.min(caps.spellFailProt, sum.spellFailProt),
   };
   // Flat + percent pools soft-cap so a wall of stacked HP/damage nodes plateaus.
@@ -397,7 +448,10 @@ function effectText(effect, mult) {
 // Rendering
 // ---------------------------------------------------------------------------
 function treeClamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
-function nodeRadius(id) { return id === "root" ? 34 : 28; }
+function nodeRadius(id) {
+  if (id === "root") return 34;
+  return TREE_NODES[id] && TREE_NODES[id].unique ? 33 : 28;   // the thorn caches sit a little larger
+}
 
 function initTreeView(resetSelection) {
   const s = 0.72;                       // default zoom — shows the seed + several tiers of branches
@@ -450,7 +504,14 @@ function nodeSvg(id) {
       (purchased ? `<circle r="${R - 6}" fill="none" stroke="${theme.color}" stroke-width="1.5" opacity="0.45"/>` : "") +
       (maxed && id !== "root" ? `<circle r="${R + 4.5}" fill="none" stroke="${theme.color}" stroke-width="1.5" opacity="0.6"/>` : "");
     glyph = runeGroup(node.theme, purchased ? 1 : 0.9);
-    if (id !== "root") dots = nodeDotsSvg(rank, node.maxRank, R, theme.color);
+    // A unique thorn cache announces itself the moment it's revealed: a barbed
+    // halo instead of the usual rank pips, so finding one reads as a discovery.
+    if (node.unique) {
+      disc += `<circle r="${R + 7}" fill="none" stroke="${theme.color}" stroke-width="1.5" ` +
+        `stroke-dasharray="4 7" opacity="${purchased ? 0.9 : 0.5}"/>`;
+    } else if (id !== "root") {
+      dots = nodeDotsSvg(rank, node.maxRank, R, theme.color);
+    }
   }
   return `<g class="tnode" data-node="${id}" transform="translate(${pos.x.toFixed(1)},${pos.y.toFixed(1)})">${disc}${glyph}${dots}</g>`;
 }
@@ -507,7 +568,7 @@ function renderTreeInfo() {
   if (id === "root") {
     buy = `<button class="tree-buy" disabled>Ursprung</button>`;
   } else if (maxed) {
-    buy = `<button class="tree-buy" disabled>Maximal</button>`;
+    buy = `<button class="tree-buy" disabled>${node.unique ? "Gehoben" : "Maximal"}</button>`;
   } else {
     const cost = nodeCost(node, rank);
     const afford = state.gold >= cost;
@@ -520,10 +581,12 @@ function renderTreeInfo() {
       <span class="ti-rune">${runeGlyphSvg(node.theme, 24)}</span>
       <span class="ti-name" style="color:${theme.color}">${node.title}</span>
       <span class="ti-tier">Stufe ${node.ring}</span>
-      ${node.maxRank ? `<span class="ti-dots" style="color:${theme.color}">${dots}</span>` : ""}
+      ${node.unique ? `<span class="ti-unique" style="color:${theme.color}">Einzigartig</span>`
+        : node.maxRank ? `<span class="ti-dots" style="color:${theme.color}">${dots}</span>` : ""}
     </div>
     <div class="ti-blurb">${node.blurb}</div>
-    ${per ? `<div class="ti-effect">Pro Stufe: <b>${per}</b>${total ? ` &middot; Gesamt: <b>${total}</b>` : ""}</div>` : ""}
+    ${per ? `<div class="ti-effect">${node.unique ? "Einmalig" : "Pro Stufe"}: <b>${per}</b>` +
+      `${!node.unique && total ? ` &middot; Gesamt: <b>${total}</b>` : ""}</div>` : ""}
     ${buy}</div>`;
 }
 

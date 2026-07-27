@@ -143,12 +143,6 @@ const CONFIG = {
   // Floating damage numbers that pop over a fighter on each hit, then rise + fade
   dmgFloatMs: 850,      // how long a damage number lingers before it's culled
   dmgFloatRisePx: 16,   // art pixels it drifts upward across its life
-  // Sustain / anti-AFK. Regen only trickles the hero back up to this fraction of
-  // his max HP — never to full. That keeps Genesung a between-fights safety net
-  // (it patches a rough patch, then you must fight to climb higher) instead of a
-  // hands-off autopilot: once a real mob forms, incoming damage outpaces a
-  // capped regen that can't even reach full, so no build can idle forever.
-  regenMaxHpFraction: 0.6,
   // Balance ceilings. The skill tree is ~1300 nodes whose effect grows the
   // farther out they sit, so without limits a stacked build snowballs into an
   // unkillable, AFK-able hero. recomputeMods runs every summed stat through
@@ -164,7 +158,8 @@ const CONFIG = {
     critChance: 0.6,    // hard ceiling on crit chance
     critMult: 1.5,      // hard ceiling on bonus crit damage (max crit ×3.0)
     regen: 2.0,         // hard ceiling on HP/s regen (below a full mob's DPS)
-    thorns: 0.35,       // hard ceiling on reflected fraction of a blow
+    // No thorns entry: reflection is bounded by supply instead of by a ceiling —
+    // only five unique nodes in the whole tree grant it, 10% each (see skilltree.js).
     leech: 0.5,         // hard ceiling on life-leech fraction
     shieldChance: 0.5,  // hard ceiling on per-cast shield chance
     spellFailProt: 0.6, // hard ceiling on backfire-ward chance
