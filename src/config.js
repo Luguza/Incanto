@@ -18,13 +18,24 @@ const CONFIG = {
   dmgUpgradeBaseCost: 30,
   hpUpgradeBaseCost: 25,
   upgradeCostGrowth: 1.6,
-  // Hallway advance: the hero holds his spot on screen while the corridor scrolls
+  // Hallway travel: the hero holds his spot on screen while the corridor scrolls
   // past (the camera pans right), reading as him striding deeper down the hall.
-  // He walks whenever the near stretch of floor is clear and halts the moment a
-  // skeleton crosses into it — that's when he plants to fight.
-  heroWalkPxPerMs: 0.03,          // corridor pan speed while advancing (~1.9 tiles/sec)
-  heroWalkClearFraction: 2 / 3,   // no skeleton within this fraction from the left → advance
-  heroWalkEaseMs: 380,            // time-constant the pan velocity eases in/out over (no abrupt starts/stops)
+  // He walks ONLY between camps — the moment anything musters he plants and
+  // fights, and sets off again once it's dead and gone. Distance therefore never
+  // grows during a fight, which is what lets the encounter plan trigger purely on
+  // metres walked without two camps ever stacking (see updateCamera).
+  //
+  // It's an ordinary walk, not a dash: covering the gap to the next camp takes a
+  // few seconds, and the quiet is filled by a lone skeleton rather than by
+  // hurrying the hero along (see enemyMaxEmptyMs).
+  heroWalkPxPerMs: 0.03,          // walking pace (~1.9 tiles/sec)
+  heroWalkMaxPxPerMs: 0.12,       // ceiling on pace with walk-speed nodes included: past this a single
+                                  // frame's coast into a stop could carry him over the next camp's
+                                  // mark, and `mods.walkMult` has no cap of its own
+  heroWalkEaseMs: 120,            // wind-up into the stride (short: the ramp is charged against the
+                                  // dead-air budget, so a slow one costs usable camp spacing)
+  heroHaltEaseMs: 140,            // plant when something musters, so he pulls up on his mark
+  heroStridePx: 4.5,              // corridor pixels per radian of footstep bob (cadence follows ground covered)
   // Currency is earned only in the post-death vocab quiz, then spent between
   // runs on permanent build upgrades
   quizQuestionCount: 8,  // one of each Duolingo-style exercise per session
@@ -33,58 +44,84 @@ const CONFIG = {
   goldPerCorrect: 12,
   quizKillBonus: 5, // bonus gold per question, scaled by skeletons slain last run
   quizFeedbackMs: 650,   // how long a wrong match flashes red before clearing
-  // Endless skeletons: instead of discrete waves, lone skeletons stream in at
-  // random intervals and walk toward the hero; each only attacks once it reaches
-  // melee range, at its own steady cadence. There is no per-wave scaling — a
-  // skeleton's strength comes from its VARIANT (see `enemyTypes`), not from how
-  // deep the run is.
+  // Skeletons arrive in designed packs (see encounters.js) and walk toward the
+  // hero; each only attacks once it reaches melee range, at its own steady
+  // cadence. There is no per-wave scaling — a skeleton's strength comes from its
+  // VARIANT (see `enemyTypes` below), and a pack's threat from its shape, its
+  // head count, and which variants the plan put in it.
   enemyBaseHP: 10,
   enemyBaseDmg: 6,
-  // Enemy variants. Every arrival rolls one of these: `weight` is its relative
-  // chance (among the variants already unlocked), `minKills` is how far into the
-  // run it starts showing up, and the multipliers scale the base numbers above.
-  // `scale` is the drawn size of the 16x16 skeleton art and `tint` a wash laid
-  // over its pixels — together the tell that a tougher one just walked in, so it
-  // reads before it swings.
+  // Enemy variants — what a kind of skeleton IS. The multipliers scale the base
+  // numbers above; `scale` is the drawn size of the 16x16 skeleton art and
+  // `tint` a wash laid over its pixels, together the tell that a tougher one
+  // just walked in, so it reads before it swings.
+  //
+  // WHERE each variant shows up is not decided here: packs name their members'
+  // variants in encounters.js, so a mark on the plan always sends the same
+  // bodies. (These entries used to carry `weight` and `minKills` for a random
+  // per-arrival roll — that draw is gone, since it would have put randomness
+  // back into the one thing the encounter plan exists to make designable.)
   enemyTypes: [
-    { id: "skeleton", weight: 1, minKills: 0, hpMult: 1, dmgMult: 1, attackSpeedMult: 1, scale: 1, tint: null, label: null },
+    { id: "skeleton", hpMult: 1, dmgMult: 1, attackSpeedMult: 1, scale: 1, tint: null, label: null },
     // Brute: a head taller, darker bone, twice the HP and damage, and swings
     // ~40% faster. `label` is called out on the enemy HP bar while it leads the
     // queue, so a slow-draining bar reads as "this one is tougher", not stuck.
     {
-      id: "brute", weight: 0.28, minKills: 4,
+      id: "brute",
       hpMult: 2, dmgMult: 2, attackSpeedMult: 1.4,
       scale: 1.375, tint: "rgba(26, 20, 34, 0.34)", label: "KNOCHENKOLOSS",
     },
   ],
   wrongPenaltyFraction: 0.15, // a wrong match backfires for this fraction of the hero's MAX HP
   enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
-  // Random trickle: the next skeleton arrives after a delay drawn uniformly from
-  // [min, max] ms, capped at `enemyMaxCount` alive so the arena never overflows.
-  enemyMaxCount: 9,          // hard cap on skeletons alive at once
-  enemySpawnMinMs: 3600,     // shortest gap between arrivals
-  enemySpawnMaxMs: 10200,    // longest gap between arrivals
-  enemyFirstSpawnMs: 400,    // the first skeleton of a run walks in almost at once
-  // Progressive spawn rate: the trickle starts slow and then picks up
-  // exponentially, with no ceiling — the only real cap is `enemyMaxCount` (how
-  // many skeletons fit on screen at once). Each arrival's delay is multiplied by
-  // a factor that decays GEOMETRICALLY from `enemySpawnRampStartMult` (at 0
-  // kills): mult = startMult^(1 - progress), where progress = kills/rampKills is
-  // NOT clamped. It reaches 1 (full base speed) at `enemySpawnRampKills` kills
-  // and keeps shrinking past that, so the spawn *rate* (1/gap) grows
-  // exponentially forever, throttled only by the on-screen skeleton cap.
-  enemySpawnRampStartMult: 4,   // at run start, gaps between arrivals are this much longer
-  enemySpawnRampKills: 45,      // kills to reach full base speed (mult=1); accelerates beyond
-  enemyLanes: 3,             // parallel depth rows the mob streams in on
+  // DESIGNED ENCOUNTERS. Skeletons don't trickle in on a timer — the hall is a
+  // fixed sequence of packs laid out at fixed metre marks, and the hero walking
+  // past a mark is what sends that pack in. The packs and the schedule are in
+  // encounters.js; these are the knobs the spawner reads. Nothing about it is
+  // random: the same distance always produces the same fight, in the same lanes.
+  // One metre = one 16px floor tile.
+  enemyMaxCount: 18,         // safety cap on skeletons alive at once (a late pack can out-grow it)
+  encounterLateSpacingMetres: 2.5, // metres between packs once the authored plan runs out (see
+                                   // ENCOUNTER_PLAN: must stay inside the dead-air budget below, or
+                                   // every gap grows a filler skeleton)
+  // How far past the edge of frame a pack forms up. This is a TIME budget wearing
+  // tile units: at `enemyWalkTilesPerMs` it's a ~280ms approach — long enough
+  // that skeletons visibly stride in rather than appear, short enough that the
+  // corridor doesn't read as empty while a camp is already on its way. Re-derive
+  // it whenever the march speed changes (0.3 tiles at the current 1.1 tiles/sec;
+  // at the old 2.7 it was 1.0), or a slow march turns the walk-in into a wait.
+  // Measured from the *live* frame edge, so a wide viewport pushes the muster
+  // line out to match instead of popping packs in over open floor.
+  enemyApproachTiles: 0.3,
+  // No dead air. Walking to the next camp takes a few seconds, so the corridor
+  // does go quiet in between; once nothing has been on camera this long,
+  // updateSpawns sends in a single skeleton to keep it alive.
+  //
+  // A LONE FILLER, never the next camp. Pulling a camp forward would spend a
+  // designed encounter to patch a quiet moment and land it somewhere other than
+  // the metre it was authored for; a filler costs the plan nothing, so the marks
+  // stay exactly where they were written.
+  //
+  // The filler lands at the far end of the visible track (see
+  // progression.trackEdgeTiles) rather than off camera, which is what makes this
+  // number the real bound rather than the bound plus a walk-in. Off camera it
+  // wouldn't hold at all: the hero's spell auto-targets the frontmost living
+  // skeleton whether or not it's visible, so a player casting into an
+  // empty-looking hall snipes the arrival before it ever appears and the screen
+  // stays bare through another whole budget. In frame it's safe either way — a
+  // kill on arrival plays its dissolve on camera, which is not dead air. It shows
+  // up flush against the right border, half-under the 16px edge vignette.
+  enemyMaxEmptyMs: 1500,     // longest the screen may sit empty before a filler skeleton walks in
+  enemyLanes: 4,             // parallel depth rows the mob streams in on
   // March + melee. A skeleton's `pos` is measured in TILES to the right of the
   // hero's front edge (0 = touching the hero). One pos-unit maps to exactly one
   // 16px floor tile on screen, and the queue keeps > 1 tile between neighbours,
   // so no two skeletons ever share a tile. They walk left until blocked (by the
   // standoff line or the skeleton ahead), stand idle if out of reach, and only
   // swing once within attack range.
-  enemyWalkTilesPerMs: 0.00108, // march speed (~1.1 tiles/sec)
-  enemySpawnTiles: 13,          // frontmost skeleton spawns this many tiles out (off-screen right)
-  enemySpawnGapTiles: 1.7,      // extra spawn distance per queue slot (trailing column)
+  enemyWalkTilesPerMs: 0.00108, // march speed (~1.1 tiles/sec) — a slow, looming advance
+  enemySpawnGapTiles: 1.7,      // depth between a pack's successive ranks (and the clearance
+                                // a pack musters behind any straggler in its lanes)
   enemyStandoffTiles: 1.6,      // how far in front of the hero the front rank stops
   enemyGapTiles: 1.15,          // min tiles between two skeletons (> 1 → never the same tile)
   enemyAttackRangeTiles: 4.1,   // a stopped skeleton within this reach of the hero attacks; farther ones idle

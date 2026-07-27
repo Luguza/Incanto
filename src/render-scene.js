@@ -316,10 +316,12 @@ function renderScene(now) {
   // Walking down the hallway: a subtle vertical bob sells footsteps against the
   // scrolling floor (the hero keeps his screen spot; the corridor slides past).
   // Its amplitude tracks the eased pan speed so the bob fades in and out with the
-  // motion rather than popping on and off.
+  // motion rather than popping on and off, and its cadence tracks ground covered
+  // (state.stridePhase) so a clear-corridor sprint reads as a run rather than a
+  // walk over a fast background.
   const walkFactor = Math.min(1, state.cameraVel / CONFIG.heroWalkPxPerMs);
   const walkBob = now >= state.heroBlastUntil
-    ? -Math.abs(Math.sin(now / 150)) * walkFactor
+    ? -Math.abs(Math.sin(state.stridePhase / CONFIG.heroStridePx)) * walkFactor
     : 0;
 
   ctx.save();

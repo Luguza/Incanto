@@ -17,8 +17,9 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 | `src/core.js` | `window.Incanto` root namespace (loads first) |
 | `src/config.js` | `CONFIG` — all gameplay numbers, flags, colours |
 | `src/content.js` | vocab + sentences: `WORD_POOL`, `SENTENCE_POOL`, … |
+| `src/encounters.js` | **where enemy packs are designed**: `PACKS` (formations), `ENCOUNTER_PLAN` (which pack at which metre mark), `LATE_CYCLE` (endless tail). Deterministic — no randomness |
 | `src/state.js` | `state`, `freshState`, save/load/clear (persistence) |
-| `src/progression.js` | enemy scaling, wave/run start, circle layout |
+| `src/progression.js` | pack spawning (`spawnPack`), frame-edge geometry, run start, circle layout |
 | `src/skilltree.js` | the upgrade phase: procedurally-generated PoE-style rune tree (~1300 nodes, archetypes repeating + scaling outward), purchase + reveal logic, derived stat model (`recomputeMods`), pan/zoom SVG screen (`renderUpgradeFull`) |
 | `src/render-assets.js` | sprite sheet + baked canvas assets (`ASSETS`, `buildAssets`) |
 | `src/render-scene.js` | the combat canvas scene (`scene`, `renderScene`, staff/rune draw) |

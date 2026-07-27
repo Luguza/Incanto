@@ -18,13 +18,60 @@ function getEffectiveDt(rawDt) {
   return rawDt;
 }
 
-// Drip a new skeleton into the arena on the random schedule, unless we're
-// already at the on-screen cap. Either way, re-arm the timer for the next
-// arrival so the trickle keeps a steady but irregular rhythm.
+// Walk the hero into the next designed encounter. Enemies do not trickle in on
+// a timer any more: the run is a fixed sequence of PACKS laid out along the hall
+// at fixed metre marks (see encounters.js), and crossing a mark sends that pack
+// in. Nothing here is random, so the same distance always produces the same
+// fight — which is what makes the packs designable in the first place.
+//
+// Reaching a camp's metre mark is the whole trigger — distance and nothing else.
+// There is no check here on what is still alive, because there doesn't need to
+// be: updateCamera only lets the hero travel while the hall is empty, so by the
+// time distance reaches the next mark the previous camp is already dead and
+// gone. That is what keeps two camps from ever stacking without the spawner
+// having to arbitrate it.
+//
+// `state.packIndex` walks the plan and never rewinds, so every camp is met in
+// order, at its own mark.
+//
+// The walk between camps is a real walk, not a dash, so the corridor can stand
+// empty for a few seconds on the way. That gap is filled by a LONE SKELETON —
+// not by the next camp. Pulling a camp forward would spend a designed encounter
+// to patch a quiet moment and land it somewhere other than its mark; a filler
+// costs the plan nothing, so the marks stay exactly where they were authored.
 function updateSpawns(now) {
-  if (now < state.nextSpawnAt) return;
-  if (livingEnemies().length < CONFIG.enemyMaxCount) spawnEnemy(now);
-  state.nextSpawnAt = now + randomSpawnDelay();
+  // Track how long the corridor has been visibly bare — dissolving skeletons
+  // still count as occupied, since they're drawn.
+  const empty = sceneIsEmpty();
+  if (empty) {
+    if (!state.emptySinceMs) state.emptySinceMs = now;
+  } else {
+    state.emptySinceMs = 0;
+  }
+  const starved = empty && now - state.emptySinceMs >= CONFIG.enemyMaxEmptyMs;
+
+  // Something is already on its way but hasn't made it into frame. Close the gap
+  // on it rather than send anything new — whatever is inbound is about to arrive.
+  if (starved && state.enemies.length) { advanceInboundPack(); return; }
+
+  const next = encounterAt(state.packIndex);
+  if (state.distance >= next.at) {
+    spawnPack(now, next);
+    state.packIndex++;
+    return;
+  }
+
+  // Still short of the next mark with an empty hall: send one skeleton to keep
+  // the corridor alive. It lands in frame rather than off camera, so the bare
+  // stretch really does end at `enemyMaxEmptyMs` instead of running on through
+  // its walk-in — and so it can't be sniped before it ever appears, since the
+  // hero's spell auto-targets the frontmost living skeleton whether or not it's
+  // on screen. Restart the clock so its arrival isn't immediately followed by
+  // another.
+  if (starved) {
+    spawnFiller(now);
+    state.emptySinceMs = now;
+  }
 }
 
 // Clearance (in tiles) between two neighbours queued in the same lane. Bodies
@@ -132,39 +179,66 @@ function updateEnemies(now, dt) {
   );
 }
 
-// Advance the hallway camera while the near stretch of floor is clear. The hero
-// holds his spot on screen; panning the corridor left reads as him striding
-// forward. He halts the instant a skeleton crosses into the near two-thirds —
-// that's when he plants to fight. `pos` is tiles from the hero, so the enemy's
-// screen x is `enemyLineX + pos * TILE`, independent of the scroll (no feedback).
+// Travel down the hall between camps. The hero holds his spot on screen; panning
+// the corridor left reads as him striding forward. `pos` is tiles from the hero,
+// so an enemy's screen x is `enemyLineX + pos * TILE`, independent of the scroll
+// (no feedback).
+//
+// He moves ONLY while the hall is empty — of anything, a camp or a lone filler
+// skeleton alike. The moment something musters he plants and fights it, and he
+// doesn't set off again until it's dead and its dissolve has finished. That
+// single rule is what lets updateSpawns trigger on distance alone: with no ground
+// gained during a fight, the hero physically cannot walk far enough to trip the
+// next camp's mark while the current one is still standing, so two camps can
+// never stack.
+//
+// It holds for reasons a wider mark spacing would not. The ground he'd otherwise
+// cover while a camp closed on him scales with `mods.walkMult` (uncapped — the
+// tree's Flinkheit nodes repeat) and with the viewport width (a wider canvas is a
+// longer approach), so no fixed spacing could stay ahead of it. Gating on the
+// camp itself is immune to both.
 function updateCamera(now, dt) {
   if (!scene) return;
-  const boundary = scene.artW * CONFIG.heroWalkClearFraction;
-  let clear = true;
-  for (const e of state.enemies) {
-    // A skeleton taking its killing blow or mid-collapse pins the hero wherever
-    // it stands: its death has to play out against a static floor, otherwise the
-    // corpse (fixed to its screen-x) appears to slide backwards as the corridor
-    // scrolls under it. Skeletons still on their feet only block once they've
-    // reached the near stretch.
-    const busy = e.phase === "struck" || e.phase === "dying";
-    if (busy || scene.enemyLineX + e.pos * TILE < boundary) { clear = false; break; }
-  }
+  let clear = state.enemies.length === 0;
   // Hold position while a spell is charging or its bolt is in flight, so the
   // cast and its impact land against a still background instead of streaking
-  // across a moving one.
-  if (state.castAt) clear = false;
-  // Ease the pan velocity toward its target (full speed when clear, 0 when a
-  // skeleton is near) with a frame-rate-independent time constant, so the hero
-  // accelerates into his stride and coasts to a stop instead of snapping.
-  // Fortune's walk-speed nodes scale the stride pace.
-  const walkSpeed = CONFIG.heroWalkPxPerMs * state.mods.walkMult;
-  const targetVel = clear ? walkSpeed : 0;
-  const k = 1 - Math.exp(-dt / CONFIG.heroWalkEaseMs);
+  // across a moving one. (A backfire has no target and so no enemies to gate on.)
+  //
+  // Only while that's actually being watched: `castAt` is cleared by renderScene,
+  // which doesn't run on the quiz or upgrade screens, so a cast left in flight
+  // when the player walks away stays set indefinitely. Holding on it there would
+  // freeze the hero for as long as they studied — and since travel is what
+  // triggers every camp, the whole background run would stall with it.
+  if (state.castAt && state.screen === "combat") clear = false;
+  // Walking pace. Fortune's walk-speed nodes scale it, up to a ceiling: past that
+  // a single frame's coast on the way to a stop could carry the hero over the
+  // next mark, which is the one thing this design must not allow.
+  const pace = Math.min(
+    CONFIG.heroWalkPxPerMs * state.mods.walkMult,
+    CONFIG.heroWalkMaxPxPerMs
+  );
+  const targetVel = clear ? pace : 0;
+  // Ease with a frame-rate-independent time constant so he sets off and pulls up
+  // rather than snapping. Planting is quicker than setting off, so he arrives on
+  // his mark rather than drifting past it.
+  const k = 1 - Math.exp(-dt / (clear ? CONFIG.heroWalkEaseMs : CONFIG.heroHaltEaseMs));
   state.cameraVel += (targetVel - state.cameraVel) * k;
   if (state.cameraVel < 1e-4) state.cameraVel = 0;
-  state.cameraX += state.cameraVel * dt;
-  state.heroWalking = state.cameraVel > walkSpeed * 0.15;
+  let advanced = state.cameraVel * dt;
+  // Pull up exactly on the next camp's mark rather than drifting past it, so a
+  // camp is met at the metre the plan says and not a stride beyond it.
+  const mark = encounterAt(state.packIndex).at;
+  const remaining = (mark - state.distance) * TILE;
+  if (advanced > remaining) advanced = Math.max(0, remaining);
+  state.cameraX += advanced;
+  // Footstep cadence is driven by ground covered, not by wall time, so the bob
+  // quickens with the pace and freezes when he plants — and never jumps phase the
+  // way retuning a time-based sine would.
+  state.stridePhase += advanced;
+  // Metres walked this run: the same advance in tile units. This is the run's
+  // depth gauge — it's what trips the encounter plan (see updateSpawns), so the
+  // hero meets camps by walking to them.
+  state.distance += advanced / TILE;
 }
 
 let lastRafNow = null;
