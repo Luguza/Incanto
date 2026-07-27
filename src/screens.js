@@ -330,12 +330,13 @@ function patchCombatContinuous(now) {
     `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}` + (shield > 0 ? ` ⛨${shield}` : "");
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
   // The enemy bar tracks the frontmost skeleton — the one the next spell will
-  // hit — while the label shows this run's kill tally and how many are on screen.
+  // hit — while the label shows how deep the hero has pushed (metres walked, the
+  // stat the horde's density ramps on), his kill tally, and how many are on screen.
   const remaining = livingEnemies();
   const front = frontEnemy();
   const count = remaining.length;
   document.getElementById("wave-label").innerHTML =
-    `${state.kills} ERLEGT · ${count} SKELETT${count === 1 ? "" : "E"}`;
+    `${Math.floor(state.distance)} M · ${state.kills} ERLEGT · ${count} SKELETT${count === 1 ? "" : "E"}`;
   const enemyPct = front ? (100 * front.hp / front.maxHP) : 0;
   document.getElementById("enemy-hp-fill").style.width = enemyPct.toFixed(1) + "%";
 
@@ -406,7 +407,7 @@ function renderEndFull() {
     <div class="screen end-screen">
       <h1 class="defeat">Niederlage</h1>
       <p>Die Horde hat dich <strong>überwältigt</strong></p>
-      <p class="dim">${state.kills} Skelette erlegt &middot; ${elapsed}s überlebt &middot; ${state.wrongMatchCount} Fehler</p>
+      <p class="dim">${Math.floor(state.distance)} m weit &middot; ${state.kills} Skelette erlegt &middot; ${elapsed}s überlebt &middot; ${state.wrongMatchCount} Fehler</p>
       <p class="end-flavor">Lerne deine Vokabeln, um für den nächsten Lauf stärker zu werden.</p>
       <button class="fight-btn study-btn" data-act="goToQuiz">Lernen &amp; Gold verdienen →</button>
     </div>`;

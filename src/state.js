@@ -51,6 +51,7 @@ function freshState() {
     laneBag: [],              // shuffled lanes left to deal this cycle (each lane used once per cycle)
     lastSpawnLane: -1,        // lane of the previous spawn, so no two arrivals share a lane back-to-back
     cameraX: 0,               // hallway scroll (px): grows as the hero strides right down the corridor
+    distance: 0,              // metres walked this run (cameraX / TILE) — drives the spawn-rate ramp
     cameraVel: 0,             // current pan speed (px/ms), eased toward its target so starts/stops aren't abrupt
     heroWalking: false,       // is the hero currently advancing (drives the walk bob)
     castTargetId: null,       // which enemy the in-flight fireball is aimed at

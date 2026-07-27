@@ -43,28 +43,36 @@ const CONFIG = {
   enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
   // Random trickle: the next skeleton arrives after a delay drawn uniformly from
   // [min, max] ms, capped at `enemyMaxCount` alive so the arena never overflows.
-  enemyMaxCount: 9,          // hard cap on skeletons alive at once
-  enemySpawnMinMs: 3600,     // shortest gap between arrivals
-  enemySpawnMaxMs: 10200,    // longest gap between arrivals
+  // The corridor is meant to feel *crowded* — the cap is set to roughly what the
+  // lanes can physically hold on screen, not to a handful of stragglers.
+  enemyMaxCount: 18,         // hard cap on skeletons alive at once
+  enemySpawnMinMs: 1100,     // shortest gap between arrivals
+  enemySpawnMaxMs: 3200,     // longest gap between arrivals
   enemyFirstSpawnMs: 400,    // the first skeleton of a run walks in almost at once
-  // Progressive spawn rate: the trickle starts slow and then picks up
-  // exponentially, with no ceiling — the only real cap is `enemyMaxCount` (how
-  // many skeletons fit on screen at once). Each arrival's delay is multiplied by
-  // a factor that decays GEOMETRICALLY from `enemySpawnRampStartMult` (at 0
-  // kills): mult = startMult^(1 - progress), where progress = kills/rampKills is
-  // NOT clamped. It reaches 1 (full base speed) at `enemySpawnRampKills` kills
-  // and keeps shrinking past that, so the spawn *rate* (1/gap) grows
-  // exponentially forever, throttled only by the on-screen skeleton cap.
-  enemySpawnRampStartMult: 4,   // at run start, gaps between arrivals are this much longer
-  enemySpawnRampKills: 45,      // kills to reach full base speed (mult=1); accelerates beyond
-  enemyLanes: 3,             // parallel depth rows the mob streams in on
+  // Progressive spawn rate, driven by DISTANCE TRAVELLED (not kills). The hero
+  // only strides forward while the near stretch of corridor is clear, so metres
+  // walked is the honest measure of "how deep into the run am I" — and it can't
+  // be farmed by grinding a single spot. Each arrival's delay is multiplied by a
+  // factor that decays GEOMETRICALLY from `enemySpawnRampStartMult` (at 0 m):
+  // mult = startMult^(1 - progress), where progress = metres/rampMetres is NOT
+  // clamped. It reaches 1 (full base speed) at `enemySpawnRampMetres` and keeps
+  // shrinking past that, so the spawn *rate* (1/gap) grows exponentially forever,
+  // throttled only by the on-screen skeleton cap. One metre = one 16px floor tile.
+  enemySpawnRampStartMult: 2.4, // at run start, gaps between arrivals are this much longer
+  // 60 m is tuned to the distance a run actually reaches: the hero only advances
+  // while the near stretch is clear, so a weak build stalls out around 40-50 m
+  // while a strong one pushes past 90 m — which lands the two on visibly
+  // different spawn rates instead of everyone bottoming out at the same ceiling.
+  enemySpawnRampMetres: 60,     // metres walked to reach full base speed (mult=1); accelerates beyond
+  enemyLanes: 4,             // parallel depth rows the mob streams in on
   // March + melee. A skeleton's `pos` is measured in TILES to the right of the
   // hero's front edge (0 = touching the hero). One pos-unit maps to exactly one
   // 16px floor tile on screen, and the queue keeps > 1 tile between neighbours,
   // so no two skeletons ever share a tile. They walk left until blocked (by the
   // standoff line or the skeleton ahead), stand idle if out of reach, and only
   // swing once within attack range.
-  enemyWalkTilesPerMs: 0.0018,  // march speed (~1.8 tiles/sec)
+  enemyWalkTilesPerMs: 0.0027,  // march speed (~2.7 tiles/sec) — a brisk march, so arrivals
+                                // close the 13-tile approach in ~5s instead of dawdling in ~7s
   enemySpawnTiles: 13,          // frontmost skeleton spawns this many tiles out (off-screen right)
   enemySpawnGapTiles: 1.7,      // extra spawn distance per queue slot (trailing column)
   enemyStandoffTiles: 1.6,      // how far in front of the hero the front rank stops

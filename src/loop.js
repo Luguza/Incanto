@@ -20,7 +20,14 @@ function getEffectiveDt(rawDt) {
 
 // Drip a new skeleton into the arena on the random schedule, unless we're
 // already at the on-screen cap. Either way, re-arm the timer for the next
-// arrival so the trickle keeps a steady but irregular rhythm.
+// arrival so the trickle keeps a fast but irregular rhythm.
+//
+// DECISION: an arrival that lands while the arena is full is DROPPED, not
+// deferred to a quick retry. Retrying on a short timer would pin the population
+// to `enemyMaxCount` forever — every kill instantly backfilled — so a player who
+// out-kills the spawn rate could never thin the horde, never get a clear stretch
+// to walk into, and (now that the ramp reads distance) never progress again.
+// Dropping the arrival makes the cap a ceiling the player can push back from.
 function updateSpawns(now) {
   if (now < state.nextSpawnAt) return;
   if (livingEnemies().length < CONFIG.enemyMaxCount) spawnEnemy(now);
@@ -149,7 +156,13 @@ function updateCamera(now, dt) {
   const k = 1 - Math.exp(-dt / CONFIG.heroWalkEaseMs);
   state.cameraVel += (targetVel - state.cameraVel) * k;
   if (state.cameraVel < 1e-4) state.cameraVel = 0;
-  state.cameraX += state.cameraVel * dt;
+  const advanced = state.cameraVel * dt;
+  state.cameraX += advanced;
+  // Metres walked this run: the same advance in tile units. This is the run's
+  // depth gauge — it drives the spawn-rate ramp (see spawnRateRampMult), so the
+  // horde thickens as the hero pushes down the hall rather than as he racks up
+  // kills standing still.
+  state.distance += advanced / TILE;
   state.heroWalking = state.cameraVel > walkSpeed * 0.15;
 }
 

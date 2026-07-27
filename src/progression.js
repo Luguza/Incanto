@@ -6,28 +6,31 @@
 
 // A random delay (ms) until the next skeleton walks in, drawn uniformly from
 // the configured [min, max] window, then stretched by a progress ramp so the
-// trickle starts slow and then quickens ever faster the further the hero gets.
-// The multiplier decays geometrically from `enemySpawnRampStartMult` at 0 kills
-// down to 1 once the hero has `enemySpawnRampKills` kills (and stays at 1
-// thereafter).
+// trickle starts a touch slow and then quickens ever faster the deeper into the
+// corridor the hero gets. The multiplier decays geometrically from
+// `enemySpawnRampStartMult` at 0 m down to 1 once the hero has walked
+// `enemySpawnRampMetres`, and keeps shrinking beyond that.
 function randomSpawnDelay() {
   const { enemySpawnMinMs: lo, enemySpawnMaxMs: hi } = CONFIG;
   const base = lo + Math.random() * (hi - lo);
   return base * spawnRateRampMult();
 }
 
-// Delay multiplier for the current run progress: high early (slower spawns),
-// then shrinking without bound as the run goes on. The decay is geometric —
-// mult = startMult^(1 - progress) — so the spawn *rate* (1/gap) grows
-// exponentially: sparse at the start, hitting full speed at `enemySpawnRampKills`
-// kills (mult = 1), and continuing to accelerate past that point. There is no
-// rate ceiling — the only real cap is `enemyMaxCount` (how many skeletons can
+// Delay multiplier for the current run progress: higher early (slower spawns),
+// then shrinking without bound as the hero pushes down the hall. Progress is
+// measured in METRES WALKED (state.distance), not kills — the hero only advances
+// while the near stretch is clear, so distance is the honest "how deep am I"
+// signal, and it can't be farmed by standing in one spot trading blows. The
+// decay is geometric — mult = startMult^(1 - progress) — so the spawn *rate*
+// (1/gap) grows exponentially: sparser at the start, full base speed at
+// `enemySpawnRampMetres` (mult = 1), and accelerating past that point. There is
+// no rate ceiling — the only real cap is `enemyMaxCount` (how many skeletons can
 // be on screen at once), enforced in updateSpawns. `progress` is intentionally
-// NOT clamped so the gaps keep tightening the deeper the hero gets.
+// NOT clamped so the gaps keep tightening the further the hero walks.
 function spawnRateRampMult() {
-  const { enemySpawnRampStartMult: startMult, enemySpawnRampKills: rampKills } = CONFIG;
-  if (rampKills <= 0) return 1;
-  const progress = state.kills / rampKills;
+  const { enemySpawnRampStartMult: startMult, enemySpawnRampMetres: rampMetres } = CONFIG;
+  if (rampMetres <= 0) return 1;
+  const progress = state.distance / rampMetres;
   return Math.pow(startMult, 1 - progress);
 }
 
@@ -88,6 +91,7 @@ function startRun() {
   const now = performance.now();
   state.enemies = [];
   state.cameraX = 0;
+  state.distance = 0;
   state.cameraVel = 0;
   state.heroWalking = false;
   state.nextSpawnAt = now + CONFIG.enemyFirstSpawnMs;
