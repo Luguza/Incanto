@@ -29,6 +29,25 @@ function getEffectiveDt(rawDt) {
 // to walk into, and (now that the ramp reads distance) never progress again.
 // Dropping the arrival makes the cap a ceiling the player can push back from.
 function updateSpawns(now) {
+  // No dead air. The random schedule alone leaves the corridor visibly bare for
+  // long stretches — a slow draw early in a run, or the multi-second off-screen
+  // approach after the player clears the last skeleton — and an empty screen is
+  // just waiting. So the emptiness itself is on a timer: once nothing has been
+  // on camera for `enemyMaxEmptyMs`, an arrival is forced regardless of the
+  // schedule, and lands at the far edge of frame so it is on camera the very
+  // next frame instead of starting another long walk in from off screen. That
+  // bounds an empty screen at `enemyMaxEmptyMs` plus a frame.
+  if (sceneIsEmpty()) {
+    if (!state.emptySinceMs) state.emptySinceMs = now;
+    if (now - state.emptySinceMs >= CONFIG.enemyMaxEmptyMs && livingEnemies().length < CONFIG.enemyMaxCount) {
+      spawnEnemy(now, true);
+      state.emptySinceMs = now;              // restart the clock; it's still bare for a beat longer
+      state.nextSpawnAt = now + randomSpawnDelay();
+      return;
+    }
+  } else {
+    state.emptySinceMs = 0;
+  }
   if (now < state.nextSpawnAt) return;
   if (livingEnemies().length < CONFIG.enemyMaxCount) spawnEnemy(now);
   state.nextSpawnAt = now + randomSpawnDelay();

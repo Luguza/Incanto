@@ -50,18 +50,54 @@ function nextSpawnLane() {
   return lane;
 }
 
+// The far end of the visible march track, in tiles from the hero: the largest
+// `pos` at which a skeleton's whole 1-tile-wide sprite still fits inside the
+// canvas. Beyond it the sprite is clipped by the right border, and a few pixels
+// of shoulder poking past the edge is not something the player can see or fight
+// — hence the full sprite width, not the bare canvas edge. Derived from the live
+// scene because the canvas (and so the track) grows with the viewport. Before
+// the scene exists, fall back to the spawn distance — that reads as "everything
+// is visible", which only ever suppresses the no-dead-air spawn below, never
+// triggers a spurious one.
+function trackEdgeTiles() {
+  if (!scene) return CONFIG.enemySpawnTiles;
+  return (scene.artW - scene.enemyLineX) / TILE - 1;
+}
+
+// Is the corridor visibly empty — nothing on camera for the player to fight or
+// watch? Dying skeletons still count as occupied: they're drawn while they
+// dissolve, so the screen isn't actually bare.
+function sceneIsEmpty() {
+  const edge = trackEdgeTiles();
+  return !state.enemies.some((e) => e.pos <= edge);
+}
+
 // Send in one lone skeleton off the right edge. Every skeleton is identical
 // (same HP/damage). It joins its dealt lane, queued a gap behind whoever is
 // already furthest out in that lane so arrivals never spawn on top of a corpse
 // or a straggler, then walks to its own stop slot before it starts attacking.
-function spawnEnemy(now) {
+//
+// `atEdge` is the no-dead-air arrival (see updateSpawns): it lands just inside
+// the right edge of frame — on camera immediately, fading in through the edge
+// vignette — instead of taking the usual multi-second off-screen approach. On a
+// viewport wide enough that the normal spawn distance is already in frame, that
+// distance is used unchanged. It also skips the trail-behind-stragglers rule:
+// those stragglers are by definition off camera and further out, so queueing
+// behind them would put this one off camera too, which is the whole thing we're
+// trying to avoid. Nothing overlaps — the new arrival is *ahead* of them, and
+// updateEnemies re-sorts the lane and holds the ones behind at a full gap.
+function spawnEnemy(now, atEdge = false) {
   const id = state.nextEnemyId++;
   const lane = nextSpawnLane();
   // Spawn at the standard distance, but if this lane still has stragglers, drop
   // in a gap behind the rearmost so the new one trails the column.
   let pos = CONFIG.enemySpawnTiles;
-  for (const e of state.enemies) {
-    if (e.lane === lane) pos = Math.max(pos, e.pos + CONFIG.enemySpawnGapTiles);
+  if (atEdge) {
+    pos = Math.min(pos, trackEdgeTiles());
+  } else {
+    for (const e of state.enemies) {
+      if (e.lane === lane) pos = Math.max(pos, e.pos + CONFIG.enemySpawnGapTiles);
+    }
   }
   state.enemies.push({
     id,
@@ -95,6 +131,7 @@ function startRun() {
   state.cameraVel = 0;
   state.heroWalking = false;
   state.nextSpawnAt = now + CONFIG.enemyFirstSpawnMs;
+  state.emptySinceMs = now;   // the corridor starts bare — the no-dead-air clock is already ticking
   state.laneBag = [];
   state.lastSpawnLane = -1;
   state.castTargetId = null;
@@ -130,4 +167,4 @@ function shuffleArray(arr) {
   return arr;
 }
 
-window.Incanto.progression = { randomSpawnDelay, spawnRateRampMult, nextSpawnLane, spawnEnemy, startRun, layoutCircle, shuffleArray };
+window.Incanto.progression = { randomSpawnDelay, spawnRateRampMult, nextSpawnLane, spawnEnemy, trackEdgeTiles, sceneIsEmpty, startRun, layoutCircle, shuffleArray };

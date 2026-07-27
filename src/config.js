@@ -49,6 +49,23 @@ const CONFIG = {
   enemySpawnMinMs: 1100,     // shortest gap between arrivals
   enemySpawnMaxMs: 3200,     // longest gap between arrivals
   enemyFirstSpawnMs: 400,    // the first skeleton of a run walks in almost at once
+  // No dead air: the corridor must never stand visibly bare for as long as a
+  // second. Once nothing has been on camera this long, updateSpawns forces an
+  // arrival outside the random schedule, instead of leaving the player watching
+  // an empty hall through the usual ~5s off-screen approach.
+  //
+  // The forced arrival lands at the far end of the visible track (see
+  // progression.trackEdgeTiles) rather than off camera, so it counts as on
+  // screen the very next frame — which bounds the empty stretch at
+  // `enemyMaxEmptyMs` plus a frame, full stop. Landing it off camera instead
+  // can't hold that bound: the hero's spell auto-targets the frontmost living
+  // skeleton whether or not it's visible, so a player casting into an
+  // empty-looking hall snipes the arrival before it ever walks into view and the
+  // screen stays bare for another whole budget. In frame it's safe either way —
+  // if it's killed on arrival the dissolve plays on camera, which is not dead
+  // air. It appears flush against the right border, half-under the 16px edge
+  // vignette, so it fades in at the frame edge instead of over open floor.
+  enemyMaxEmptyMs: 700,      // longest the screen may sit empty before an arrival is forced
   // Progressive spawn rate, driven by DISTANCE TRAVELLED (not kills). The hero
   // only strides forward while the near stretch of corridor is clear, so metres
   // walked is the honest measure of "how deep into the run am I" — and it can't
