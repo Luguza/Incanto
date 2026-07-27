@@ -82,7 +82,7 @@ const CONFIG = {
   // so no two skeletons ever share a tile. They walk left until blocked (by the
   // standoff line or the skeleton ahead), stand idle if out of reach, and only
   // swing once within attack range.
-  enemyWalkTilesPerMs: 0.0018,  // march speed (~1.8 tiles/sec)
+  enemyWalkTilesPerMs: 0.00108, // march speed (~1.1 tiles/sec)
   enemySpawnTiles: 13,          // frontmost skeleton spawns this many tiles out (off-screen right)
   enemySpawnGapTiles: 1.7,      // extra spawn distance per queue slot (trailing column)
   enemyStandoffTiles: 1.6,      // how far in front of the hero the front rank stops
