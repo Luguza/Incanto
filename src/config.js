@@ -44,10 +44,32 @@ const CONFIG = {
   quizFeedbackMs: 650,   // how long a wrong match flashes red before clearing
   // Skeletons arrive in designed packs (see encounters.js) and walk toward the
   // hero; each only attacks once it reaches melee range, at its own steady
-  // cadence. Every skeleton is identical — same HP, same damage. A pack's threat
-  // is its shape and its head count, not per-enemy scaling.
+  // cadence. There is no per-wave scaling — a skeleton's strength comes from its
+  // VARIANT (see `enemyTypes` below), and a pack's threat from its shape, its
+  // head count, and which variants the plan put in it.
   enemyBaseHP: 10,
   enemyBaseDmg: 6,
+  // Enemy variants — what a kind of skeleton IS. The multipliers scale the base
+  // numbers above; `scale` is the drawn size of the 16x16 skeleton art and
+  // `tint` a wash laid over its pixels, together the tell that a tougher one
+  // just walked in, so it reads before it swings.
+  //
+  // WHERE each variant shows up is not decided here: packs name their members'
+  // variants in encounters.js, so a mark on the plan always sends the same
+  // bodies. (These entries used to carry `weight` and `minKills` for a random
+  // per-arrival roll — that draw is gone, since it would have put randomness
+  // back into the one thing the encounter plan exists to make designable.)
+  enemyTypes: [
+    { id: "skeleton", hpMult: 1, dmgMult: 1, attackSpeedMult: 1, scale: 1, tint: null, label: null },
+    // Brute: a head taller, darker bone, twice the HP and damage, and swings
+    // ~40% faster. `label` is called out on the enemy HP bar while it leads the
+    // queue, so a slow-draining bar reads as "this one is tougher", not stuck.
+    {
+      id: "brute",
+      hpMult: 2, dmgMult: 2, attackSpeedMult: 1.4,
+      scale: 1.375, tint: "rgba(26, 20, 34, 0.34)", label: "KNOCHENKOLOSS",
+    },
+  ],
   wrongPenaltyFraction: 0.15, // a wrong match backfires for this fraction of the hero's MAX HP
   enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
   // DESIGNED ENCOUNTERS. Skeletons don't trickle in on a timer — the hall is a

@@ -13,18 +13,19 @@
 // also what keeps arrivals just off camera on a wide screen instead of popping
 // in over open floor. Before the scene exists (possible on the very first frame
 // of a run, ahead of the first render) fall back to a nominal off-screen mark.
-const FALLBACK_EDGE_TILES = 11;
-function trackEdgeTiles() {
-  if (!scene) return FALLBACK_EDGE_TILES;
-  return (scene.artW - scene.enemyLineX) / TILE - 1;
+// `scale` is the body's drawn width in tiles, so a brute — drawn half again as
+// wide — has to stand that bit further in before it counts as fully on camera.
+const FALLBACK_EDGE_TILES = 12;
+function trackEdgeTiles(scale = 1) {
+  if (!scene) return FALLBACK_EDGE_TILES - scale;
+  return (scene.artW - scene.enemyLineX) / TILE - scale;
 }
 
 // Is the corridor visibly empty — nothing on camera for the player to fight or
 // watch? Dying skeletons still count as occupied: they're drawn while they
 // dissolve, so the screen isn't actually bare.
 function sceneIsEmpty() {
-  const edge = trackEdgeTiles();
-  return !state.enemies.some((e) => e.pos <= edge);
+  return !state.enemies.some((e) => e.pos <= trackEdgeTiles(e.scale || 1));
 }
 
 // Lanes are authored in the pack data (encounters.js), so a plan written for
@@ -34,8 +35,24 @@ function clampLane(lane) {
   return Math.max(0, Math.min(lane | 0, CONFIG.enemyLanes - 1));
 }
 
-// Send in one designed pack: every rank of it, in the lanes the plan asked for,
-// one `enemySpawnGapTiles` step deeper per rank so the formation marches in
+// Look up a variant by id, falling back to the first entry (the plain skeleton)
+// for an unknown or missing one, so a typo in a pack costs a brute rather than
+// the whole encounter.
+//
+// DECISION: which variant walks in is a property of the PACK, not a die roll.
+// Variants used to be picked at spawn time by a weighted random draw gated on
+// kill count; with the encounter plan that would put randomness right back in
+// the one place the plan exists to remove — the same metre mark would sometimes
+// be four skeletons and sometimes four brutes, and a pack couldn't be designed
+// around its own composition. The variant table keeps what a brute *is* (twice
+// the HP and damage, ~40% faster swings, drawn a head taller in darker bone);
+// encounters.js decides where brutes appear.
+function enemyTypeById(id) {
+  return CONFIG.enemyTypes.find((t) => t.id === id) || CONFIG.enemyTypes[0];
+}
+
+// Send in one designed pack: every rank of it, in the lanes and variants the
+// plan asked for, one gap-step deeper per rank so the formation marches in
 // holding its shape. Returns how many actually made it in.
 //
 // The pack forms up just off the right edge of frame and strides into view
@@ -47,8 +64,10 @@ function clampLane(lane) {
 function spawnPack(now, entry, inFrame = false) {
   const ranks = packRanks(entry);
   const lanes = new Set();
-  for (const rank of ranks) for (const lane of rank) lanes.add(clampLane(lane));
-  const edge = trackEdgeTiles();
+  for (const rank of ranks) for (const m of rank) lanes.add(clampLane(m.lane));
+  // Measured against the front rank's own bodies, so a pull-forward lands a
+  // brute fully in frame rather than half-clipped by the right border.
+  const edge = trackEdgeTiles(rankScale(ranks[0]));
   let front = inFrame ? edge : edge + CONFIG.enemyApproachTiles;
   // Never form up on top of a straggler. If anything the pack shares a lane with
   // is still standing at or behind the muster line, shift the WHOLE pack back as
@@ -57,36 +76,53 @@ function spawnPack(now, entry, inFrame = false) {
   // (in melee, walking in) can't collide and are ignored.
   for (const e of state.enemies) {
     if (!lanes.has(e.lane)) continue;
-    front = Math.max(front, e.pos + CONFIG.enemySpawnGapTiles);
+    front = Math.max(front, e.pos + CONFIG.enemySpawnGapTiles * ((e.scale || 1) + 1) / 2);
   }
   let sent = 0;
+  let pos = front;
   for (let r = 0; r < ranks.length; r++) {
-    const pos = front + r * CONFIG.enemySpawnGapTiles;
+    // Ranks of brutes need more room between them than ranks of plain skeletons,
+    // for the same reason two queued brutes do: the bodies are drawn bigger, so
+    // a fixed gap would let the sprites overlap. Step by the pair's average size.
+    if (r > 0) pos += CONFIG.enemySpawnGapTiles * (rankScale(ranks[r - 1]) + rankScale(ranks[r])) / 2;
     const seen = new Set();
-    for (const raw of ranks[r]) {
-      const lane = clampLane(raw);
+    for (const member of ranks[r]) {
+      const lane = clampLane(member.lane);
       if (seen.has(lane)) continue;          // two of a rank folded into one lane — keep the front one
       seen.add(lane);
       // The cap is a safety valve on how much fits on screen, not a design
       // input: a late pack can out-grow it, and the overflow is simply dropped.
       if (livingEnemies().length >= CONFIG.enemyMaxCount) return sent;
-      spawnEnemy(now, lane, pos);
+      spawnEnemy(now, lane, pos, member.type);
       sent++;
     }
   }
   return sent;
 }
 
-// One skeleton, placed exactly where the pack wants it. Every skeleton is
-// identical (same HP/damage); it walks to its own stop slot before it starts
+// The drawn size of the biggest body in a rank, used to space ranks apart.
+function rankScale(rank) {
+  let s = 1;
+  for (const m of rank) s = Math.max(s, enemyTypeById(m.type).scale || 1);
+  return s;
+}
+
+// One skeleton, placed exactly where the pack wants it. Its variant decides how
+// much HP and damage it carries, how fast it swings, and how big it's drawn —
+// everything else is identical. It walks to its own stop slot before it starts
 // attacking.
-function spawnEnemy(now, lane, pos) {
+function spawnEnemy(now, lane, pos, typeId) {
   const id = state.nextEnemyId++;
+  const type = enemyTypeById(typeId);
+  const hp = Math.max(1, Math.round(CONFIG.enemyBaseHP * type.hpMult));
   state.enemies.push({
     id,
-    maxHP: CONFIG.enemyBaseHP,
-    hp: CONFIG.enemyBaseHP,
-    dmg: CONFIG.enemyBaseDmg,
+    type: type.id,
+    maxHP: hp,
+    hp,
+    dmg: Math.max(1, Math.round(CONFIG.enemyBaseDmg * type.dmgMult)),
+    atkSpeed: type.attackSpeedMult || 1,  // multiplies swing rate (divides the interval)
+    scale: type.scale || 1,               // drawn size vs. the 16x16 sheet art
     slot: id,                     // per-enemy constant, only used to de-sync the idle animation
     lane,
     pos,
@@ -111,11 +147,10 @@ function spawnEnemy(now, lane, pos) {
 // the screen stays bare — which cascades into pulling pack after pack forward.
 function advanceInboundPack() {
   if (!state.enemies.length) return false;
-  const edge = trackEdgeTiles();
-  let lead = Infinity;
-  for (const e of state.enemies) lead = Math.min(lead, e.pos);
-  if (lead <= edge) return false;                  // already on camera, nothing to close
-  const shift = lead - edge;
+  // Close on whichever body would show first, measured against its own width.
+  let shift = Infinity;
+  for (const e of state.enemies) shift = Math.min(shift, e.pos - trackEdgeTiles(e.scale || 1));
+  if (shift <= 0) return false;                    // already on camera, nothing to close
   for (const e of state.enemies) e.pos -= shift;
   return true;
 }
@@ -174,4 +209,4 @@ function shuffleArray(arr) {
   return arr;
 }
 
-window.Incanto.progression = { spawnPack, spawnEnemy, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };
+window.Incanto.progression = { spawnPack, spawnEnemy, enemyTypeById, rankScale, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };

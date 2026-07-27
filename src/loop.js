@@ -64,6 +64,16 @@ function updateSpawns(now) {
   // next pack in frame instead — the whole point of the rule.
 }
 
+// Clearance (in tiles) between two neighbours queued in the same lane. Bodies
+// are drawn at their variant's scale, so the gap grows with the pair's average
+// size — two brutes need more room than two plain skeletons, or the bigger
+// sprites would overlap even though their centres are a tile apart.
+function laneSpacing(front, behind) {
+  const a = (front && front.scale) || 1;
+  const b = (behind && behind.scale) || 1;
+  return CONFIG.enemyGapTiles * ((a + b) / 2);
+}
+
 // March the mob one frame. Each lane is resolved independently, front-to-back
 // (nearest the hero first), so a skeleton is blocked by the standoff line or by
 // whoever is ahead of it *in its own lane*, always leaving > 1 tile between
@@ -92,11 +102,13 @@ function updateEnemies(now, dt) {
     let limit = CONFIG.enemyStandoffTiles; // how far forward the next skeleton may advance
     let chainSettled = true;               // is everything ahead in this lane settled against the hero?
     let frontRank = true;                  // only the lane's leading skeleton stands in melee
-    for (const e of group) {
+    for (let i = 0; i < group.length; i++) {
+      const e = group[i];
+      const behind = group[i + 1];         // whoever queues up next in this lane
       if (e.phase === "dying" || e.phase === "struck") {
         // a doomed/crumbling skeleton still holds its tile until it's culled, so
         // the ranks behind it can't walk through the corpse
-        limit = e.pos + CONFIG.enemyGapTiles;
+        limit = e.pos + laneSpacing(e, behind);
         chainSettled = false;
         continue;
       }
@@ -107,7 +119,9 @@ function updateEnemies(now, dt) {
       // Only the front skeleton in the lane actually reaches melee and swings;
       // everyone queued behind it just idles until it falls and they advance.
       if (frontRank && settled && e.pos <= CONFIG.enemyAttackRangeTiles + 1e-3) {
-        if (e.phase !== "attack") { e.phase = "attack"; e.attackAt = now + CONFIG.enemyFirstAttackMs; }
+        // Both the windup and the steady cadence are divided by the variant's
+        // attack-speed multiplier, so a brute engages and swings quicker.
+        if (e.phase !== "attack") { e.phase = "attack"; e.attackAt = now + CONFIG.enemyFirstAttackMs / (e.atkSpeed || 1); }
       } else if (!blocked) {
         e.phase = "walk";
       } else {
@@ -116,7 +130,7 @@ function updateEnemies(now, dt) {
       if (e.phase === "attack" && now >= e.attackAt) {
         hitPlayer(e.dmg);
         e.attackAnimAt = now;                 // fire the forward-jab animation
-        e.attackAt = now + CONFIG.enemyAttackIntervalMs;
+        e.attackAt = now + CONFIG.enemyAttackIntervalMs / (e.atkSpeed || 1);
         // Pop the damage number over the hero, in sync with the skeleton's jab.
         // Only while the fight is on screen — off-screen (background) combat has
         // no one to show the numbers to, and they'd pile up unseen.
@@ -139,13 +153,13 @@ function updateEnemies(now, dt) {
               color: CONFIG.colors.dmgFloat.enemy,
               targetId: e.id,
               x: scene.enemyLineX + e.pos * TILE,
-              y: (scene.laneY[e.lane] ?? scene.feetY) - SHEET.skeletIdle.h - 3,
+              y: (scene.laneY[e.lane] ?? scene.feetY) - enemyArt(e).h - 3,
             });
           }
           if (e.hp <= 0) { e.phase = "dying"; e.phaseAt = now; state.kills++; }
         }
       }
-      limit = e.pos + CONFIG.enemyGapTiles;   // next skeleton stays a gap behind this one
+      limit = e.pos + laneSpacing(e, behind);  // next skeleton stays a gap behind this one
       chainSettled = settled;                 // a still-moving skeleton breaks the settled chain
       frontRank = false;                      // everyone after the leader is a back rank
     }
@@ -313,4 +327,4 @@ function render(now) {
   }
   updateNav();
 }
-window.Incanto.loop = { rafLoop, render, logAttempt };
+window.Incanto.loop = { rafLoop, render, logAttempt, laneSpacing };
