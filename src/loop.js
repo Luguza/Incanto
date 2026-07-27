@@ -24,9 +24,18 @@ function getEffectiveDt(rawDt) {
 // in. Nothing here is random, so the same distance always produces the same
 // fight — which is what makes the packs designable in the first place.
 //
-// `state.packIndex` walks the plan, never rewinding, so a hero who covers a lot
-// of ground in one go still meets every pack in order rather than skipping to
-// whatever mark he happens to land on.
+// ONE CAMP AT A TIME. A pack is never sent in on top of a fight already in
+// progress: the hall has to be empty — the last of the previous pack dead and
+// its dissolve finished — before the next one musters. Distance alone isn't
+// enough of a gate, because the hero keeps advancing while a pack makes its slow
+// walk across the floor, and that advance is easily further than the gap to the
+// next mark. Without this he would walk into a camp, keep walking as it closed,
+// trip the following mark, and end up fighting two camps stacked together.
+//
+// So a mark is a FLOOR, not a trigger on its own: the hero must have walked at
+// least that far AND have the hall to himself. `state.packIndex` walks the plan
+// and never rewinds, so overshooting a mark during a long fight doesn't skip the
+// encounter — he still meets every pack, in order.
 function updateSpawns(now) {
   // Track how long the corridor has been visibly bare — dissolving skeletons
   // still count as occupied, since they're drawn.
@@ -36,23 +45,24 @@ function updateSpawns(now) {
   } else {
     state.emptySinceMs = 0;
   }
-  if (livingEnemies().length >= CONFIG.enemyMaxCount) return;
+  const starved = empty && now - state.emptySinceMs >= CONFIG.enemyMaxEmptyMs;
+
+  // The current camp is still standing (or still dissolving). Nothing new goes
+  // in. If it's inbound but hasn't reached frame and the player has been staring
+  // at an empty hall too long, close the gap on it rather than send anything.
+  if (state.enemies.length) {
+    if (starved) advanceInboundPack();
+    return;
+  }
 
   const next = encounterAt(state.packIndex);
-  const reached = state.distance >= next.at;
-  // No dead air: the hero only advances while the near stretch is clear, so a
-  // slow build can end up short of the next mark with nothing on screen. Rather
-  // than leave him staring down an empty hall, pull that pack forward. This
-  // never changes WHAT comes next or in what order — only how early it arrives —
-  // so the plan stays a plan. It also bounds an empty screen at
-  // `enemyMaxEmptyMs` plus a frame, because a pulled-forward pack lands in frame
-  // rather than marching in from off camera.
-  const starved = empty && now - state.emptySinceMs >= CONFIG.enemyMaxEmptyMs;
-  // If a pack is already marching in when the budget runs out, it isn't a
-  // missing encounter — it's one that hasn't arrived yet. Close the gap on it
-  // instead of sending an unplanned one in on top.
-  if (starved && advanceInboundPack()) return;
-  if (!reached && !starved) return;
+  // No dead air: with the hall empty and the next mark still ahead, the hero
+  // sprints for it — but if that somehow runs long, send the pack anyway rather
+  // than leave him staring down an empty corridor. This never changes WHAT comes
+  // next or in what order, only how early it arrives, so the plan stays a plan.
+  // A pack pulled in this way lands in frame instead of marching in from off
+  // camera, which is what bounds an empty screen at `enemyMaxEmptyMs`.
+  if (state.distance < next.at && !starved) return;
   spawnPack(now, next, starved);
   state.packIndex++;
   // DECISION: the bare-stretch clock is deliberately NOT restarted here. A pack
