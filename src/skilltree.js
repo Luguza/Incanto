@@ -6,9 +6,8 @@
 // design decision rather than the output of a growth simulation.
 //
 //   root ──► 12 arms, alternating around the circle:
-//              6 SPELL arms  (one per page of the book, 40° of wedge each)
-//              6 GENERIC arms (might, vigour, precision, sustain, guard,
-//                              fortune — 20° of wedge each)
+//              6 SPELL arms  (one per page of the book)
+//              6 GENERIC arms (might, vigour, precision, sustain, guard, fortune)
 //
 //   Every arm has the SAME skeleton, so the tree teaches itself:
 //     rings 1–4   prelude — four cheap, thematically fitting generic nodes.
@@ -20,18 +19,20 @@
 //     rings 6+    the key fans into ASPECT BRANCHES — five on a spell arm
 //                 (raw power · the spell's own % damage · its shape/AOE · crit ·
 //                 leech-and-life), three on a generic arm.
-//     ring 12–14  every aspect branch forks into two twigs, each at its own depth.
-//     ring 19–20  each twig-A ends in a unique KEYSTONE; five twig-Bs out on the
-//                 generic arms hide the five Dornenkrone caches. Dead-end
-//                 offshoots of one or two nodes hang off branches all the way out.
+//     ring 11–14  every aspect branch forks into two twigs, each at its own depth.
+//     ring 15–19  a twig runs out and stops — twig A on the outer rings, carrying
+//                 a unique KEYSTONE; twig B one to three rings shorter. Five of
+//                 those twig-B ends out on the generic arms are the Dornenkrone
+//                 caches. Dead-end offshoots of one or two nodes hang off
+//                 branches the whole way out.
 //
 // That skeleton is BOOKKEEPING, not geometry. A node's ring fixes its cost and
-// its value; where it is DRAWN is a seeded walk that staggers sideways, strides
-// unevenly, sweeps the whole arm to one side and sprouts offshoots, so an arm
-// reads as a branch or a bolt rather than a spoke on a wheel (see BRANCH_SPREAD
-// and the constants under it).
+// its value and nothing else; where it is DRAWN comes from the layout pass under
+// REST_LEN, which aims at one thing — even spacing everywhere, no clumps and no
+// voids — and gets its organic look from the fact that no two subtrees are the
+// same size rather than from noise sprinkled on top.
 //
-// That gives ~1290 nodes with an actual grammar: reach a page, then choose which
+// That gives ~1050 nodes with an actual grammar: reach a page, then choose which
 // facet of it to sharpen. This module owns the layout, the derived stat model
 // (recomputeMods), purchase/reveal logic, and the SVG screen. Loads after
 // spells.js (it reads SPELL_BY_ID) and screens.js, so it can define the global
@@ -98,28 +99,36 @@ const PRELUDE_RINGS = 4;       // rings 1..4 — the generic run-up on every arm
 const KEY_RING = 5;            // the spell unlock / arm notable
 const FAN_RING = 6;            // first ring of the aspect branches
 const FORK_RING = 13;          // roughly where an aspect branch splits (±1, per branch)
-const TIP_RING = 20;           // the outermost ring — keystones live here
+const TIP_RING = 19;           // the outermost ring — keystones live here
+const SPUR_STEM = 0.6;         // chance an aspect branch's stem sprouts a dead-end offshoot
+const SPUR_TWIG = 0.45;        // …and the (lower) chance a twig does, out where space is dearer
 
-// --- how a branch actually GROWS ------------------------------------------
-// A branch's ring is bookkeeping — it sets the node's cost and its value, and
-// nothing else. Where the node is DRAWN is a walk: it staggers sideways, its
-// steps are uneven, it forks at its own depth and sprouts dead-end offshoots,
-// so an arm reads like a branch or a bolt rather than a spoke on a wheel.
-// Every number below is deterministic (seeded per arm — see mulberry32); the
-// tree must be pixel-identical on every load because saves name its nodes.
-const BRANCH_SPREAD = 0.56;    // how far across its wedge a branch's lane sits (of the half-width)
-const TWIG_SEP = 46;           // units between the two twigs where they fork…
-const TWIG_SPLAY = 1.9;        // …multiplied by this by the time they reach the tip
-const WANDER_STEP = 19;        // how far a walk may stagger sideways from one node to the next
-const WANDER_MAX = 46;         // …and how far it may ever stray from its lane
-const WANDER_PULL = 0.2;       // restoring pull back toward the lane, per step
-const ARM_SWEEP = 62;          // units a whole arm curves to one side across its length
-const BRANCH_SWEEP = 50;       // …plus this much of its own, so no two branches bend alike
-const STEP_SPREAD = 0.32;      // ± fraction by which a branch's stride is longer or shorter
-const STEP_PHASE = 0.8;        // ± NODE_STEPs a branch starts ahead of or behind its ring
-const RADIAL_JITTER = 0.26;    // fraction of NODE_STEP a single node's distance may wobble
-const SPUR_CHANCE = 0.62;      // chance a stem or twig sprouts a dead-end offshoot
-const MIN_SEP = 76;            // no two nodes ever end up closer than this (see relaxTree)
+// --- how the tree is DRAWN -------------------------------------------------
+// A node's ring is bookkeeping: it sets the node's cost and its value, and
+// nothing else. Position comes from a two-step layout that aims for one thing —
+// EVEN SPACING everywhere, with no clumps and no voids.
+//
+//   1. every subtree is given a slice of the circle proportional to how many
+//      chain-ends it contains, so a fat arm gets more room than a thin one and
+//      no two subtrees can ever overlap (that's what keeps edges from crossing);
+//   2. the whole thing is then relaxed under three forces — springs along the
+//      edges holding chains at one step, short-range repulsion pushing every
+//      node off its neighbours, and a weak radial pull toward its own ring.
+//
+// The relaxation is what makes it look grown rather than drafted: it spreads
+// nodes into whatever space is going spare, and because subtrees differ in size
+// it never settles anywhere symmetrical. It is fully deterministic — the tree
+// must be pixel-identical on every load, because saves name its nodes.
+const REST_LEN = NODE_STEP;        // how long a spring wants its edge to be
+const REPEL_RADIUS = NODE_STEP * 1.35;  // how far a node shoves its neighbours away
+const K_SPRING = 0.3;              // edge springs — hold a chain together
+const K_REPEL = 0.55;              // node repulsion — the thing that evens the density out
+const K_RADIAL = 0.05;             // pull back toward the node's own ring — weak, so angles are free to redistribute
+const K_RADIAL_KEY = 0.28;         // …but the twelve keys hold their ring firmly: they are the map's landmarks
+const RELAX_PASSES = 90;             // the layout is fully settled by ~60; this leaves margin
+const MAX_NUDGE = 14;              // per-pass movement cap, so the relaxation can't explode
+const RELAX_CELLS = 34;            // repulsion lookup grid; RELAX_SPAN/RELAX_CELLS must stay >= REPEL_RADIUS
+const RELAX_SPAN = 5200;
 
 // A node's effect grows gently with its ring — enough that a deep node is
 // clearly the better one, not so much that a single outer node saturates a
@@ -457,21 +466,17 @@ const ARMS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Layout — walk the ARMS table and grow every node into place. Wedges are cut
-// by weight (a spell arm counts double) and each branch is assigned a LANE
-// across its arm's wedge, but from there it is a walk rather than a ruled line:
-// the lateral offset staggers node to node under a restoring pull toward the
-// lane, radii wobble around their ring, branches fork at their own depth, and
-// dead-end offshoots hang off the sides. Lanes are proportional to the radius,
-// so neighbours drift further apart the further out they go; relaxTree then
-// guarantees the last few units of clearance.
+// Layout — grow the graph from the ARMS table first, then place it. Position is
+// a two-step job (see the constants above): give every subtree a slice of the
+// circle proportional to how many chain-ends it holds, then relax the whole
+// thing under springs + repulsion so the density evens out and the shape stops
+// looking drafted.
 // ---------------------------------------------------------------------------
 function ringRadius(ring) { return HOLE + (ring - 1) * NODE_STEP; }
 function ringCost(base, ring) { return Math.max(5, Math.round(base * Math.pow(ring, COST_RING_POW))); }
 
-// Small seeded PRNG. The stagger has to be IDENTICAL on every load — it decides
-// which offshoots exist, and saves name the nodes on them — so the layout never
-// touches Math.random.
+// Small seeded PRNG. It decides which offshoots exist and how long twigs run,
+// and saves name the nodes on them, so the layout never touches Math.random.
 function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -483,168 +488,223 @@ function mulberry32(seed) {
 }
 
 function buildSkillTree() {
-  const C = TREE_CENTER, TWO_PI = Math.PI * 2;
   const nodes = {
     root: { title: "Ursprung", theme: "origin", ring: 0, maxRank: 0, cost: 0, growth: 1, effect: {},
       path: "Runenbaum",
       blurb: "Der Quell deiner Macht. Zwölf Arme wachsen von hier — sechs tragen je eine Seite deines Buches, sechs tragen nichts als rohe Fertigkeit." },
   };
-  const pos = { root: { x: C, y: C } };
+  const kids = { root: [] };
   const edges = [];
-
-  const weight = (arm) => (arm.kind === "spell" ? 2 : 1);
-  const totalWeight = ARMS.reduce((s, arm) => s + weight(arm), 0);
-  let cursor = 0;
+  // Children are recorded in the order they are grown, and the angular pass
+  // below hands out slices in that same order — so an arm's five branches stay
+  // side by side in the order the ARMS table lists them.
+  const add = (id, node, parent) => {
+    nodes[id] = node;
+    kids[id] = [];
+    kids[parent].push(id);
+    edges.push([parent, id]);
+    return id;
+  };
 
   ARMS.forEach((arm, armIdx) => {
-    const wedge = (weight(arm) / totalWeight) * TWO_PI;
-    const mid = -Math.PI / 2 + cursor + wedge / 2;   // this arm's centre line
-    cursor += wedge;
-    const cosA = Math.cos(mid), sinA = Math.sin(mid), halfWedge = wedge / 2;
     const rng = mulberry32(0x9E3779B1 ^ Math.imul(armIdx + 1, 2654435761));
+    // Some arms simply don't grow as far as others. Without this every arm ends
+    // on the same ring and the whole tree is drawn inside a perfect circle.
+    const armReach = rng() < 0.4 ? 1 : 0;
 
-    // A node is placed in the arm's own frame: `r` out along the centre line,
-    // `lat` sideways from it.
-    const put = (id, node, r, lat, parent) => {
-      nodes[id] = node;
-      pos[id] = { x: C + r * cosA - lat * sinA, y: C + r * sinA + lat * cosA };
-      if (parent) edges.push([parent, id]);
-      return { id, r, lat };
-    };
-    const jitter = () => (rng() - 0.5) * 2 * RADIAL_JITTER * NODE_STEP;
-    const radius = (ring) => ringRadius(ring) + jitter();
-    const stagger = (off) => {
-      const next = off + (rng() - 0.5) * 2 * WANDER_STEP - off * WANDER_PULL;
-      return Math.max(-WANDER_MAX, Math.min(WANDER_MAX, next));
-    };
-    // How far along its length a branch node is, eased so the sweep opens up
-    // slowly near the key and hard out at the tips.
-    const along = (ring) => Math.pow((ring - FAN_RING) / (TIP_RING - FAN_RING), 1.3);
-    // The whole arm leans one way — the single biggest thing stopping twelve
-    // arms from reading as twelve spokes.
-    const armSweep = (rng() - 0.5) * 2 * ARM_SWEEP;
     // A dead-end offshoot: one or two nodes hanging off the side of a chain,
     // ending on a node with an extra rank so the detour is worth walking.
-    const sprout = (chain, arch, path) => {
-      if (chain.length < 2 || rng() >= SPUR_CHANCE) return;
+    const sprout = (chain, arch, path, chance) => {
+      if (chain.length < 2 || rng() >= chance) return;
       const at = chain[1 + Math.floor(rng() * (chain.length - 1))];
       const count = rng() < 0.42 ? 2 : 1;
-      const dir = rng() < 0.5 ? -1 : 1;
-      const lean = 0.25 + rng() * 0.85;   // some offshoots run almost sideways, some almost forward
-      let prev = at;
+      let prev = at.id;
       for (let j = 0; j < count; j++) {
-        prev = put(`${at.id}s${j}`,
+        prev = add(`${at.id}s${j}`,
           archNode(arch[(at.idx + 2 + j) % arch.length], at.ring + j + 1, path, j === count - 1 ? 4 : 0),
-          at.r + (j + 0.7) * NODE_STEP * lean, at.lat + dir * (62 + j * 46), prev.id);
+          prev);
       }
     };
 
-    // --- rings 1..4: the prelude, drifting gently up the arm's centre line
-    let prev = { id: "root" }, off = 0;
+    // --- rings 1..4: the prelude
+    let prev = "root";
     const prelude = [];
     arm.prelude.forEach((arch, i) => {
-      const ring = i + 1;
-      off = stagger(off);
-      prev = put(`${arm.key}p${i}`, archNode(arch, ring, arm.title), radius(ring), off * 0.9, prev.id);
-      prelude.push({ ...prev, ring, idx: i });
+      prev = add(`${arm.key}p${i}`, archNode(arch, i + 1, arm.title), prev);
+      prelude.push({ id: prev, ring: i + 1, idx: i });
     });
-    sprout(prelude, arm.prelude, arm.title);
+    sprout(prelude, arm.prelude, arm.title, 0.55);
 
-    // --- ring 5: the key — a spell's seal, or a generic arm's notable. This one
-    // sits exactly on its ring and exactly on the centre line: the twelve keys
-    // are the map's landmarks, and a clean circle of them is what makes the
-    // wandering mess around them readable.
-    const key = put(`${arm.key}g`, keyNode(arm), ringRadius(KEY_RING), 0, prev.id);
+    // --- ring 5: the key — a spell's seal, or a generic arm's notable
+    const key = add(`${arm.key}g`, keyNode(arm), prev);
 
-    // --- rings 6..20: the aspect branches, each forking into two twigs
-    const B = arm.branches.length;
+    // --- rings 6..19: the aspect branches, each forking into two twigs
     arm.branches.forEach((br, b) => {
-      const lane = B > 1 ? -BRANCH_SPREAD + b * ((2 * BRANCH_SPREAD) / (B - 1)) : 0;
       const path = `${arm.title} · ${br.title}`;
-      const forkRing = FORK_RING - 1 + Math.floor(rng() * 3);   // 12 | 13 | 14 — no two branches split in line
-      // Each branch grows at its OWN pace and starts a little ahead of or behind
-      // its ring, so the nth node of five branches never lines up into an arc.
-      const stride = NODE_STEP * (1 + (rng() - 0.5) * 2 * STEP_SPREAD);
-      const phase = (rng() - 0.5) * 2 * STEP_PHASE * NODE_STEP;
-      const branchSweep = (rng() - 0.5) * 2 * BRANCH_SWEEP;
-      const reach = (ring) => ringRadius(FAN_RING) + phase + (ring - FAN_RING) * stride + jitter();
-      const drift = (ring) => (armSweep + branchSweep) * along(ring);
-
+      const forkRing = FORK_RING - 2 + Math.floor(rng() * 4);   // 11..14 — no two branches split in line
       const stem = [];
-      let sOff = 0, sPrev = key;
+      let sPrev = key;
       for (let ring = FAN_RING; ring < forkRing; ring++) {
         const i = ring - FAN_RING;
-        sOff = stagger(sOff);
-        const r = reach(ring);
-        sPrev = put(`${arm.key}b${b}n${i}`, archNode(br.arch[i % br.arch.length], ring, path),
-          r, lane * halfWedge * r + drift(ring) + sOff, sPrev.id);
-        stem.push({ ...sPrev, ring, idx: i });
+        sPrev = add(`${arm.key}b${b}n${i}`, archNode(br.arch[i % br.arch.length], ring, path), sPrev);
+        stem.push({ id: sPrev, ring, idx: i });
       }
-      sprout(stem, br.arch, path);
+      sprout(stem, br.arch, path, SPUR_STEM);
 
       for (let t = 0; t < 2; t++) {
-        // Twig A always runs to the tip (it carries the keystone); twig B
-        // sometimes stops a ring short, so a fork rarely looks like a tuning fork.
-        const tipRing = t === 0 ? TIP_RING : TIP_RING - (rng() < 0.35 ? 1 : 0);
-        const sign = t === 0 ? -1 : 1;
+        // Where a twig stops. Twig A carries the keystone so it runs long, but
+        // not to a fixed ring — together with armReach and the varying fork this
+        // is what keeps the outer edge ragged instead of circular, and it thins
+        // the outermost band so the tips have room to breathe.
+        const tipRing = TIP_RING - armReach - (t === 0
+          ? Math.floor(rng() * 2)                 // twig A: one of the two outer rings
+          : 1 + Math.floor(rng() * 3));           // twig B: one to three rings shorter
         const twig = [];
-        let tOff = sOff, tPrev = sPrev;                 // both twigs inherit the stem's drift
+        let tPrev = sPrev;
         for (let ring = forkRing; ring <= tipRing; ring++) {
           const i = ring - forkRing;
-          tOff = stagger(tOff);
-          const r = reach(ring);
-          // The two halves keep spreading after the split rather than running parallel.
-          const splay = 1 + (TWIG_SPLAY - 1) * (tipRing > forkRing ? (ring - forkRing) / (tipRing - forkRing) : 0);
           const isTip = ring === tipRing;
           const tipSpec = isTip ? (t === 0 ? br.tip : br.tip2) : null;
           const node = tipSpec
             ? uniqueNode(tipSpec, ring, path)
             : archNode(br.arch[(i + 1 + t * 2) % br.arch.length], ring, path,
                 isTip ? 4 : 0);   // a twig with no keystone ends on a deeper-ranked node instead
-          tPrev = put(`${arm.key}b${b}t${t}n${i}`, node,
-            r, lane * halfWedge * r + drift(ring) + tOff + sign * TWIG_SEP * splay, tPrev.id);
-          twig.push({ ...tPrev, ring, idx: i });
+          tPrev = add(`${arm.key}b${b}t${t}n${i}`, node, tPrev);
+          twig.push({ id: tPrev, ring, idx: i });
         }
-        sprout(twig.slice(0, -1), br.arch, path);       // never off the keystone itself
+        sprout(twig.slice(0, -1), br.arch, path, SPUR_TWIG);   // never off the keystone itself
       }
     });
   });
 
-  relaxTree(pos);
+  const pos = radialSlices(nodes, kids);
+  relaxTree(pos, nodes, edges);
   return { nodes, pos, edges };
 }
 
-// The stagger will occasionally throw two nodes on top of each other. A few
-// passes of purely local repulsion open those up to MIN_SEP without straightening
-// the wander back out — the seed stays pinned, everything else gives a little.
-function relaxTree(pos) {
-  const ids = Object.keys(pos).filter((id) => id !== "root");
-  const cell = MIN_SEP * 2;
-  for (let iter = 0; iter < 60; iter++) {
-    const grid = new Map();
-    for (const id of ids) {
-      const p = pos[id], k = `${Math.floor(p.x / cell)},${Math.floor(p.y / cell)}`;
-      (grid.get(k) || grid.set(k, []).get(k)).push(id);
+// Step one: every subtree gets a wedge of the circle sized by how many
+// chain-ends hang off it, and sits in the middle of its own wedge. Sibling
+// wedges never overlap, so no branch can ever be drawn across another — which
+// is what the relaxation below then has to preserve rather than create.
+function radialSlices(nodes, kids) {
+  const ends = {};
+  const countEnds = (id) => (ends[id] = kids[id].length
+    ? kids[id].reduce((s, c) => s + countEnds(c), 0)
+    : 1);
+  countEnds("root");
+
+  const pos = {};
+  const place = (id, a0, a1) => {
+    const ang = (a0 + a1) / 2;
+    const r = id === "root" ? 0 : ringRadius(nodes[id].ring);
+    pos[id] = { x: TREE_CENTER + r * Math.cos(ang), y: TREE_CENTER + r * Math.sin(ang) };
+    const cs = kids[id];
+    if (!cs.length) return;
+    const total = cs.reduce((s, c) => s + ends[c], 0);
+    let a = a0;
+    for (const c of cs) {
+      const w = (a1 - a0) * (ends[c] / total);
+      place(c, a, a + w);
+      a += w;
     }
-    let worst = 0;
-    for (const id of ids) {
-      const p = pos[id], cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell);
-      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
-        for (const o of grid.get(`${cx + i},${cy + j}`) || []) {
-          if (o === id) continue;
-          const q = pos[o];
-          let dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy);
-          if (d >= MIN_SEP) continue;
-          if (d < 1e-3) { dx = 1; dy = 0; d = 1e-3; }
-          worst = Math.max(worst, MIN_SEP - d);
-          const push = (MIN_SEP - d) / 2 + 0.4, ux = dx / d, uy = dy / d;
-          p.x -= ux * push; p.y -= uy * push;
-          q.x += ux * push; q.y += uy * push;
+  };
+  place("root", -Math.PI / 2, -Math.PI / 2 + Math.PI * 2);
+  return pos;
+}
+
+// Step two: settle the whole tree under three forces at once —
+//   springs along every edge, so a chain keeps one step between its nodes;
+//   short-range repulsion, which is what actually evens the density out and
+//     pushes nodes into whatever space is going spare;
+//   a weak pull toward each node's own ring, enough to keep the tree growing
+//     outward without pinning angles, so crowded regions can drain sideways.
+// The seed is pinned and the twelve keys are held near their ring; everything
+// else is free. Deterministic: fixed pass count, fixed iteration order.
+function relaxTree(pos, nodes, edges) {
+  const ids = Object.keys(pos);
+  const n = ids.length;
+  const index = new Map(ids.map((id, i) => [id, i]));
+  // Flat arrays throughout: this runs a few hundred passes at page load, and
+  // doing it over objects and string keys cost more than the rest of the boot.
+  const px = new Float64Array(n), py = new Float64Array(n);
+  const fx = new Float64Array(n), fy = new Float64Array(n);
+  const target = new Float64Array(n), pull = new Float64Array(n);
+  ids.forEach((id, i) => {
+    px[i] = pos[id].x; py[i] = pos[id].y;
+    target[i] = ringRadius(nodes[id].ring);
+    pull[i] = nodes[id].beacon ? K_RADIAL_KEY : K_RADIAL;
+  });
+  const ea = new Int32Array(edges.length), eb = new Int32Array(edges.length);
+  edges.forEach(([a, b], i) => { ea[i] = index.get(a); eb[i] = index.get(b); });
+  const rootIdx = index.get("root");
+
+  const cellSize = RELAX_SPAN / RELAX_CELLS;
+  const buckets = Array.from({ length: RELAX_CELLS * RELAX_CELLS }, () => []);
+  const cellOf = (v) => {
+    const c = (v / cellSize) | 0;
+    return c < 0 ? 0 : c >= RELAX_CELLS ? RELAX_CELLS - 1 : c;
+  };
+
+  for (let pass = 0; pass < RELAX_PASSES; pass++) {
+    fx.fill(0); fy.fill(0);
+
+    for (let e = 0; e < ea.length; e++) {
+      const a = ea[e], b = eb[e];
+      const dx = px[b] - px[a], dy = py[b] - py[a];
+      const d = Math.sqrt(dx * dx + dy * dy) || 1e-3;
+      const f = (d - REST_LEN) * K_SPRING, ux = dx / d, uy = dy / d;
+      fx[a] += ux * f; fy[a] += uy * f;
+      fx[b] -= ux * f; fy[b] -= uy * f;
+    }
+
+    for (const bucket of buckets) bucket.length = 0;
+    for (let i = 0; i < n; i++) buckets[cellOf(py[i]) * RELAX_CELLS + cellOf(px[i])].push(i);
+    for (let cy = 0; cy < RELAX_CELLS; cy++) {
+      for (let cx = 0; cx < RELAX_CELLS; cx++) {
+        const here = buckets[cy * RELAX_CELLS + cx];
+        if (!here.length) continue;
+        for (let oy = cy; oy <= cy + 1 && oy < RELAX_CELLS; oy++) {
+          for (let ox = cx - 1; ox <= cx + 1; ox++) {
+            if (ox < 0 || ox >= RELAX_CELLS) continue;
+            if (oy === cy && ox < cx) continue;          // each cell pair once
+            const there = buckets[oy * RELAX_CELLS + ox];
+            const same = oy === cy && ox === cx;
+            for (let ii = 0; ii < here.length; ii++) {
+              const i = here[ii];
+              for (let jj = same ? ii + 1 : 0; jj < there.length; jj++) {
+                const j = there[jj];
+                let dx = px[j] - px[i], dy = py[j] - py[i];
+                let d = Math.sqrt(dx * dx + dy * dy);
+                if (d >= REPEL_RADIUS) continue;
+                if (d < 1e-3) { dx = 1; dy = 0; d = 1e-3; }
+                // Quadratic falloff: barely felt at arm's length, very firm up
+                // close, so no two nodes ever settle on top of each other.
+                const t = (REPEL_RADIUS - d) / REPEL_RADIUS;
+                const f = K_REPEL * REPEL_RADIUS * t * t, ux = dx / d, uy = dy / d;
+                fx[i] -= ux * f; fy[i] -= uy * f;
+                fx[j] += ux * f; fy[j] += uy * f;
+              }
+            }
+          }
         }
       }
     }
-    if (worst < 0.5) break;
+
+    for (let i = 0; i < n; i++) {
+      if (i === rootIdx) continue;
+      const dx = px[i] - TREE_CENTER, dy = py[i] - TREE_CENTER;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1e-3;
+      const f = (target[i] - d) * pull[i];
+      fx[i] += (dx / d) * f; fy[i] += (dy / d) * f;
+    }
+
+    for (let i = 0; i < n; i++) {
+      if (i === rootIdx) continue;
+      px[i] += fx[i] < -MAX_NUDGE ? -MAX_NUDGE : fx[i] > MAX_NUDGE ? MAX_NUDGE : fx[i];
+      py[i] += fy[i] < -MAX_NUDGE ? -MAX_NUDGE : fy[i] > MAX_NUDGE ? MAX_NUDGE : fy[i];
+    }
   }
+  ids.forEach((id, i) => { pos[id].x = px[i]; pos[id].y = py[i]; });
 }
 
 // One archetype, resolved at a ring: value scaled by the tier, cost by the ring.
@@ -1235,6 +1295,6 @@ function attachTreeInteractions() {
 }
 
 window.Incanto.skilltree = {
-  TREE_NODES, TREE_EDGES, TREE_THEMES, ARMS, recomputeMods, treeBuy, treeZoom, treeReset,
+  TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, recomputeMods, treeBuy, treeZoom, treeReset,
   renderUpgradeFull, nodeRevealed, nodeReachable, nodeCost, nodeRank,
 };
