@@ -61,7 +61,6 @@ const PAGE_SQUASH = 0.90;
 const FLIP_THRESHOLD = 0.12;
 
 const mirror = (p) => ({ x: 2 * SPINE_X - p.x, y: p.y });
-const quad = (pts) => pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
 const pageCorners = (side) => (side < 0 ? PAGE_L : PAGE_L.map(mirror));
 
 // The control point for a bowed edge: the midpoint of P→Q pushed out along the
@@ -90,6 +89,26 @@ function leafTopEdge(side) {
   const t = bowCtrl(A, B, TOP_BOW, side);
   const f = (p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
   return `M${f(A)} Q${f(t)} ${f(B)}`;
+}
+
+// The bookmark on the page the book is currently cast from. A real ribbon is
+// sewn into the HEAD OF THE SPINE and lies down the page from there, so that is
+// where this one comes from — hanging it over the fore-edge would put it
+// exactly where the fanned page edges show and read as a flag stapled to the
+// paper. It lies in the gutter strip, which is empty (the ruled frame starts
+// further out), and ends in the usual swallow-tail notch.
+function ribbonPath(side) {
+  const [A, B] = pageCorners(side);
+  const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
+  const e = { x: dx / len, y: dy / len };                       // along the top edge, spine-ward
+  const d = side < 0 ? { x: -e.y, y: e.x } : { x: e.y, y: -e.x }; // down the page, away from the head
+  const at = (along, down) => ({
+    x: B.x - e.x * along + d.x * down,
+    y: B.y - e.y * along + d.y * down,
+  });
+  const f = (p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+  return `<path d="M${f(at(7, -3))} L${f(at(19, -3))} L${f(at(19, 64))} ` +
+    `L${f(at(13, 52))} L${f(at(7, 64))} Z"/>`;
 }
 
 // --- Page illustrations ------------------------------------------------------
@@ -227,13 +246,7 @@ function spellPage(spell, side) {
     `<text class="bk-name" y="${-(CONTENT.ring + 11)}" text-anchor="middle" ` +
     `fill="${unlocked ? c.core : "#6d6484"}" textLength="128" lengthAdjust="spacingAndGlyphs">${name}</text>`;
 
-  // The ribbon marking the page the book is open at, hung over the outer edge.
-  const ribbon = active
-    ? `<g class="bk-ribbon" fill="${c.mid}">` +
-      `<polygon points="${quad([pts[0], { x: pts[0].x + side * -14, y: pts[0].y },
-        { x: pts[0].x + side * -14, y: pts[0].y + 34 }, { x: pts[0].x + side * -7, y: pts[0].y + 27 },
-        { x: pts[0].x, y: pts[0].y + 34 }])}"/></g>`
-    : "";
+  const ribbon = active ? `<g class="bk-ribbon" fill="${c.mid}">${ribbonPath(side)}</g>` : "";
 
   // A ruled frame around the ILLUSTRATION, with the title heading the page
   // above it — the bookplate arrangement, and the only one that keeps the two
@@ -249,31 +262,45 @@ function spellPage(spell, side) {
   return `<g class="bk-page${active ? " active" : ""}${unlocked ? "" : " locked"}" data-side="${side}"${act}>
       ${paper}
       ${unlocked ? "" : `<path class="bk-sealed" d="${d}"/>`}
-      ${active ? `<path class="bk-lit" d="${d}" stroke="${c.mid}"/>` : ""}
+      ${active ? `<path class="bk-halo" d="${d}" stroke="${c.mid}"/>` +
+                 `<path class="bk-lit" d="${d}" stroke="${c.mid}"/>` : ""}
       ${ribbon}
       <g transform="translate(${cx},${CONTENT.y}) scale(1,${PAGE_SQUASH}) rotate(${tilt.toFixed(2)})">${frame}${inner}${nameSvg}</g>
     </g>`;
 }
 
-// The pages already turned on one side, drawn as a few slivers peeking out past
-// the open leaf's OUTER edge — the only place the book's thickness shows, since
-// its lower edge is clipped off the bottom of the screen. They also double as
-// the affordance for dragging: a fat stack on the right means more to turn to.
+// The pages already turned on one side, drawn as a few leaf shapes fanned out
+// behind the open one. Every leaf in a book is bound along the same spine, so a
+// sliver is the SAME shape displaced straight out toward the screen edge —
+// never up. Displacing it upward would show the block's head edges above the
+// open page, which is not something you can see in a book lying open: the head
+// is edge-on to the viewer and hidden behind the top edge of the page on top of
+// it. Pushed purely outward, each sliver is covered by the open leaf except for
+// a thin band past its outer edge — the only place the book's thickness shows,
+// since its lower edge is clipped off the bottom of the screen. The band also
+// doubles as the affordance for dragging: a fat stack on the right means there
+// is more to turn to.
+const STACK_STEP = 4;                  // how far apart the fanned edges sit
+const STACK_SHADE = ["#e9e0bf", "#e1d7b5", "#d9ceab", "#d1c5a1"];  // nearest the open leaf first
 function pageStack(side, count) {
   if (count <= 0) return "";
   const pts = pageCorners(side);
   let s = "";
-  for (let i = Math.min(4, count); i > 0; i--) {
-    const off = i * 4.5;
-    // Pushed straight out toward the screen edge — no downward offset, or the
-    // slivers would fan out along a bottom edge that isn't there.
-    const A = { x: pts[0].x - side * off, y: pts[0].y - off * 0.22 };
-    const D = { x: pts[3].x - side * off, y: pts[3].y };
+  for (let i = Math.min(STACK_SHADE.length, count); i > 0; i--) {
+    const off = i * STACK_STEP;
+    // `+ side * off`: outward is -x on the left leaf (side -1) and +x on the
+    // right (side +1). Getting this backwards tucks the whole fan UNDER the
+    // open page, where the only thing that can escape is a vertical lift at the
+    // head — which is exactly the thing a book can't show.
+    const A = { x: pts[0].x + side * off, y: pts[0].y };
+    const D = { x: pts[3].x + side * off, y: pts[3].y };
     const t = bowCtrl(A, pts[1], TOP_BOW, side);
     const o = bowCtrl(D, A, OUT_BOW, side);
     const f = (p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
-    s += `<path class="bk-stack" d="M${f(A)} Q${f(t)} ${f(pts[1])} L${f(pts[2])} L${f(D)} Q${f(o)} ${f(A)} Z" ` +
-      `opacity="${(0.62 - i * 0.1).toFixed(2)}"/>`;
+    // Opaque, and a shade darker the further out it sits — the edges deeper in
+    // the block catch less light. The stroke is the seam between two leaves.
+    s += `<path class="bk-stack" fill="${STACK_SHADE[i - 1]}" ` +
+      `d="M${f(A)} Q${f(t)} ${f(pts[1])} L${f(pts[2])} L${f(D)} Q${f(o)} ${f(A)} Z"/>`;
   }
   return s;
 }
@@ -288,15 +315,17 @@ function renderSpellbook() {
   const left = SPELLS[spread * 2];
   const right = SPELLS[spread * 2 + 1];
 
-  // Covers: the leaf outline pushed OUT only, so a rim of leather shows past
-  // the pages along the outer edges and the top of each wing. Nothing is pushed
-  // down — the bottom of the book is off screen — and the rim bows with the
-  // page it backs rather than cutting a straight line behind a curved edge.
+  // Covers: the leaf outline pushed out, far enough to sit outside the widest
+  // page sliver (STACK_SHADE.length * STACK_STEP) so the block never pokes out
+  // past its own boards. The small lift at the head is deliberate and is the
+  // one thing that should overhang there — a hardcover's boards are cut proud
+  // of the text block on all three outer edges. The rim bows with the page it
+  // backs rather than cutting a straight line behind a curved edge.
   const coverPath = (side) => {
     const p = pageCorners(side);
-    const A = { x: p[0].x - side * 11, y: p[0].y - 7 };
+    const A = { x: p[0].x + side * 22, y: p[0].y - 7 };
     const B = { x: p[1].x, y: p[1].y - 1 };
-    const D = { x: p[3].x - side * 14, y: p[3].y };
+    const D = { x: p[3].x + side * 26, y: p[3].y };
     const t = bowCtrl(A, B, TOP_BOW, side);
     const o = bowCtrl(D, A, OUT_BOW, side);
     const f = (q) => `${q.x.toFixed(1)} ${q.y.toFixed(1)}`;

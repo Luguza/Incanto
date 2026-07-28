@@ -113,7 +113,10 @@
     filter: drop-shadow(0 -3px 10px rgba(6, 4, 12, 0.6));
   }
   .bk-cover { fill: #3d2b1c; stroke: #150f0a; stroke-width: 2; stroke-linejoin: round; }
-  .bk-stack { fill: #ded3b1; stroke: #8d8264; stroke-width: 0.7; }
+  /* Fanned page edges behind the open leaf. Fill is set per sliver (it darkens
+     with depth into the block), so it must NOT be declared here — a CSS `fill`
+     would override the presentation attribute and flatten the fan. */
+  .bk-stack { stroke: #8d8264; stroke-width: 0.7; }
   /* The leaf's fill is a per-side gradient (defined in the book's own <defs>),
      so light runs from the lit outer edge into the shadowed gutter instead of
      the whole page being one flat colour. */
@@ -131,7 +134,10 @@
   /* Sealed pages keep the paper's shading and are darkened over the top of it,
      so they read as the same book rather than as a different material. */
   .bk-sealed { fill: #191428; opacity: 0.82; stroke: #4a4360; stroke-width: 1.2; }
-  .bk-lit { fill: none; stroke-width: 2.6; opacity: 0.95; filter: url(#bkGlow); }
+  /* The active page's border: a crisp line over a blurred copy of itself. One
+     blurred stroke on its own reads as a fuzzy halo with no edge to it. */
+  .bk-halo { fill: none; stroke-width: 5; opacity: 0.3; filter: url(#bkGlow); }
+  .bk-lit { fill: none; stroke-width: 2; opacity: 0.9; }
   /* The ruled border around a page's contents — it rides the page plane, which
      is a good part of what makes the tilt read as a surface. */
   .bk-frame {
