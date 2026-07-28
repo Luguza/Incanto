@@ -136,6 +136,36 @@ try {
   check(tree.thorns === 5, "exactly five Dornenkrone caches exist (" + tree.thorns + ")");
   check(tree.unknownTheme === 0, "every node's theme resolves to a colour + glyph");
 
+  //    …and it is laid out evenly. The whole point of radialSlices + relaxTree is
+  //    that nodes sit at a roughly constant distance from each other everywhere:
+  //    no clumps, no voids. Guard the nearest-neighbour spread so a tweak to the
+  //    forces or the node counts can't quietly go back to a lumpy web.
+  const spacing = await page.evaluate(() => {
+    const { TREE_NODES: N } = Incanto.skilltree;
+    const P = Incanto.skilltree.NODE_POS;
+    const ids = Object.keys(N);
+    const cell = 220, grid = new Map();
+    for (const id of ids) {
+      const p = P[id], k = Math.floor(p.x / cell) + "," + Math.floor(p.y / cell);
+      (grid.get(k) || grid.set(k, []).get(k)).push(id);
+    }
+    const nn = ids.map((id) => {
+      const p = P[id], cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell);
+      let best = Infinity;
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++)
+        for (const o of grid.get(cx + i + "," + (cy + j)) || []) {
+          if (o === id) continue;
+          const d = Math.hypot(p.x - P[o].x, p.y - P[o].y);
+          if (d < best) best = d;
+        }
+      return best;
+    }).sort((a, b) => a - b);
+    return { min: nn[0], p5: nn[(nn.length * 0.05) | 0], p95: nn[(nn.length * 0.95) | 0] };
+  });
+  check(spacing.min >= 58, "no two nodes overlap (closest pair " + spacing.min.toFixed(0) + ")");
+  check(spacing.p5 >= 66 && spacing.p95 <= 130,
+    "node spacing is even (5th-95th percentile " + spacing.p5.toFixed(0) + "-" + spacing.p95.toFixed(0) + ")");
+
   // 5. A beacon key is visible from the first screen but NOT buyable until the
   //    prelude that leads to it has been walked.
   const beacon = await page.evaluate(() => {
