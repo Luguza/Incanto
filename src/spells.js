@@ -14,37 +14,39 @@
 // here are deliberate: offense, control, then the two support spells.
 //
 // `dmgKey` / `paramKey` name the skill-tree stats that lift this page
-// specifically (see skilltree.js — each spell owns one sector of the tree).
+// specifically, and `sector` is the key of the tree arm that carries them (see
+// skilltree.js — every spell owns one of the twelve arms, and the unique node
+// at that arm's ring 5 is what opens the page).
 // `unlock` is null for the one spell the hero starts with; every other page is
 // sealed until its unique unlock node is bought.
 const SPELLS = [
   {
-    id: "fireball", name: "Feuerball", theme: "arcane", sector: "arc", kind: "damage",
+    id: "fireball", name: "Feuerball", theme: "fireball", sector: "fir", kind: "damage",
     dmgKey: "dmgFireball", paramKey: "tgtFireball", unlock: null,
     blurb: "Eine Kugel aus Flammen für jedes der nächsten Ziele — volle Wucht auf jedes, ohne Abschwächung.",
   },
   {
-    id: "lightning", name: "Blitzschlag", theme: "offense", sector: "off", kind: "damage",
+    id: "lightning", name: "Blitzschlag", theme: "lightning", sector: "lig", kind: "damage",
     dmgKey: "dmgLightning", paramKey: "chainLightning", unlock: "lightning",
     blurb: "Ein Bogen, der von Körper zu Körper springt. Jeder Sprung trägt weniger Kraft als der vorige.",
   },
   {
-    id: "frost", name: "Frostkegel", theme: "vitality", sector: "vit", kind: "control",
+    id: "frost", name: "Frostkegel", theme: "frost", sector: "fro", kind: "control",
     dmgKey: "dmgFrost", paramKey: "freezeFrost", unlock: "frost",
     blurb: "Ein Kegel aus Eis stößt die vorderste Reihe zurück und friert sie fest. Dein nächster Zauber zerschmettert sie.",
   },
   {
-    id: "meteor", name: "Meteoritenschauer", theme: "crit", sector: "cri", kind: "damage",
+    id: "meteor", name: "Meteoritenschauer", theme: "meteor", sector: "met", kind: "damage",
     dmgKey: "dmgMeteor", paramKey: "countMeteor", unlock: "meteor",
     blurb: "Brocken stürzen auf zufällige Stellen des ganzen Ganges — verheerend gegen eine weit verteilte Horde.",
   },
   {
-    id: "shield", name: "Bannschild", theme: "ward", sector: "war", kind: "support",
+    id: "shield", name: "Bannschild", theme: "shield", sector: "shi", kind: "support",
     dmgKey: "dmgShield", paramKey: null, unlock: "shield",
     blurb: "Wandelt deine Zauberkraft in einen Schild, der die nächsten Schläge schluckt.",
   },
   {
-    id: "heal", name: "Heilwort", theme: "sustain", sector: "sus", kind: "support",
+    id: "heal", name: "Heilwort", theme: "heal", sector: "hea", kind: "support",
     dmgKey: "dmgHeal", paramKey: null, unlock: "heal",
     blurb: "Wandelt deine Zauberkraft in Lebenspunkte zurück.",
   },
@@ -95,6 +97,14 @@ function spellPower(id) {
   if (!spell || !cfg) return state.heroDmg;
   const pct = (state.mods.spellPct && state.mods.spellPct[id]) || 0;
   return state.heroDmg * cfg.dmgMult * (1 + pct);
+}
+
+// How long the traced rune charges before the spell actually leaves it.
+// Zauberhast nodes shave that wind-up down; the scene renderer reads the SAME
+// number for the charge/puff animation, so the rune never puffs out of step with
+// the bolt it launched.
+function castChargeMs() {
+  return CONFIG.castChargeMs * (1 - (state.mods.castHaste || 0));
 }
 
 // Living skeletons nearest the hero first — the order every targeted spell
@@ -199,6 +209,9 @@ const SPELL_RESOLVERS = {
   lightning(ctx) {
     const cfg = CONFIG.spells.lightning;
     const hops = Math.min(cfg.maxChain, cfg.chain + (state.mods.spellParam.chainLightning || 0));
+    // Leitfähigkeit nodes soften the per-hop falloff, so a long chain arrives at
+    // the back of the queue with something left in it.
+    const falloff = Math.min(0.94, cfg.falloff + (state.mods.spellParam.falloffLightning || 0));
     const targets = ctx.pickTargets(hops);
     const points = [];
     let dealt = 0, amount = ctx.power;
@@ -208,7 +221,7 @@ const SPELL_RESOLVERS = {
         shatter: ctx.shatter, color: CONFIG.colors.spell.lightning.rgb,
       });
       points.push({ targetId: target.id, at: enemyPoint(target) });
-      amount *= cfg.falloff;                      // every further body takes less
+      amount *= falloff;                          // every further body takes less
     });
     if (targets.length) {
       state.castTargetId = targets[0].id;
@@ -227,8 +240,11 @@ const SPELL_RESOLVERS = {
   frost(ctx) {
     const cfg = CONFIG.spells.frost;
     const freeze = Math.min(cfg.maxFreezeMs, cfg.freezeMs + (state.mods.spellParam.freezeFrost || 0));
+    // Weiter Atem nodes push the cone further down the hall (the drawn cone reads
+    // the same reach off the fx descriptor, so the art always matches the catch).
+    const reach = cfg.coneTiles * (1 + (state.mods.spellParam.coneFrost || 0));
     const land = ctx.castAt + cfg.castMs * 0.45;
-    const caught = spellTargets().filter((e) => e.pos <= cfg.coneTiles);
+    const caught = spellTargets().filter((e) => e.pos <= reach);
     let dealt = 0;
     for (const e of caught) {
       dealt += applySpellHit(e, ctx.power, land, {
@@ -247,7 +263,7 @@ const SPELL_RESOLVERS = {
     state.castTargetId = caught.length ? caught[0].id : null;
     pushFx({
       kind: "cone", spell: "frost", born: ctx.castAt, landAt: land,
-      until: ctx.castAt + cfg.castMs, reach: cfg.coneTiles,
+      until: ctx.castAt + cfg.castMs, reach,
     });
     return dealt;
   },
@@ -258,6 +274,11 @@ const SPELL_RESOLVERS = {
   meteor(ctx) {
     const cfg = CONFIG.spells.meteor;
     const count = Math.min(cfg.maxCount, cfg.count + (state.mods.spellParam.countMeteor || 0));
+    // Einschlagswucht nodes widen the crater. Depth grows at half the rate — a
+    // rock that swallowed every lane at once would erase the point of lanes.
+    const aoe = state.mods.spellParam.aoeMeteor || 0;
+    const radius = cfg.radiusTiles * (1 + aoe);
+    const laneRadius = cfg.laneRadius * (1 + aoe * 0.5);
     const edge = trackEdgeTiles(1);
     const lanes = Math.max(1, CONFIG.enemyLanes);
     let dealt = 0;
@@ -268,15 +289,15 @@ const SPELL_RESOLVERS = {
       // landing as one thud.
       const land = ctx.castAt + cfg.fallMs + Math.random() * cfg.spreadMs;
       for (const e of spellTargets()) {
-        if (Math.abs(e.pos - pos) > cfg.radiusTiles) continue;
-        if (Math.abs(e.lane - lane) > cfg.laneRadius) continue;
+        if (Math.abs(e.pos - pos) > radius) continue;
+        if (Math.abs(e.lane - lane) > laneRadius) continue;
         dealt += applySpellHit(e, ctx.power, land, {
           shatter: ctx.shatter, color: CONFIG.colors.spell.meteor.rgb,
         });
       }
       pushFx({
         kind: "meteor", spell: "meteor", born: land - cfg.fallMs, landAt: land,
-        until: land + cfg.impactMs, pos, lane,
+        until: land + cfg.impactMs, pos, lane, radius,
       });
     }
     state.castTargetId = null;
@@ -323,7 +344,7 @@ const SPELL_RESOLVERS = {
 function castActiveSpell(now) {
   const spell = activeSpell();
   const id = spell.id;
-  const castAt = now + CONFIG.castChargeMs;   // the rune finishes charging first
+  const castAt = now + castChargeMs();   // the rune finishes charging first
   const shatter = primeActive(now);
 
   const ctx = {
@@ -356,5 +377,5 @@ function castActiveSpell(now) {
 
 window.Incanto.spells = {
   SPELLS, SPELL_BY_ID, STARTER_SPELL, spellUnlocked, activeSpellId, activeSpell,
-  spellSelect, spellPower, castActiveSpell, primeActive,
+  spellSelect, spellPower, castActiveSpell, primeActive, castChargeMs,
 };

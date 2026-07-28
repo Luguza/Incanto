@@ -196,7 +196,7 @@ const SPELL_FX = {
       return;
     }
     const q = Math.min(1, (now - f.landAt) / Math.max(1, f.until - f.landAt));
-    const r = Math.round(3 + q * CONFIG.spells.meteor.radiusTiles * TILE);
+    const r = Math.round(3 + q * (f.radius || CONFIG.spells.meteor.radiusTiles) * TILE);
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     // A flattened ring, so the blast reads as spreading along the floor rather
