@@ -415,7 +415,7 @@ function renderScene(now) {
   // anything about fireballs specifically.
   if (state.castAt) {
     const t = now - state.castAt;
-    const charge = CONFIG.castChargeMs;
+    const charge = castChargeMs();
     const puff = CONFIG.runePuffMs;
     if (t < charge) {
       // charge: disc fades in behind the completed rune, lines go white-hot
@@ -946,7 +946,7 @@ function drawWizardStaff(ctx, now) {
 
   if (state.castAt) {
     const t = now - state.castAt;
-    const charge = CONFIG.castChargeMs, puff = CONFIG.runePuffMs;
+    const charge = castChargeMs(), puff = CONFIG.runePuffMs;
     const ap = domeProject(0, 0, 1);        // the dome apex — the shield's lit centre
     const discTop = { x: ap.x, y: ap.y - 4 };
     active = 1;

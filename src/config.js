@@ -205,7 +205,21 @@ const CONFIG = {
     // only five unique nodes in the whole tree grant it, 10% each (see skilltree.js).
     leech: 0.5,         // hard ceiling on life-leech fraction
     shieldChance: 0.5,  // hard ceiling on per-cast shield chance
+    shieldAmount: 60,   // hard ceiling on absorb granted per proc
+    shieldMax: 140,     // hard ceiling on the absorb pool a hero may bank
     spellFailProt: 0.6, // hard ceiling on backfire-ward chance
+    castHaste: 0.45,    // hard ceiling on how much of the cast charge can be shaved off
+    // Fortuna is a whole arm of the tree now, and neither of its stats is bounded
+    // by anything downstream the way damage is — so they soft-cap here.
+    coinMult: 1.5,      // soft-cap on summed bonus gold (approaches +150%)
+    walkMult: 1.0,      // soft-cap on summed bonus walking pace (heroWalkMaxPxPerMs still applies)
+    // A spell's SHAPE parameters, bounded so a fully-invested branch broadens the
+    // spell without erasing its trade-off. The whole-body counts (an extra target,
+    // hop, rock) are absent on purpose: each spell's own maximum in CONFIG.spells
+    // already bounds those.
+    coneFrost: 0.9,        // frost cone reach, as a fraction of coneTiles
+    aoeMeteor: 1.0,        // meteor crater size, as a fraction of radiusTiles
+    falloffLightning: 0.2, // added to lightning's per-hop falloff (0.72 → at most 0.92)
   },
   circleCenter: { x: 300, y: 300 },
   circleRadius: 215,

@@ -114,6 +114,9 @@
   .ti-rune { display: inline-flex; }
   .ti-name { font-family: var(--display-font); font-size: 19px; letter-spacing: 1px; }
   .ti-tier { font-size: 11px; color: #8a8398; letter-spacing: 0.5px; }
+  /* Which arm and which aspect branch this node grew on — the tree is authored
+     into named branches now, so a node can say where it belongs. */
+  .ti-path { font-size: 11px; color: #7d7690; letter-spacing: 0.6px; margin-bottom: 5px; }
   /* Badge on the five unique thorn caches — sits where the rank pips would be. */
   .ti-unique {
     margin-left: auto; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;

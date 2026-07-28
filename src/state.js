@@ -34,7 +34,7 @@ function freshState() {
     // Derived combat modifiers (see skilltree.recomputeMods). Safe defaults so
     // combat never touches an undefined field before the first recompute.
     mods: {
-      critChance: 0, critMult: 1.5, leech: 0, regen: 0,
+      critChance: 0, critMult: 1.5, leech: 0, regen: 0, castHaste: 0,
       walkMult: 1, coinMult: 1, shieldChance: 0, shieldAmount: 0, shieldMax: 0,
       thorns: 0, spellFailProt: 0,
       spellsUnlocked: {}, spellPct: {}, spellParam: {},
@@ -143,9 +143,17 @@ function clearProgress() {
 // Overlay any persisted meta-progression onto a freshly built state, then derive
 // the build from it. Legacy saves (flat dmgLevel/hpLevel from the old two-button
 // shop) are migrated onto the two entry skill-tree nodes so no progress is lost.
+// Gold handed back per rank that a save carried on a node the current tree no
+// longer has. The tree was replanted into authored branches (see skilltree.js),
+// so old deep ids have nowhere to land — refunding turns a silent wipe into a
+// pile of gold to re-spend. The save is rewritten immediately afterwards, so a
+// rank is only ever refunded once.
+const REPLANT_REFUND = 40;
+
 function applySavedProgress() {
   const asCount = (v) => (Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0);
   const data = loadProgress();
+  let orphanedRanks = 0;
   if (data) {
     state.gold = asCount(data.gold);
     if (data.nodeRanks && typeof data.nodeRanks === "object") {
@@ -155,19 +163,21 @@ function applySavedProgress() {
       for (const id in data.nodeRanks) {
         const r = asCount(data.nodeRanks[id]);
         if (r <= 0) continue;
-        // accept current ids as-is; remap ids from the first release onto their
+        // accept current ids as-is; remap ids from an earlier release onto their
         // present-day equivalent so nobody's tree progress is silently wiped
         const mapped = nodes[id] ? id : legacy[id];
         const node = mapped ? nodes[mapped] : null;
         if (node) ranks[mapped] = Math.min((ranks[mapped] || 0) + r, node.maxRank);
+        else orphanedRanks += r;
       }
       state.nodeRanks = ranks;
+      state.gold += orphanedRanks * REPLANT_REFUND;
     } else {
       // migrate the very old flat dmgLevel/hpLevel onto the two entry nodes
       state.nodeRanks = {};
       const nd = (typeof TREE_NODES !== "undefined") ? TREE_NODES : {};
-      if (asCount(data.dmgLevel) > 0 && nd.off_0) state.nodeRanks.off_0 = Math.min(asCount(data.dmgLevel), nd.off_0.maxRank);
-      if (asCount(data.hpLevel) > 0 && nd.vit_0) state.nodeRanks.vit_0 = Math.min(asCount(data.hpLevel), nd.vit_0.maxRank);
+      if (asCount(data.dmgLevel) > 0 && nd.migp0) state.nodeRanks.migp0 = Math.min(asCount(data.dmgLevel), nd.migp0.maxRank);
+      if (asCount(data.hpLevel) > 0 && nd.vigp0) state.nodeRanks.vigp0 = Math.min(asCount(data.hpLevel), nd.vigp0.maxRank);
     }
   }
   if (typeof recomputeMods === "function") recomputeMods();
@@ -183,6 +193,9 @@ function applySavedProgress() {
     const idx = SPELLS.findIndex((s) => s.id === state.activeSpell);
     if (idx >= 0) state.bookSpread = Math.floor(idx / 2);
   }
+  // Write the pruned tree straight back, so the refund above can never be
+  // collected twice by reloading the page.
+  if (orphanedRanks > 0) saveProgress();
   state.heroHP = state.heroMaxHP;
 }
 

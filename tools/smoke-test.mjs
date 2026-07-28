@@ -99,15 +99,57 @@ try {
     state.gold = 999999;
     state.nodeRanks = {};
     recomputeMods();
-    state.tree = { scale: 0.72, tx: 0, ty: 0, selected: "off_0" };
+    state.tree = { scale: 0.62, tx: 0, ty: 0, selected: "migp0" };
     state.screen = "upgrade";
     render(performance.now()); // rebuild DOM for the skill-tree screen
     return state.gold;
   });
   await page.click('[data-act="treeBuy"]');
-  const bought = await page.evaluate(() => ({ rank: state.nodeRanks.off_0 || 0, gold: state.gold }));
-  check(bought.rank === 1, "delegated data-act='treeBuy' fired treeBuy() (off_0 rank=" + bought.rank + ")");
+  const bought = await page.evaluate(() => ({ rank: state.nodeRanks.migp0 || 0, gold: state.gold }));
+  check(bought.rank === 1, "delegated data-act='treeBuy' fired treeBuy() (migp0 rank=" + bought.rank + ")");
   check(bought.gold < before, "buying the node spent gold (" + before + " -> " + bought.gold + ")");
+
+  // 4. The skill tree is authored, not grown (see skilltree.js): twelve arms out
+  //    of one seed, one connected acyclic graph, every sealed page reachable by
+  //    exactly one unlock node, and no node overlapping another on screen.
+  const tree = await page.evaluate(() => {
+    const { TREE_NODES: N, TREE_EDGES: E } = Incanto.skilltree;
+    const ids = Object.keys(N);
+    const adj = {};
+    for (const [a, b] of E) { (adj[a] = adj[a] || []).push(b); (adj[b] = adj[b] || []).push(a); }
+    const seen = new Set(["root"]), stack = ["root"];
+    while (stack.length) for (const n of adj[stack.pop()] || []) if (!seen.has(n)) { seen.add(n); stack.push(n); }
+    const sealed = Incanto.spells.SPELLS.filter((s) => s.unlock).map((s) => s.id);
+    const unlocks = ids.filter((i) => N[i].unlocks).map((i) => N[i].unlocks);
+    return {
+      count: ids.length,
+      arms: (adj.root || []).length,
+      connected: seen.size === ids.length && E.length === ids.length - 1,
+      unlocksOk: sealed.every((id) => unlocks.filter((u) => u === id).length === 1),
+      thorns: ids.filter((i) => N[i].effect && N[i].effect.thorns).length,
+      unknownTheme: ids.filter((i) => !Incanto.skilltree.TREE_THEMES[N[i].theme]).length,
+    };
+  });
+  check(tree.arms === 12, "twelve arms grow out of the seed (" + tree.arms + ")");
+  check(tree.connected, "tree is one connected, acyclic graph (" + tree.count + " nodes)");
+  check(tree.unlocksOk, "every sealed spell has exactly one unlock node");
+  check(tree.thorns === 5, "exactly five Dornenkrone caches exist (" + tree.thorns + ")");
+  check(tree.unknownTheme === 0, "every node's theme resolves to a colour + glyph");
+
+  // 5. A beacon key is visible from the first screen but NOT buyable until the
+  //    prelude that leads to it has been walked.
+  const beacon = await page.evaluate(() => {
+    const { nodeRevealed, treeBuy } = Incanto.skilltree;
+    state.gold = 999999; state.nodeRanks = {}; recomputeMods();
+    const seen = nodeRevealed("ligg");
+    treeBuy("ligg");
+    const blocked = !state.nodeRanks.ligg;
+    for (let i = 0; i < 4; i++) treeBuy("ligp" + i);
+    treeBuy("ligg");
+    return { seen, blocked, bought: !!state.nodeRanks.ligg, unlocked: !!state.mods.spellsUnlocked.lightning };
+  });
+  check(beacon.seen && beacon.blocked, "a spell key is lit through the fog but not buyable unreached");
+  check(beacon.bought && beacon.unlocked, "walking its prelude makes the key buyable and opens the page");
 
   check(errors.length === 0, "no console/page errors");
 
