@@ -65,40 +65,79 @@ const THORN_VALUE = 0.10;              // reflected fraction each one grants
 const THORN_RING_MIN = 16;             // never plant one closer to the seed than this tier
 const THORN_COST = 60;                 // base cost, scaled outward like any node
 
+// Stats counted in whole bodies (an extra fireball target, an extra lightning
+// hop, an extra meteor). They grant exactly 1 wherever they're planted — see
+// addNode for why they don't scale with the ring.
+const COUNT_STATS = { tgtFireball: 1, chainLightning: 1, countMeteor: 1 };
+
+// Spell unlocks. Five of the six spells in the book start sealed; each is opened
+// by ONE unique node planted a few tiers down its own sector's arm (see
+// TREE_SECTORS — the sector that carries a spell's damage nodes is the sector
+// that hides its key). Pushing down an arm therefore opens a page and sharpens
+// it in the same trip, and the five keys sit in five different directions, so a
+// run's build is partly a choice of which spell to go and fetch first.
+const UNLOCK_RING = 7;                 // how many tiers out a spell's key is buried
+const UNLOCK_COST = 150;               // base cost, scaled outward like any node
+
 // Sectors: the effect archetypes that repeat outward. The seven sectors are laid
 // out evenly around the full circle (see buildSkillTree), so every angle is used
 // and there are no empty wedges. Each archetype is a reusable "node type"; `rare`
-// ones (AoE, fail-protection) only appear on deep rings so the strong mechanics
-// stay far from the seed.
+// ones (a spell's signature parameter, fail-protection) only appear on deep rings
+// so the strong mechanics stay far from the seed.
+//
+// SIX OF THE SEVEN SECTORS OWN A SPELL (see spells.js). A sector carries its
+// spell's % damage nodes, its rare parameter node, and — planted deep by
+// plantUniques — the one unique node that unlocks the spell at all. So pushing
+// down an arm both opens a page of the book and sharpens it, and the generic
+// pctDmg/flatDmg nodes scattered elsewhere lift every page at once. Fortune is
+// the odd sector out: gold and walking pace belong to no spell.
 const TREE_SECTORS = [
-  { key: "off", theme: "offense", arch: [
+  { key: "off", theme: "offense", spell: "lightning", arch: [
     { stat: "flatDmg", base: 2, cost: 28, maxRank: 4, title: "Schneide", blurb: "Schärft deinen Grundschaden." },
     { stat: "pctDmg", base: 0.05, cost: 42, maxRank: 3, title: "Zorn", blurb: "Verstärkt allen Schaden prozentual." },
+    { stat: "dmgLightning", base: 0.07, cost: 44, maxRank: 3, title: "Sturmzeichen",
+      blurb: "Verstärkt den Schaden des Blitzschlags." },
+    { stat: "chainLightning", base: 1, cost: 190, growth: 1.8, maxRank: 1, rare: true, title: "Kettenglied",
+      blurb: "Der Blitz springt auf einen weiteren Körper über." },
   ]},
-  { key: "vit", theme: "vitality", arch: [
+  { key: "vit", theme: "vitality", spell: "frost", arch: [
     { stat: "flatHp", base: 16, cost: 24, maxRank: 4, title: "Zähigkeit", blurb: "Erhöht deine maximalen Lebenspunkte." },
     { stat: "pctHp", base: 0.05, cost: 40, maxRank: 3, title: "Lebenskraft", blurb: "Mehr Lebenspunkte prozentual." },
+    { stat: "dmgFrost", base: 0.07, cost: 42, maxRank: 3, title: "Frostzeichen",
+      blurb: "Verstärkt den Schaden des Frostkegels." },
+    { stat: "freezeFrost", base: 350, cost: 170, growth: 1.6, maxRank: 2, rare: true, title: "Ewiges Eis",
+      blurb: "Der Frostkegel hält seine Opfer länger fest." },
   ]},
-  { key: "cri", theme: "crit", arch: [
+  { key: "cri", theme: "crit", spell: "meteor", arch: [
     { stat: "critChance", base: 0.03, cost: 40, maxRank: 4, title: "Präzision", blurb: "Chance auf kritische Treffer." },
     { stat: "critMult", base: 0.12, cost: 46, maxRank: 3, title: "Wucht", blurb: "Kritische Treffer schlagen härter zu." },
+    { stat: "dmgMeteor", base: 0.07, cost: 44, maxRank: 3, title: "Sternzeichen",
+      blurb: "Verstärkt den Schaden des Meteoritenschauers." },
+    { stat: "countMeteor", base: 1, cost: 180, growth: 1.7, maxRank: 2, rare: true, title: "Sternenregen",
+      blurb: "Ein weiterer Brocken stürzt bei jedem Schauer herab." },
   ]},
-  { key: "arc", theme: "arcane", arch: [
+  { key: "arc", theme: "arcane", spell: "fireball", arch: [
     { stat: "pctDmg", base: 0.05, cost: 44, maxRank: 3, title: "Fokus", blurb: "Arkane Bündelung — verstärkt deinen Schaden." },
-    { stat: "aoeExtra", base: 1, cost: 220, growth: 1.8, maxRank: 1, rare: true, title: "Splitterzauber",
-      blurb: "Dein Zauber trifft ein zusätzliches Ziel (mehr Kacheln)." },
+    { stat: "dmgFireball", base: 0.07, cost: 42, maxRank: 3, title: "Flammenzeichen",
+      blurb: "Verstärkt den Schaden des Feuerballs." },
+    { stat: "tgtFireball", base: 1, cost: 220, growth: 1.8, maxRank: 1, rare: true, title: "Splitterzauber",
+      blurb: "Der Feuerball trifft ein zusätzliches Ziel — mit voller Wucht." },
   ]},
-  { key: "war", theme: "ward", arch: [
+  { key: "war", theme: "ward", spell: "shield", arch: [
     { stat: "flatHp", base: 12, cost: 30, maxRank: 4, title: "Bollwerk", blurb: "Härtet dich gegen Schläge ab — mehr Lebenspunkte." },
     { special: "shield", cost: 48, maxRank: 3, title: "Schildzauber", blurb: "Manche Zauber gewähren einen absorbierenden Schild." },
+    { stat: "dmgShield", base: 0.07, cost: 44, maxRank: 3, title: "Bannzeichen",
+      blurb: "Der Bannschild fängt mehr Schaden ab." },
     { stat: "spellFailProt", base: 0.07, cost: 70, growth: 1.5, maxRank: 2, rare: true, title: "Schutzzauber",
       blurb: "Chance, den Fehlschlag-Rückschlag ganz abzuwehren." },
   ]},
-  { key: "sus", theme: "sustain", arch: [
+  { key: "sus", theme: "sustain", spell: "heal", arch: [
     { stat: "regen", base: 0.4, cost: 40, maxRank: 4, title: "Genesung", blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
     { stat: "leech", base: 0.05, cost: 52, maxRank: 3, title: "Aderlass", blurb: "Heilt dich für einen Teil des Zauberschadens." },
+    { stat: "dmgHeal", base: 0.07, cost: 44, maxRank: 3, title: "Segenszeichen",
+      blurb: "Das Heilwort schenkt mehr Lebenspunkte." },
   ]},
-  { key: "for", theme: "fortune", arch: [
+  { key: "for", theme: "fortune", spell: null, arch: [
     { stat: "coinMult", base: 0.08, cost: 44, maxRank: 4, title: "Glückssträhne", blurb: "Mehr Gold für richtig gelöste Vokabeln." },
     { stat: "walkMult", base: 0.06, cost: 46, maxRank: 3, title: "Flinkheit", blurb: "Der Held schreitet zügiger voran." },
   ]},
@@ -171,11 +210,14 @@ function buildSkillTree() {
     let effect;
     if (a.special === "shield") {
       effect = { shieldChance: Math.min(0.3, 0.1 + 0.005 * ring), shieldAmount: Math.round(4 * tier), shieldMax: Math.round(6 * tier) };
-    } else if (a.stat === "aoeExtra") {
-      effect = { aoeExtra: 1 };
+    } else if (COUNT_STATS[a.stat]) {
+      // "One more target / hop / meteor" is a whole body either way, so these
+      // don't scale with the ring the way a percentage does — a deep one simply
+      // costs more (and the deep rings are the only place they appear at all).
+      effect = { [a.stat]: 1 };
     } else {
       let v = a.base * tier;
-      if (a.stat === "flatDmg" || a.stat === "flatHp") v = Math.max(1, Math.round(v));
+      if (a.stat === "flatDmg" || a.stat === "flatHp" || a.stat === "freezeFrost") v = Math.max(1, Math.round(v));
       else if (a.stat === "regen") v = Math.round(v * 10) / 10;
       else v = Math.round(v * 1000) / 1000;
       effect = { [a.stat]: v };
@@ -257,7 +299,45 @@ function buildSkillTree() {
   }
 
   plantThorns(nodes, pos);
+  plantUnlocks(nodes, pos);
   return { nodes, pos, edges };
+}
+
+// Overwrite one grown node per spell-carrying sector with that spell's unique
+// unlock key. Like the thorn caches these convert existing nodes rather than
+// grafting new ones on, so every key stays wired into the branch that reached
+// it — you open a page of the book by pushing down the arm that spell lives on.
+// The pick is the node closest to UNLOCK_RING that also sits nearest the middle
+// of its sector's wedge, so a key is never tucked against a neighbour's border.
+function plantUnlocks(nodes, pos) {
+  const C = TREE_CENTER, TWO_PI = Math.PI * 2, N = TREE_SECTORS.length;
+  TREE_SECTORS.forEach((sec, idx) => {
+    if (!sec.spell) return;
+    const spell = SPELL_BY_ID[sec.spell];
+    // The starter spell has no key to find — its sector still carries its
+    // damage nodes, it just doesn't hide an unlock among them.
+    if (!spell || !spell.unlock) return;
+    const mid = -Math.PI / 2 + (idx + 0.5) * (TWO_PI / N);   // centre of this sector's wedge
+    let best = null, bs = Infinity;
+    for (const id in nodes) {
+      const node = nodes[id];
+      if (node.unique || id === "root") continue;            // never displace a thorn cache or the seed
+      if (!id.startsWith(sec.key + "_")) continue;           // ids carry their sector key
+      const p = pos[id];
+      let da = Math.abs(Math.atan2(p.y - C, p.x - C) - mid) % TWO_PI;
+      if (da > Math.PI) da = TWO_PI - da;
+      const s = Math.abs(node.ring - UNLOCK_RING) * 2 + da * 3;
+      if (s < bs) { bs = s; best = id; }
+    }
+    if (!best) return;
+    const ring = nodes[best].ring;
+    nodes[best] = {
+      title: spell.name, theme: sec.theme, ring, maxRank: 1, unique: true, unlocks: spell.id,
+      cost: Math.max(5, Math.round(UNLOCK_COST * Math.pow(COST_PER_RING, ring - 1))),
+      growth: 1, effect: {},
+      blurb: `Ein versiegeltes Zeichen. Heb es, und der Zauber schlägt eine neue Seite in deinem Buch auf. ${spell.blurb}`,
+    };
+  });
 }
 
 // Overwrite THORN_COUNT grown nodes far out in the web with the unique thorn
@@ -348,14 +428,28 @@ function softCap(x, cap) {
   return knee + (knee * over) / (over + knee);
 }
 
+// Which summed stat feeds which spell's % damage / signature parameter. Split
+// out so recomputeMods stays a flat read of the pools rather than a per-spell
+// special case (see spells.js — a resolver reads mods.spellPct[id] and
+// mods.spellParam[key], never the raw sums).
+const SPELL_DMG_STATS = {
+  fireball: "dmgFireball", lightning: "dmgLightning", frost: "dmgFrost",
+  meteor: "dmgMeteor", shield: "dmgShield", heal: "dmgHeal",
+};
+const SPELL_PARAM_STATS = ["tgtFireball", "chainLightning", "countMeteor", "freezeFrost"];
+
 function recomputeMods() {
   const sum = {
     flatDmg: 0, flatHp: 0, pctDmg: 0, pctHp: 0,
-    critChance: 0, critMult: 0, aoeExtra: 0,
+    critChance: 0, critMult: 0,
     leech: 0, regen: 0, walkMult: 0, coinMult: 0,
     shieldChance: 0, shieldAmount: 0, shieldMax: 0,
     thorns: 0, spellFailProt: 0,
   };
+  for (const id in SPELL_DMG_STATS) sum[SPELL_DMG_STATS[id]] = 0;
+  for (const k of SPELL_PARAM_STATS) sum[k] = 0;
+
+  const unlocked = {};
   if (state.nodeRanks) {
     for (const id in state.nodeRanks) {
       const node = TREE_NODES[id];
@@ -364,16 +458,28 @@ function recomputeMods() {
       // reshaped (thorns went from a 3-rank archetype to a unique) must not
       // keep paying out ranks the node no longer has.
       const rank = Math.min(node.maxRank, state.nodeRanks[id] || 0);
+      if (rank <= 0) continue;
+      // A spell key is a rank, not a number: buying it opens that page.
+      if (node.unlocks) unlocked[node.unlocks] = true;
       for (const k in node.effect) {
         if (k in sum) sum[k] += node.effect[k] * rank;
       }
     }
   }
   const caps = CONFIG.caps;
+  // Each page's % damage soft-caps on its own, so dumping a whole sector into
+  // one spell plateaus there instead of making the other five pointless.
+  const spellPct = {};
+  for (const id in SPELL_DMG_STATS) spellPct[id] = softCap(sum[SPELL_DMG_STATS[id]], caps.spellPct);
+  const spellParam = {};
+  for (const k of SPELL_PARAM_STATS) spellParam[k] = sum[k];
+
   state.mods = {
     critChance: Math.min(caps.critChance, sum.critChance),
     critMult: 1.5 + Math.min(caps.critMult, sum.critMult),  // base ×1.5 on a crit
-    aoeExtra: Math.round(sum.aoeExtra),
+    spellsUnlocked: unlocked,
+    spellPct,
+    spellParam,
     leech: Math.min(caps.leech, sum.leech),
     regen: Math.min(caps.regen, sum.regen),
     walkMult: 1 + sum.walkMult,
@@ -412,6 +518,9 @@ function treeBuy(id) {
   recomputeMods();
   const gain = state.heroMaxHP - oldMax;   // buying vitality tops the pool up by the gain
   if (gain > 0) state.heroHP = Math.min(state.heroMaxHP, state.heroHP + gain);
+  // Lifting a spell's seal turns the book straight to the page it opened —
+  // finding the key and then having to go hunt for the page would be busywork.
+  if (node.unlocks) state.activeSpell = node.unlocks;
   saveProgress();
   state._structuralDirty = true;
 }
@@ -426,8 +535,18 @@ const STAT_FMT = {
   pctHp:        (v) => `+${Math.round(v * 100)}% LP`,
   critChance:   (v) => `+${Math.round(v * 100)}% Krit-Chance`,
   critMult:     (v) => `+${Math.round(v * 100)}% Krit-Schaden`,
-  aoeExtra:     (v) => `+${Math.round(v)} Ziel`,
   leech:        (v) => `${Math.round(v * 100)}% Lebensraub`,
+  // Per-spell nodes — worded so the page they lift is named in the effect line.
+  dmgFireball:  (v) => `+${Math.round(v * 100)}% Feuerball-Schaden`,
+  dmgLightning: (v) => `+${Math.round(v * 100)}% Blitzschlag-Schaden`,
+  dmgFrost:     (v) => `+${Math.round(v * 100)}% Frostkegel-Schaden`,
+  dmgMeteor:    (v) => `+${Math.round(v * 100)}% Meteoriten-Schaden`,
+  dmgShield:    (v) => `+${Math.round(v * 100)}% Bannschild-Kraft`,
+  dmgHeal:      (v) => `+${Math.round(v * 100)}% Heilwort-Kraft`,
+  tgtFireball:  (v) => `+${Math.round(v)} Feuerball-Ziel`,
+  chainLightning: (v) => `+${Math.round(v)} Blitz-Sprung`,
+  countMeteor:  (v) => `+${Math.round(v)} Meteorit`,
+  freezeFrost:  (v) => `+${(v / 1000).toFixed(1)}s Frostdauer`,
   regen:        (v) => `+${(Math.round(v * 10) / 10)}/s LP`,
   walkMult:     (v) => `+${Math.round(v * 100)}% Tempo`,
   coinMult:     (v) => `+${Math.round(v * 100)}% Gold`,
@@ -506,7 +625,14 @@ function nodeSvg(id) {
     glyph = runeGroup(node.theme, purchased ? 1 : 0.9);
     // A unique thorn cache announces itself the moment it's revealed: a barbed
     // halo instead of the usual rank pips, so finding one reads as a discovery.
-    if (node.unique) {
+    if (node.unlocks) {
+      // A sealed spell wears a solid double ring — the same "this is a one-off"
+      // weight as a thorn cache, but plainly a different KIND of prize.
+      disc += `<circle r="${R + 6}" fill="none" stroke="${theme.color}" stroke-width="2" ` +
+        `opacity="${purchased ? 0.95 : 0.55}"/>` +
+        `<circle r="${R + 10}" fill="none" stroke="${theme.color}" stroke-width="1" ` +
+        `opacity="${purchased ? 0.6 : 0.3}"/>`;
+    } else if (node.unique) {
       disc += `<circle r="${R + 7}" fill="none" stroke="${theme.color}" stroke-width="1.5" ` +
         `stroke-dasharray="4 7" opacity="${purchased ? 0.9 : 0.5}"/>`;
     } else if (id !== "root") {
@@ -568,7 +694,8 @@ function renderTreeInfo() {
   if (id === "root") {
     buy = `<button class="tree-buy" disabled>Ursprung</button>`;
   } else if (maxed) {
-    buy = `<button class="tree-buy" disabled>${node.unique ? "Gehoben" : "Maximal"}</button>`;
+    const done = node.unlocks ? "Erlernt" : node.unique ? "Gehoben" : "Maximal";
+    buy = `<button class="tree-buy" disabled>${done}</button>`;
   } else {
     const cost = nodeCost(node, rank);
     const afford = state.gold >= cost;
@@ -581,10 +708,11 @@ function renderTreeInfo() {
       <span class="ti-rune">${runeGlyphSvg(node.theme, 24)}</span>
       <span class="ti-name" style="color:${theme.color}">${node.title}</span>
       <span class="ti-tier">Stufe ${node.ring}</span>
-      ${node.unique ? `<span class="ti-unique" style="color:${theme.color}">Einzigartig</span>`
+      ${node.unique ? `<span class="ti-unique" style="color:${theme.color}">${node.unlocks ? "Zauber" : "Einzigartig"}</span>`
         : node.maxRank ? `<span class="ti-dots" style="color:${theme.color}">${dots}</span>` : ""}
     </div>
     <div class="ti-blurb">${node.blurb}</div>
+    ${node.unlocks ? `<div class="ti-effect">Schaltet frei: <b>${SPELL_BY_ID[node.unlocks].name}</b></div>` : ""}
     ${per ? `<div class="ti-effect">${node.unique ? "Einmalig" : "Pro Stufe"}: <b>${per}</b>` +
       `${!node.unique && total ? ` &middot; Gesamt: <b>${total}</b>` : ""}</div>` : ""}
     ${buy}</div>`;

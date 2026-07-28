@@ -1,11 +1,42 @@
 /* combat.css — combat screen: scene, HUD, rune circle, chords, flashes. */
 
-  /* Combat screen — banner (fight) on top, rune circle filling the rest */
+  /* Combat screen — scene on top, rune circle filling the rest, and the open
+     spell book pinned along the bottom edge with the circle nested in its V.
+
+     The circle and the book have to line up at every viewport size, so both are
+     laid out from ONE width (--board-w) and both draw in a 600-unit-wide
+     viewBox — that gives them a shared scale. The rest follows from the book's
+     600x240 art box: its height is 240/600 of that width, and the arena's
+     bottom margin is what positions the wheel against it.
+
+     That margin is a TANGENT distance, not a vertical one. Clearing the notch
+     is not enough: the pages' top edges climb away from it at ~16°, so a wheel
+     lowered until its bottom point cleared the notch would still have its
+     lower-left and lower-right arcs cutting across both pages. What has to
+     clear is the sloped edge itself, and the closest approach is around three
+     quarters of the way out along it, not at either end.
+
+     Solving |dist(wheel centre, page-top line)| = R + gap gives the 141/600
+     below. Measured, that leaves ~20px between the paper and the rune bubbles
+     (the wheel's solid outer elements, R = 263) and a few px against the faint
+     outermost ring, holding on viewports from 390x720 to 820x1000 — while the
+     wheel's lowest point still sits ~20px BELOW the wings' top corners, i.e.
+     down inside the V. The space the book opens up is used, it just never
+     touches paper. Re-derive if either geometry moves; tools-side, walk the
+     page's top edge and take the minimum distance rather than trusting the
+     vertical gap, which is not where the two shapes come closest. */
   .combat-screen {
     position: relative;
     display: flex; flex-direction: column;
     justify-content: flex-start;
     width: 100%; height: 100%;
+    /* Percentage-bearing custom properties resolve at the USE site, so this may
+       only ever be consumed by width-resolved properties (`width`, and margins,
+       which are resolved against the containing block's width). Feeding it to a
+       `height` would resolve the 100% against the container's HEIGHT instead —
+       which is why the book sizes itself with aspect-ratio below rather than
+       with a height derived from here. */
+    --board-w: min(100%, 520px);
   }
   .combat-screen::after {
     content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -53,12 +84,89 @@
   svg.arena {
     flex: 1 1 auto;
     min-height: 0;
-    width: 100%;
+    width: var(--board-w);
+    /* Bottom-aligned (xMidYMax), so the wheel always sits down against the book
+       instead of floating in the middle of whatever height is left over. */
+    margin-bottom: calc(var(--board-w) * 0.235);
     display: block;
     /* Runes are dragged with the pointer — don't let a drag scroll/pan the page */
     touch-action: none;
     -webkit-user-select: none; user-select: none;
   }
+
+  /* ---- Spell book -------------------------------------------------------
+     An open book along the bottom edge, tilted toward the player: two page
+     planes angled up and out so their top edges make a V, spine in the middle,
+     both lower corners — the gutter furthest of all — running off the bottom of
+     the screen. Geometry is in spellbook.js; this is only the palette and the
+     interaction states. */
+  .spellbook {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    /* Height comes from the art box's own 600x240 ratio, so it always matches
+       the width the wheel is laid out from (see --board-w). */
+    width: var(--board-w); height: auto; aspect-ratio: 600 / 240;
+    display: block; z-index: 3;
+    /* The whole book takes the drag that turns its pages; the empty upper
+       corners of the box, which the rune wheel overlaps into, do not. */
+    pointer-events: none;
+    touch-action: none;
+    filter: drop-shadow(0 -3px 10px rgba(6, 4, 12, 0.6));
+  }
+  .bk-cover { fill: #3d2b1c; stroke: #150f0a; stroke-width: 2; stroke-linejoin: round; }
+  /* Fanned page edges behind the open leaf. Fill is set per sliver (it darkens
+     with depth into the block), so it must NOT be declared here — a CSS `fill`
+     would override the presentation attribute and flatten the fan. */
+  .bk-stack { stroke: #8d8264; stroke-width: 0.7; }
+  /* The leaf's fill is a per-side gradient (defined in the book's own <defs>),
+     so light runs from the lit outer edge into the shadowed gutter instead of
+     the whole page being one flat colour. */
+  .bk-leaf {
+    fill: url(#bkPaperL); stroke: #a29673; stroke-width: 1.2; stroke-linejoin: round;
+    transition: stroke 140ms linear;
+  }
+  .bk-page[data-side="1"] .bk-leaf { fill: url(#bkPaperR); }
+  /* Shadow welling out of the gutter, and the lit paper-cut along the top edge. */
+  .bk-gutter { pointer-events: none; }
+  .bk-cut {
+    fill: none; stroke: #fffcf0; stroke-width: 1.1; opacity: 0.55;
+    stroke-linecap: round; pointer-events: none;
+  }
+  /* Sealed pages keep the paper's shading and are darkened over the top of it,
+     so they read as the same book rather than as a different material. */
+  .bk-sealed { fill: #191428; opacity: 0.82; stroke: #4a4360; stroke-width: 1.2; }
+  /* The active page's border: a crisp line over a blurred copy of itself. One
+     blurred stroke on its own reads as a fuzzy halo with no edge to it. */
+  .bk-halo { fill: none; stroke-width: 5; opacity: 0.3; filter: url(#bkGlow); }
+  .bk-lit { fill: none; stroke-width: 2; opacity: 0.9; }
+  /* The ruled border around a page's contents — it rides the page plane, which
+     is a good part of what makes the tilt read as a surface. */
+  .bk-frame {
+    fill: none; stroke: #a8956a; stroke-width: 1.1; opacity: 0.5;
+  }
+  .bk-page.locked .bk-frame { stroke: #5b5170; opacity: 0.55; }
+  /* Every leaf takes the pointer — a tap selects the spell, a drag across the
+     book turns the page (see attachSpellbookDrag). Locked leaves are draggable
+     too: you can leaf past a sealed page, you just can't cast from it. */
+  .bk-page { pointer-events: auto; }
+  .bk-page[data-act] { cursor: pointer; }
+  .bk-page[data-act]:active .bk-leaf { stroke: #fff3c4; stroke-width: 2; }
+  /* The turning page springs back if the drag falls short of the threshold;
+     while the finger is down it has to track it exactly, so no transition. */
+  .bk-page { transition: transform 170ms ease-out; transform-origin: 0 0; }
+  .spellbook.dragging .bk-page { transition: none; }
+  .bk-spine { stroke: #100c08; stroke-width: 5; stroke-linecap: round; opacity: 0.85; }
+  /* Page contents: line art in the spell's own colour, ringed by the same
+     procedural runic glyphs the wheel above is written in. */
+  .book-glyph { fill: none; stroke-width: 1.7; opacity: 0.55; stroke-linecap: round; stroke-linejoin: round; }
+  .bk-page.active .book-glyph { opacity: 0.95; }
+  .bk-art { opacity: 0.95; }
+  .bk-name {
+    font-family: var(--display-font);
+    font-size: 15px; font-weight: 700; letter-spacing: 0.4px;
+    paint-order: stroke; stroke: rgba(24, 18, 10, 0.5); stroke-width: 2.5px;
+  }
+  .bk-sealmark { font-family: var(--display-font); font-size: 22px; font-weight: 700; fill: #6d6484; }
+  .bk-ribbon { opacity: 0.9; }
   /* The static arcane wheel is a baked high-fidelity image; live SVG on top
      draws only what changes: word bubbles, chords, filigree, sparks, and the
      rotating inner script ring */

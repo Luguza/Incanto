@@ -1,0 +1,478 @@
+"use strict";
+// ==============================================================================
+// spellbook.js — the hero's open spell book along the bottom of the combat
+// screen. Owns: SPELL_ART (procedural page illustrations), renderSpellbook,
+// spellbookFlip.
+//
+// The book lies open toward the player, its two page planes tilted up and out
+// so their top edges form a shallow V with the spine at the bottom of the
+// notch — and the rune circle above drops into that notch (see combat.css,
+// which pulls the arena's box down over the book's upper half). One spell per
+// page: an illustration ringed by runic glyphs, its name beneath.
+//
+// Everything here is drawn in the book SVG's own 600-wide viewBox, which is the
+// same width as the arena's, so the two share a horizontal scale and the notch
+// lines up with the circle at every viewport size.
+// ==============================================================================
+
+// --- Page geometry -----------------------------------------------------------
+// The left page as a quad, corners clockwise from its outer top. The right page
+// is this mirrored about x = 300 (the spine).
+//
+// The top edges climb ~16° from the spine out to the wings — enough of a V for
+// the rune wheel to sit down into, without raking the book so hard that the
+// pages read as seen edge-on.
+//
+// Both lower corners sit well BELOW the viewBox and are clipped away, the inner
+// (spine) one furthest of all, so the gutter runs off the bottom of the screen
+// rather than stopping on it. Nothing is lost — the part of a page below its
+// illustration is blank vellum — and the payoff is that the book's thickness
+// (cover rim, the slivers of already-turned pages) is only ever visible along
+// the OUTER edges at the left and right of the screen. There is no bottom edge
+// on screen for it to show up on.
+const BOOK_W = 600, BOOK_H = 240;
+const SPINE_X = 300;
+const NOTCH_Y = 110;                   // where both pages meet at the top — the bottom of the V
+const PAGE_L = [
+  { x: 34, y: 34 },                    // outer top    — the high corner of the wing
+  { x: SPINE_X, y: NOTCH_Y },          // inner top    — the notch
+  { x: SPINE_X, y: 340 },              // inner bottom — far below the viewBox: the gutter runs off screen
+  { x: 4, y: 274 },                    // outer bottom — below the viewBox too, so no bottom edge shows
+];
+// Paper doesn't lie dead flat in an open book. Both visible edges bow: the top
+// edge lifts through its middle, and the outer edge bellies out toward the
+// screen edge. The two clipped lower edges stay straight — nobody sees them.
+const TOP_BOW = 7, OUT_BOW = 5;
+// A page's content rides on the page plane, so it's rotated to match that
+// plane's tilt (the angle of its top edge) rather than sitting flat on screen.
+const PAGE_TILT = Math.atan2(NOTCH_Y - PAGE_L[0].y, SPINE_X - PAGE_L[0].x) * 180 / Math.PI;
+// Centre + radii of a page's contents, in left-page coords. The name sits ABOVE
+// the illustration (see spellPage), so the ring is set low enough on the page to
+// leave the title clear of the top edge once the whole group is tilted.
+const CONTENT = { x: 160, y: 160, ring: 37, art: 25 };
+// Foreshortening. Rotating the contents onto the page plane gets the direction
+// right but not the perspective: a page tilted toward the player is seen at a
+// slant, so it should be squashed vertically too. Applied OUTSIDE the rotation
+// (translate → squash → rotate) so the squash is along screen-vertical rather
+// than along the page's own axis.
+const PAGE_SQUASH = 0.90;
+// How far a page must be dragged, as a fraction of the book's width, before
+// letting go turns the leaf instead of springing it back.
+const FLIP_THRESHOLD = 0.12;
+
+const mirror = (p) => ({ x: 2 * SPINE_X - p.x, y: p.y });
+const pageCorners = (side) => (side < 0 ? PAGE_L : PAGE_L.map(mirror));
+
+// The control point for a bowed edge: the midpoint of P→Q pushed out along the
+// edge's normal. `side` flips the push for the mirrored page, so both leaves bow
+// away from the spine rather than one bowing into itself.
+function bowCtrl(p, q, amount, side) {
+  const dx = q.x - p.x, dy = q.y - p.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const k = (amount * -side) / len;
+  return { x: (p.x + q.x) / 2 + dy * k, y: (p.y + q.y) / 2 - dx * k };
+}
+
+// A leaf's outline: bowed along the two edges that are on screen, straight
+// along the two that are clipped off the bottom.
+function leafPath(side) {
+  const [A, B, C, D] = pageCorners(side);
+  const t = bowCtrl(A, B, TOP_BOW, side);       // top edge, lifted through its middle
+  const o = bowCtrl(D, A, OUT_BOW, side);       // outer edge, bellied toward the screen edge
+  const f = (p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+  return `M${f(A)} Q${f(t)} ${f(B)} L${f(C)} L${f(D)} Q${f(o)} ${f(A)} Z`;
+}
+
+// Just the bowed top edge, for the lit paper-cut highlight that runs along it.
+function leafTopEdge(side) {
+  const [A, B] = pageCorners(side);
+  const t = bowCtrl(A, B, TOP_BOW, side);
+  const f = (p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+  return `M${f(A)} Q${f(t)} ${f(B)}`;
+}
+
+// The bookmark on the page the book is currently cast from. A real ribbon is
+// sewn into the HEAD OF THE SPINE and lies down the page from there, so that is
+// where this one comes from — hanging it over the fore-edge would put it
+// exactly where the fanned page edges show and read as a flag stapled to the
+// paper. It lies in the gutter strip, which is empty (the ruled frame starts
+// further out), and ends in the usual swallow-tail notch.
+function ribbonPath(side) {
+  const [A, B] = pageCorners(side);
+  const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
+  const e = { x: dx / len, y: dy / len };                       // along the top edge, spine-ward
+  const d = side < 0 ? { x: -e.y, y: e.x } : { x: e.y, y: -e.x }; // down the page, away from the head
+  const at = (along, down) => ({
+    x: B.x - e.x * along + d.x * down,
+    y: B.y - e.y * along + d.y * down,
+  });
+  const f = (p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+  return `<path d="M${f(at(7, -3))} L${f(at(19, -3))} L${f(at(19, 64))} ` +
+    `L${f(at(13, 52))} L${f(at(7, 64))} Z"/>`;
+}
+
+// --- Page illustrations ------------------------------------------------------
+// One per spell, drawn procedurally in a local box roughly ±22 around the
+// origin (CONTENT.art is the radius they're scaled to fit). They're line art in
+// the spell's own colour, matching the game's other procedural glyph work —
+// `c` is the CONFIG.colors.spell entry, so a page, its bolt on the canvas and
+// its sector in the tree all read as the same magic.
+const SPELL_ART = {
+  // A burning orb with licks of flame trailing off it.
+  fireball: (c) => `
+    <circle cx="1" cy="2" r="9" fill="${c.mid}" opacity="0.55"/>
+    <circle cx="1" cy="2" r="5" fill="${c.core}"/>
+    <path d="M-8 -4 Q-2 -12 3 -6 Q7 -13 9 -5" fill="none" stroke="${c.mid}" stroke-width="2"
+      stroke-linecap="round"/>
+    <path d="M-14 8 L-8 5 M-15 1 L-9 0 M-12 13 L-6 9" stroke="${c.mid}" stroke-width="2"
+      stroke-linecap="round" opacity="0.85"/>
+    <circle cx="1" cy="2" r="13" fill="none" stroke="${c.mid}" stroke-width="1.4"
+      stroke-dasharray="3 6" opacity="0.7"/>`,
+
+  // A forked bolt, the classic zig-zag, with two smaller arcs splitting off it.
+  lightning: (c) => `
+    <path d="M4 -17 L-6 0 L1 1 L-5 17 L9 -3 L2 -4 Z" fill="${c.core}" stroke="${c.mid}"
+      stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M-11 -8 L-14 -1 L-10 -1" fill="none" stroke="${c.mid}" stroke-width="1.6"
+      stroke-linecap="round" opacity="0.8"/>
+    <path d="M12 5 L15 11 L11 11" fill="none" stroke="${c.mid}" stroke-width="1.6"
+      stroke-linecap="round" opacity="0.8"/>`,
+
+  // A cone opening to the right, filled with drifting shards.
+  frost: (c) => `
+    <path d="M-15 0 L13 -13 L13 13 Z" fill="${c.mid}" opacity="0.22"/>
+    <path d="M-15 0 L13 -13 M-15 0 L13 13" fill="none" stroke="${c.mid}" stroke-width="1.8"
+      stroke-linecap="round"/>
+    <g stroke="${c.core}" stroke-width="1.6" stroke-linecap="round">
+      <path d="M-3 -6 L3 -6 M0 -9 L0 -3"/>
+      <path d="M4 4 L10 4 M7 1 L7 7"/>
+      <path d="M-6 6 L-1 6 M-3.5 3.5 L-3.5 8.5"/>
+    </g>
+    <path d="M13 -13 L13 13" stroke="${c.core}" stroke-width="1.4" opacity="0.6"/>`,
+
+  // Three rocks streaking down onto a cracked ground line.
+  meteor: (c) => `
+    <g stroke="${c.mid}" stroke-width="2" stroke-linecap="round" opacity="0.85">
+      <path d="M-14 -16 L-7 -3"/><path d="M-1 -18 L4 -7"/><path d="M10 -14 L14 -6"/>
+    </g>
+    <circle cx="-6" cy="-1" r="3.5" fill="${c.core}"/>
+    <circle cx="5" cy="-5" r="2.6" fill="${c.core}"/>
+    <circle cx="15" cy="-4" r="2.2" fill="${c.core}"/>
+    <path d="M-17 9 L17 9" stroke="${c.mid}" stroke-width="2" stroke-linecap="round"/>
+    <path d="M-9 9 L-12 15 M2 9 L0 16 M11 9 L13 15" stroke="${c.mid}" stroke-width="1.5"
+      stroke-linecap="round" opacity="0.7"/>`,
+
+  // A kite shield with a rune bar across it.
+  shield: (c) => `
+    <path d="M0 -16 L13 -10 L13 3 Q13 13 0 18 Q-13 13 -13 3 L-13 -10 Z"
+      fill="${c.mid}" fill-opacity="0.25" stroke="${c.mid}" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M0 -10 L0 11 M-7 -2 L7 -2" stroke="${c.core}" stroke-width="2" stroke-linecap="round"/>
+    <path d="M-4 -6 L0 -10 L4 -6" fill="none" stroke="${c.core}" stroke-width="1.6"
+      stroke-linecap="round" stroke-linejoin="round"/>`,
+
+  // A leaf-and-drop over a rising pulse — growth rather than a medical cross.
+  heal: (c) => `
+    <path d="M0 -16 Q9 -4 9 3 Q9 12 0 12 Q-9 12 -9 3 Q-9 -4 0 -16 Z"
+      fill="${c.mid}" fill-opacity="0.3" stroke="${c.mid}" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M0 -9 L0 7 M-5 -1 L5 -1" stroke="${c.core}" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M-14 16 L-8 16 L-5 11 L-1 19 L3 14 L7 16 L14 16" fill="none" stroke="${c.mid}"
+      stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`,
+};
+
+// --- Page rendering ----------------------------------------------------------
+// The runic glyph ring around an illustration. Reuses the rune circle's
+// procedural glyph templates (see rune-circle.js) so the book is written in the
+// same alphabet as the wheel the player traces on.
+function pageGlyphRing(seed, radius, count = 13) {
+  let s = "";
+  for (let i = 0; i < count; i++) {
+    // A ring left open at the TOP, where the spell's name sits — the glyphs run
+    // down one side, under the illustration and back up the other.
+    const ang = 22 + (i * 316) / (count - 1);
+    s += glyphAt(0, 0, radius, ang, 8, seed * 31 + i, "book-glyph");
+  }
+  return s;
+}
+
+// One page of the book: the spell's illustration, its glyph ring and its name,
+// laid on the tilted page plane. `side` is -1 for the left leaf, +1 for the
+// right; a sealed page shows a wax seal instead of the illustration, and the
+// page the book is CAST from carries a ribbon and a lit border.
+function spellPage(spell, side) {
+  const pts = pageCorners(side);
+  const tilt = side < 0 ? PAGE_TILT : -PAGE_TILT;
+  const cx = side < 0 ? CONTENT.x : 2 * SPINE_X - CONTENT.x;
+  const idx = SPELLS.indexOf(spell);
+  const d = leafPath(side);
+  const key = side < 0 ? "L" : "R";
+  // The paper itself: a gradient-filled leaf, a shadow welling out of the
+  // gutter (clipped to the leaf so it can't spill onto the cover), and a lit
+  // highlight along the cut top edge.
+  const paper =
+    `<path class="bk-leaf" d="${d}"/>` +
+    `<g clip-path="url(#bkClip${key})"><rect class="bk-gutter" x="${side < 0 ? SPINE_X - 78 : SPINE_X}" ` +
+      `y="0" width="78" height="${BOOK_H + 110}" fill="url(#bkGutter${key})"/></g>` +
+    `<path class="bk-cut" d="${leafTopEdge(side)}"/>`;
+
+  if (!spell) {
+    // An odd-numbered book would leave one blank leaf; draw it as empty vellum
+    // rather than skipping it, so the spread keeps its shape.
+    return `<g class="bk-page blank" data-side="${side}">${paper}</g>`;
+  }
+
+  const c = CONFIG.colors.spell[spell.id];
+  const unlocked = spellUnlocked(spell.id);
+  const active = unlocked && spell.id === activeSpellId();
+
+  let inner;
+  if (unlocked) {
+    inner =
+      `<g class="bk-ring" stroke="${c.mid}">${pageGlyphRing(idx + 1, CONTENT.ring)}</g>` +
+      `<g class="bk-art" transform="scale(${(CONTENT.art / 18).toFixed(3)})">${SPELL_ART[spell.id](c)}</g>`;
+  } else {
+    // Sealed: a wax seal over the illustration's place. The name is withheld
+    // too — the tree node that opens the page is where you learn what it is.
+    inner =
+      `<circle class="bk-seal" r="17" fill="#2a2136" stroke="#5b5170" stroke-width="2.5"/>` +
+      `<text class="bk-sealmark" y="7" text-anchor="middle">?</text>` +
+      `<circle r="${CONTENT.ring}" fill="none" stroke="#4a4360" stroke-width="1.2" stroke-dasharray="3 7"/>`;
+  }
+
+  const name = unlocked ? spell.name : "Versiegelt";
+  // The title heads the page, above the illustration and inside the gap left in
+  // the glyph ring. Long names (Meteoritenschauer) have to fit the page width;
+  // squeeze rather than clip, so every page keeps its title on one line.
+  const nameSvg =
+    `<text class="bk-name" y="${-(CONTENT.ring + 11)}" text-anchor="middle" ` +
+    `fill="${unlocked ? c.core : "#6d6484"}" textLength="128" lengthAdjust="spacingAndGlyphs">${name}</text>`;
+
+  const ribbon = active ? `<g class="bk-ribbon" fill="${c.mid}">${ribbonPath(side)}</g>` : "";
+
+  // A ruled frame around the ILLUSTRATION, with the title heading the page
+  // above it — the bookplate arrangement, and the only one that keeps the two
+  // off each other: the title is as wide as the frame, so enclosing it would
+  // leave the text sitting on the border line whichever way the box is sized.
+  // The frame rides the page plane with everything else, which is most of what
+  // sells the tilt: a rectangle seen at an angle reads as a surface.
+  const frame = `<rect class="bk-frame" x="-64" y="-44" width="128" height="102" rx="5"/>`;
+
+  // `data-side` lets the drag handler find the leaf it should turn without
+  // re-deriving which spell is on it.
+  const act = unlocked ? ` data-act="spellSelect" data-args='["${spell.id}"]'` : "";
+  return `<g class="bk-page${active ? " active" : ""}${unlocked ? "" : " locked"}" data-side="${side}"${act}>
+      ${paper}
+      ${unlocked ? "" : `<path class="bk-sealed" d="${d}"/>`}
+      ${active ? `<path class="bk-halo" d="${d}" stroke="${c.mid}"/>` +
+                 `<path class="bk-lit" d="${d}" stroke="${c.mid}"/>` : ""}
+      ${ribbon}
+      <g transform="translate(${cx},${CONTENT.y}) scale(1,${PAGE_SQUASH}) rotate(${tilt.toFixed(2)})">${frame}${inner}${nameSvg}</g>
+    </g>`;
+}
+
+// The pages already turned on one side, drawn as a few leaf shapes fanned out
+// behind the open one. Every leaf in a book is bound along the same spine, so a
+// sliver is the SAME shape displaced straight out toward the screen edge —
+// never up. Displacing it upward would show the block's head edges above the
+// open page, which is not something you can see in a book lying open: the head
+// is edge-on to the viewer and hidden behind the top edge of the page on top of
+// it. Pushed purely outward, each sliver is covered by the open leaf except for
+// a thin band past its outer edge — the only place the book's thickness shows,
+// since its lower edge is clipped off the bottom of the screen. The band also
+// doubles as the affordance for dragging: a fat stack on the right means there
+// is more to turn to.
+const STACK_STEP = 4;                  // how far apart the fanned edges sit
+const STACK_SHADE = ["#e9e0bf", "#e1d7b5", "#d9ceab", "#d1c5a1"];  // nearest the open leaf first
+function pageStack(side, count) {
+  if (count <= 0) return "";
+  const pts = pageCorners(side);
+  let s = "";
+  for (let i = Math.min(STACK_SHADE.length, count); i > 0; i--) {
+    const off = i * STACK_STEP;
+    // `+ side * off`: outward is -x on the left leaf (side -1) and +x on the
+    // right (side +1). Getting this backwards tucks the whole fan UNDER the
+    // open page, where the only thing that can escape is a vertical lift at the
+    // head — which is exactly the thing a book can't show.
+    const A = { x: pts[0].x + side * off, y: pts[0].y };
+    const D = { x: pts[3].x + side * off, y: pts[3].y };
+    const t = bowCtrl(A, pts[1], TOP_BOW, side);
+    const o = bowCtrl(D, A, OUT_BOW, side);
+    const f = (p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+    // Opaque, and a shade darker the further out it sits — the edges deeper in
+    // the block catch less light. The stroke is the seam between two leaves.
+    s += `<path class="bk-stack" fill="${STACK_SHADE[i - 1]}" ` +
+      `d="M${f(A)} Q${f(t)} ${f(pts[1])} L${f(pts[2])} L${f(D)} Q${f(o)} ${f(A)} Z"/>`;
+  }
+  return s;
+}
+
+// The whole book: covers, spine, the two facing pages of the current spread and
+// the thumb tabs that turn it. Returned as markup for the combat screen to drop
+// in (see screens.js) — flipping and selecting mark the screen structurally
+// dirty, so the book is rebuilt with the rest of the combat DOM.
+function renderSpellbook() {
+  const leaves = Math.ceil(SPELLS.length / 2);
+  const spread = Math.max(0, Math.min(leaves - 1, state.bookSpread || 0));
+  const left = SPELLS[spread * 2];
+  const right = SPELLS[spread * 2 + 1];
+
+  // Covers: the leaf outline pushed out, far enough to sit outside the widest
+  // page sliver (STACK_SHADE.length * STACK_STEP) so the block never pokes out
+  // past its own boards. The small lift at the head is deliberate and is the
+  // one thing that should overhang there — a hardcover's boards are cut proud
+  // of the text block on all three outer edges. The rim bows with the page it
+  // backs rather than cutting a straight line behind a curved edge.
+  const coverPath = (side) => {
+    const p = pageCorners(side);
+    const A = { x: p[0].x + side * 22, y: p[0].y - 7 };
+    const B = { x: p[1].x, y: p[1].y - 1 };
+    const D = { x: p[3].x + side * 26, y: p[3].y };
+    const t = bowCtrl(A, B, TOP_BOW, side);
+    const o = bowCtrl(D, A, OUT_BOW, side);
+    const f = (q) => `${q.x.toFixed(1)} ${q.y.toFixed(1)}`;
+    return `M${f(A)} Q${f(t)} ${f(B)} L${f(p[2])} L${f(D)} Q${f(o)} ${f(A)} Z`;
+  };
+
+  // Paper is lit from the outer edge and falls into shadow toward the gutter,
+  // which is most of what stops a flat fill reading as cardboard. One gradient
+  // per side because the light runs the opposite way on each leaf; the gutter
+  // shadow is a second pass on top, clipped to the leaf.
+  const defs = `
+    <defs>
+      <linearGradient id="bkPaperL" gradientUnits="userSpaceOnUse" x1="${SPINE_X}" y1="0" x2="10" y2="0">
+        <stop offset="0" stop-color="#cabd95"/>
+        <stop offset="0.22" stop-color="#e4d9b6"/>
+        <stop offset="0.62" stop-color="#f3eacd"/>
+        <stop offset="1" stop-color="#fcf5de"/>
+      </linearGradient>
+      <linearGradient id="bkPaperR" gradientUnits="userSpaceOnUse" x1="${SPINE_X}" y1="0" x2="${BOOK_W - 10}" y2="0">
+        <stop offset="0" stop-color="#cabd95"/>
+        <stop offset="0.22" stop-color="#e4d9b6"/>
+        <stop offset="0.62" stop-color="#f3eacd"/>
+        <stop offset="1" stop-color="#fcf5de"/>
+      </linearGradient>
+      <linearGradient id="bkGutterL" gradientUnits="userSpaceOnUse" x1="${SPINE_X}" y1="0" x2="${SPINE_X - 78}" y2="0">
+        <stop offset="0" stop-color="#2e2213" stop-opacity="0.55"/>
+        <stop offset="0.45" stop-color="#2e2213" stop-opacity="0.16"/>
+        <stop offset="1" stop-color="#2e2213" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="bkGutterR" gradientUnits="userSpaceOnUse" x1="${SPINE_X}" y1="0" x2="${SPINE_X + 78}" y2="0">
+        <stop offset="0" stop-color="#2e2213" stop-opacity="0.55"/>
+        <stop offset="0.45" stop-color="#2e2213" stop-opacity="0.16"/>
+        <stop offset="1" stop-color="#2e2213" stop-opacity="0"/>
+      </linearGradient>
+      <clipPath id="bkClipL"><path d="${leafPath(-1)}"/></clipPath>
+      <clipPath id="bkClipR"><path d="${leafPath(1)}"/></clipPath>
+      <!-- The book carries its own glow rather than borrowing the arena's:
+           a CSS filter whose reference can't be resolved makes the element
+           disappear entirely, so it must not depend on another SVG existing. -->
+      <filter id="bkGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="2.5"/>
+      </filter>
+    </defs>`;
+
+  return `
+    <svg class="spellbook" id="spellbook" viewBox="0 0 ${BOOK_W} ${BOOK_H}"
+         preserveAspectRatio="xMidYMax meet" aria-label="Zauberbuch">
+      ${defs}
+      <path class="bk-cover" d="${coverPath(-1)}"/>
+      <path class="bk-cover" d="${coverPath(1)}"/>
+      ${pageStack(-1, spread * 2)}
+      ${pageStack(1, SPELLS.length - spread * 2 - 2)}
+      ${spellPage(left, -1)}
+      ${spellPage(right, 1)}
+      <path class="bk-spine" d="M${SPINE_X} ${NOTCH_Y - 2} L${SPINE_X} ${BOOK_H}"/>
+    </svg>`;
+}
+
+// Turn one leaf. The spread is UI only — it doesn't change which spell is cast
+// (that's spellSelect), so leafing through the book mid-fight is free.
+function spellbookFlip(dir) {
+  const leaves = Math.ceil(SPELLS.length / 2);
+  const next = (state.bookSpread || 0) + dir;
+  if (next < 0 || next >= leaves) return;
+  state.bookSpread = next;
+  state._structuralDirty = true;
+}
+
+// ---------------------------------------------------------------------------
+// Drag to turn a page. There are no flip buttons: you tap a page to cast from
+// it and drag across the book to leaf through it, which is what you'd do to a
+// real book. Both gestures start with the same pointerdown, so the drag sets
+// `bookDragUntil` on release and spellSelect (spells.js) ignores the click that
+// a completed drag also fires — otherwise turning a page would select whatever
+// spell the release happened to land on.
+// ---------------------------------------------------------------------------
+let bookDragUntil = 0;
+
+// Bound to the freshly rendered book after every structural combat render (the
+// SVG is replaced wholesale, so there are no stale listeners to clean up).
+function attachSpellbookDrag() {
+  const svg = document.getElementById("spellbook");
+  if (!svg) return;
+  const leaves = Math.ceil(SPELLS.length / 2);
+  let startX = 0, dx = 0, down = false, turning = null;
+
+  // Which leaf a drag in this direction turns, and how far it has closed toward
+  // the spine (0 = flat open, 1 = shut). Dragging left turns the right-hand
+  // page over; dragging right turns the left-hand one back.
+  const leafFor = (d) => svg.querySelector(`.bk-page[data-side="${d < 0 ? 1 : -1}"]`);
+  const canTurn = (d) => (d < 0 ? (state.bookSpread || 0) < leaves - 1 : (state.bookSpread || 0) > 0);
+
+  const setTurn = (leaf, closed) => {
+    if (!leaf) return;
+    // Squeezing the page horizontally about the spine reads as it standing up
+    // and swinging over — the right motion for a book seen this close to flat.
+    leaf.setAttribute("transform",
+      `translate(${SPINE_X},0) scale(${Math.max(0.02, 1 - closed).toFixed(3)},1) translate(${-SPINE_X},0)`);
+  };
+  const release = () => {
+    if (turning) turning.removeAttribute("transform");
+    svg.classList.remove("dragging");
+    turning = null;
+  };
+
+  svg.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+    down = true; startX = e.clientX; dx = 0; turning = null;
+  });
+
+  svg.addEventListener("pointermove", (e) => {
+    if (!down) return;
+    dx = e.clientX - startX;
+    const w = svg.getBoundingClientRect().width || 1;
+    if (Math.abs(dx) < 4 || !canTurn(dx)) { release(); return; }
+    if (!turning) { turning = leafFor(dx); svg.classList.add("dragging"); }
+    setTurn(turning, Math.min(1, Math.abs(dx) / (w * 0.5)));
+  });
+
+  const onUp = (e) => {
+    if (!down) return;
+    down = false;
+    const w = svg.getBoundingClientRect().width || 1;
+    const flipped = Math.abs(dx) > w * FLIP_THRESHOLD && canTurn(dx);
+    release();
+    if (flipped) {
+      // Swallow the click this same gesture is about to fire, so turning a page
+      // never also re-arms the spell it let go over. Kept short — the click
+      // arrives right behind pointerup, and a longer window would start eating
+      // genuine taps made straight after a flip.
+      bookDragUntil = performance.now() + 250;
+      spellbookFlip(dx < 0 ? 1 : -1);
+      return;
+    }
+    // A tap. The pages still carry `data-act`, but the drag needs pointer
+    // capture on the SVG, and a captured pointer makes the browser dispatch the
+    // click to the CAPTURE TARGET — the SVG root — instead of to the leaf under
+    // the finger, so the delegated dispatch in main.js never sees it. Resolve
+    // the leaf here, exactly as attachTreeInteractions does for node taps.
+    if (Math.abs(dx) >= 8) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const g = el && el.closest ? el.closest(".bk-page[data-act]") : null;
+    if (g) spellSelect(JSON.parse(g.dataset.args)[0]);
+  };
+  svg.addEventListener("pointerup", onUp);
+  svg.addEventListener("pointercancel", onUp);
+}
+
+window.Incanto.spellbook = { SPELL_ART, renderSpellbook, spellbookFlip, attachSpellbookDrag };

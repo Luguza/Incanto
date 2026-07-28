@@ -20,11 +20,14 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 | `src/encounters.js` | **where enemy packs are designed**: `PACKS` (formations), `ENCOUNTER_PLAN` (which pack at which metre mark), `LATE_CYCLE` (endless tail). Deterministic — no randomness |
 | `src/state.js` | `state`, `freshState`, save/load/clear (persistence) |
 | `src/progression.js` | pack spawning (`spawnPack`), frame-edge geometry, run start, circle layout |
-| `src/skilltree.js` | the upgrade phase: procedurally-generated PoE-style rune tree (~1300 nodes, archetypes repeating + scaling outward), purchase + reveal logic, derived stat model (`recomputeMods`), pan/zoom SVG screen (`renderUpgradeFull`) |
+| `src/skilltree.js` | the upgrade phase: procedurally-generated PoE-style rune tree (~1100 nodes, archetypes repeating + scaling outward), purchase + reveal logic, derived stat model (`recomputeMods`), pan/zoom SVG screen (`renderUpgradeFull`). Six of its seven sectors own a spell — its % damage nodes, its signature parameter node, and the unique node that unlocks it |
+| `src/spells.js` | **the spell book's rules**: `SPELLS` (registry, in page order), unlock/selection, `spellPower`, and the per-spell resolvers a cast dispatches into |
 | `src/render-assets.js` | sprite sheet + baked canvas assets (`ASSETS`, `buildAssets`) |
 | `src/render-scene.js` | the combat canvas scene (`scene`, `renderScene`, staff/rune draw) |
+| `src/render-spells.js` | what a cast looks like: draws the effect descriptors `state.spellFx` queued by a resolver (bolts, arcs, meteors, cones, auras) |
 | `src/rune-circle.js` | rune-circle population + procedural SVG glyphs |
-| `src/combat.js` | rune matching + spell resolution (`handleRuneClick`, `hitEnemy`) |
+| `src/spellbook.js` | the open book along the bottom of combat: page geometry (the V the circle nests in), procedural page art, flipping |
+| `src/combat.js` | rune matching + cast dispatch (`handleRuneClick`, `hitEnemy`) |
 | `src/quiz.js` | vocab-quiz logic + exercise handlers (`quizChoose`, `buildQuiz`, …) |
 | `src/screens.js` | full-screen DOM renderers (innerHTML into `#app`) |
 | `src/nav.js` | bottom phase-switcher nav (`navTo`, pixel-art icons) — renders into `<nav id="bottom-nav">` |

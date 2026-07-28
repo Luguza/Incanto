@@ -198,6 +198,10 @@ function buildAssets() {
     skelet: frames(SHEET.skeletIdle, { flip: true }),
     skeletRun: frames(SHEET.skeletRun, { flip: true }),
     skeletHit: frames(SHEET.skeletIdle, { flip: true, silhouette: "#fff3d0" }),
+    // Held fast by a Frostkegel: the same bones washed with the frost spell's
+    // blue. Drawn OVER the live frame (see drawFrostRime) so the rime follows
+    // the body's silhouette instead of sitting on it as a square of ice.
+    skeletFrozen: frames(SHEET.skeletIdle, { flip: true, tint: "rgba(121, 216, 238, 0.62)" }),
     fountainMid: frames(SHEET.fountainMidRed),
     fountainBasin: frames(SHEET.fountainBasinRed),
     fireball: spriteToCanvas(FIREBALL_SPRITE, f),
