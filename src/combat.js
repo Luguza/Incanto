@@ -142,8 +142,21 @@ function hitPlayer(n) {
   }
 }
 
-function hitEnemy(enemy, n) {
-  enemy.hp = Math.max(0, enemy.hp - n);
+// What a body's armour leaves of an incoming hit: e^(-armor/armorScale), so 1.0
+// with no armour, always under 1 with any, and never 0 no matter how much. See
+// CONFIG.armorScale for how the numbers read.
+function armorMult(enemy) {
+  return Math.exp(-(enemy.armor || 0) / CONFIG.armorScale);
 }
 
-window.Incanto.combat = { handleRuneClick, onShapeComplete, hitPlayer, hitEnemy, healHero, livingEnemies, frontEnemy };
+// The one place a skeleton loses HP — spells, thorns, anything. `n` is the raw
+// damage BEFORE armour; the blow is soaked, rounded and floored at 1 here, and
+// what actually went through is returned so the caller can pop that number as
+// its damage float rather than the raw one it asked for.
+function hitEnemy(enemy, n) {
+  const dealt = Math.max(1, Math.round(n * armorMult(enemy)));
+  enemy.hp = Math.max(0, enemy.hp - dealt);
+  return dealt;
+}
+
+window.Incanto.combat = { handleRuneClick, onShapeComplete, hitPlayer, hitEnemy, armorMult, healHero, livingEnemies, frontEnemy };

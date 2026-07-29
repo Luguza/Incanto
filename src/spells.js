@@ -120,8 +120,9 @@ function primeActive(now) {
 }
 
 // ---------------------------------------------------------------------------
-// Damage application — one funnel so every spell rolls crits, pops its damage
-// number at the right moment, counts the kill and feeds leech identically.
+// Damage application — one funnel so every spell rolls crits, is soaked by the
+// target's armour, pops its damage number at the right moment, counts the kill
+// and feeds leech identically.
 // `at` is when the hit visually LANDS: the number pops then, and a fatal target
 // stands `struck` until that moment before it collapses.
 // ---------------------------------------------------------------------------
@@ -133,8 +134,10 @@ function applySpellHit(target, amount, at, opts = {}) {
   if (opts.shatter && target.frozenUntil && at < target.frozenUntil) {
     dmg *= CONFIG.spells.frost.primeMult;
   }
-  dmg = Math.max(1, Math.round(dmg));
-  hitEnemy(target, dmg);
+  // The target's armour takes its bite inside hitEnemy, which hands back what
+  // actually landed — so the number that floats up (and the total life-leech
+  // feeds on) is the damage the skeleton really took, not what was aimed at it.
+  dmg = hitEnemy(target, dmg);
   target.hitFlashAt = at;          // the body blinks white when the hit lands (see renderScene)
   spawnDmgFloat({
     value: dmg,

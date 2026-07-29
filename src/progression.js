@@ -107,8 +107,8 @@ function rankScale(rank) {
 }
 
 // One skeleton, placed exactly where the pack wants it. Its variant decides how
-// much HP and damage it carries, how fast it swings, and how big it's drawn —
-// everything else is identical. It walks to its own stop slot before it starts
+// much HP and damage it carries, how much of an incoming hit its armour soaks,
+// how fast it swings, and how big it's drawn — everything else is identical. It walks to its own stop slot before it starts
 // attacking.
 function spawnEnemy(now, lane, pos, typeId) {
   const id = state.nextEnemyId++;
@@ -120,6 +120,7 @@ function spawnEnemy(now, lane, pos, typeId) {
     maxHP: hp,
     hp,
     dmg: Math.max(1, Math.round(CONFIG.enemyBaseDmg * type.dmgMult)),
+    armor: type.armor || 0,               // soaks a share of every hit (see hitEnemy)
     atkSpeed: type.attackSpeedMult || 1,  // multiplies swing rate (divides the interval)
     scale: type.scale || 1,               // drawn size vs. the 16x16 sheet art
     slot: id,                     // per-enemy constant, only used to de-sync the idle animation

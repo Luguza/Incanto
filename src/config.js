@@ -51,10 +51,19 @@ const CONFIG = {
   // head count, and which variants the plan put in it.
   enemyBaseHP: 10,
   enemyBaseDmg: 6,
+  // ARMOUR. A skeleton's `armor` (below, per variant) multiplies every hit it
+  // takes by e^(-armor/armorScale) before it comes off the HP pool. The curve is
+  // deliberate: it is 1.0 at zero armour, always bites, and never reaches zero,
+  // so armour is a smooth soak with diminishing returns rather than a threshold
+  // where a hit stops landing. At the scale below, 1000 armour halves a blow
+  // (well, ×0.368 — 1000 is one e-fold, so it's the point where armour has taken
+  // roughly two thirds), 250 shaves ~22%, 100 ~10%. Raising armorScale makes the
+  // same armour number matter less.
+  armorScale: 1000,
   // Enemy variants — what a kind of skeleton IS. The multipliers scale the base
-  // numbers above; `scale` is the drawn size of the 16x16 skeleton art and
-  // `tint` a wash laid over its pixels, together the tell that a tougher one
-  // just walked in, so it reads before it swings.
+  // numbers above; `armor` is flat (see armorScale); `scale` is the drawn size of
+  // the 16x16 skeleton art and `tint` a wash laid over its pixels, together the
+  // tell that a tougher one just walked in, so it reads before it swings.
   //
   // WHERE each variant shows up is not decided here: packs name their members'
   // variants in encounters.js, so a mark on the plan always sends the same
@@ -62,13 +71,16 @@ const CONFIG = {
   // per-arrival roll — that draw is gone, since it would have put randomness
   // back into the one thing the encounter plan exists to make designable.)
   enemyTypes: [
-    { id: "skeleton", hpMult: 1, dmgMult: 1, attackSpeedMult: 1, scale: 1, tint: null, label: null },
+    // Bare bone — the baseline body, and the one armour is measured against.
+    { id: "skeleton", hpMult: 1, dmgMult: 1, attackSpeedMult: 1, armor: 0, scale: 1, tint: null, label: null },
     // Brute: a head taller, darker bone, twice the HP and damage, and swings
     // ~40% faster. `label` is called out on the enemy HP bar while it leads the
     // queue, so a slow-draining bar reads as "this one is tougher", not stuck.
+    // Its 250 armour soaks a further ~22% of every blow, which is the same tell
+    // said a second way: the bar crawls, so the silhouette is worth respecting.
     {
       id: "brute",
-      hpMult: 2, dmgMult: 2, attackSpeedMult: 1.4,
+      hpMult: 2, dmgMult: 2, attackSpeedMult: 1.4, armor: 250,
       scale: 1.375, tint: "rgba(26, 20, 34, 0.34)", label: "KNOCHENKOLOSS",
     },
   ],

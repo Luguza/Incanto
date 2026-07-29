@@ -163,10 +163,11 @@ function updateEnemies(now, dt) {
             y: scene.wizard.y - 4,
           });
         }
-        // Thorns: reflect a slice of the blow back onto the attacker.
+        // Thorns: reflect a slice of the blow back onto the attacker — through
+        // its own armour, same as a spell, so a brute shrugs off part of what it
+        // gets back too. hitEnemy returns what actually landed.
         if (state.mods.thorns > 0) {
-          const refl = Math.max(1, Math.round(e.dmg * state.mods.thorns));
-          hitEnemy(e, refl);
+          const refl = hitEnemy(e, e.dmg * state.mods.thorns);
           if (onScreen) {
             spawnDmgFloat({
               value: refl,
