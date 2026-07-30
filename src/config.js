@@ -62,16 +62,39 @@ const CONFIG = {
   // per-arrival roll — that draw is gone, since it would have put randomness
   // back into the one thing the encounter plan exists to make designable.)
   enemyTypes: [
-    { id: "skeleton", hpMult: 1, dmgMult: 1, attackSpeedMult: 1, scale: 1, tint: null, label: null },
-    // Brute: a head taller, darker bone, twice the HP and damage, and swings
-    // ~40% faster. `label` is called out on the enemy HP bar while it leads the
-    // queue, so a slow-draining bar reads as "this one is tougher", not stuck.
+    { id: "skeleton", hpMult: 1, dmgMult: 1, attackSpeedMult: 1, armor: 0, scale: 1, tint: null, label: null },
+    // Brute: a head taller, darker bone, twice the HP and damage, swings ~40%
+    // faster, and the only body in the hall that wears ARMOUR (see armorK).
+    // `label` is called out on the enemy HP bar while it leads the queue, so a
+    // slow-draining bar reads as "this one is tougher", not stuck.
     {
       id: "brute",
-      hpMult: 2, dmgMult: 2, attackSpeedMult: 1.4,
+      hpMult: 2, dmgMult: 2, attackSpeedMult: 1.4, armor: 5,
       scale: 1.375, tint: "rgba(26, 20, 34, 0.34)", label: "KNOCHENKOLOSS",
     },
   ],
+  // ARMOUR. A body's armour turns aside a FRACTION of every hit that lands on
+  // it, never a flat amount:
+  //
+  //   reduction = min(armorMaxReduction, eff / (eff + armorK))
+  //   eff       = max(0, armor - mods.armorPen)
+  //
+  // Percentage rather than subtraction, for two reasons rooted in this game:
+  //  · `state.heroDmg` runs from 3 to ~48 across a fully-grown tree (heroBaseDmg
+  //    plus caps.flatDmg / caps.pctDmg), so any flat deduction big enough to
+  //    matter at 3 damage is a wall, and any small enough to be fair at 3 is
+  //    invisible at 48. A fraction holds its meaning across that whole span.
+  //  · most pages of the book deal their damage in many small hits (a meteor
+  //    rock at 0.5x, a fifth lightning hop at 0.27x, a frost cone at 0.35x).
+  //    A flat deduction taxes each hit separately and would collapse those into
+  //    applySpellHit's minimum of 1, i.e. read as broken rather than as armour.
+  //
+  // The useful identity: armour A multiplies a body's EFFECTIVE HP by
+  // (1 + A/armorK). With armorK 10 the brute's armour 5 turns aside a third of
+  // every hit — its 20 HP take 30 damage to chew through — and the cap means no
+  // amount of armour ever makes a body immune.
+  armorK: 10,
+  armorMaxReduction: 0.75,
   wrongPenaltyFraction: 0.15, // a wrong match backfires for this fraction of the hero's MAX HP
   enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
   // DESIGNED ENCOUNTERS. Skeletons don't trickle in on a timer — the hall is a
@@ -196,6 +219,12 @@ const CONFIG = {
     pctDmg: 1.0,        // soft-cap on summed % damage (approaches +100%)
     critChance: 0.6,    // hard ceiling on crit chance
     critMult: 1.5,      // hard ceiling on bonus crit damage (max crit ×3.0)
+    // Armour penetration, in armour POINTS shredded off whatever the body wears
+    // (see CONFIG.armorK). Deliberately below the brute's armour 5: a build that
+    // commits the whole Macht arm to penetration wears the brute's mitigation
+    // down from a third to a sixth, but never erases it — and there is headroom
+    // left for a heavier-plated variant later.
+    armorPen: 3,
     // Per-spell % damage. Soft-capped like the generic pools, and separately —
     // a page's own nodes plateau on their own, so pouring an entire sector into
     // one spell still leaves the other five worth visiting.
@@ -259,6 +288,10 @@ const CONFIG = {
       enemy: "255, 236, 200",
       hero: "255, 92, 96",
       crit: "255, 214, 90",   // a crit bites gold
+      // A hit that armour has bitten into pops in dulled steel instead of warm
+      // cream, so "that number is smaller than it should be" is visible on the
+      // body rather than something the player has to infer from the HP bar.
+      armored: "176, 192, 208",
     },
     // One signature colour per spell page, shared by the book art, the scene
     // effect and the spell's skill-tree sector so a page, its nodes and its

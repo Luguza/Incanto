@@ -344,8 +344,13 @@ function patchCombatContinuous(now) {
   // and a brute's doubled HP pool would otherwise look like a bar that's stuck.
   const frontType = front && CONFIG.enemyTypes.find((t) => t.id === front.type);
   const frontLabel = frontType && frontType.label ? ` · ${frontType.label}` : "";
+  // Armour is shown as the share of every hit it turns aside, not as raw points:
+  // that's the number the player actually feels, and it visibly falls as
+  // penetration nodes are bought (see armorReduction).
+  const reduction = front ? armorReduction(front) : 0;
+  const armorLabel = reduction > 0 ? ` ⛨${Math.round(reduction * 100)}%` : "";
   document.getElementById("wave-label").innerHTML =
-    `${Math.floor(state.distance)} M · ${state.kills} ERLEGT · ${count} SKELETT${count === 1 ? "" : "E"}${frontLabel}`;
+    `${Math.floor(state.distance)} M · ${state.kills} ERLEGT · ${count} SKELETT${count === 1 ? "" : "E"}${frontLabel}${armorLabel}`;
   const enemyPct = front ? (100 * front.hp / front.maxHP) : 0;
   document.getElementById("enemy-hp-fill").style.width = enemyPct.toFixed(1) + "%";
 

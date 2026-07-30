@@ -169,6 +169,11 @@ const A = {
                 title: "Präzision",     blurb: "Chance, dass ein Treffer kritisch einschlägt." },
   critMult:   { stat: "critMult",   theme: "crit",    base: 0.09,  cost: 24, maxRank: 3,
                 title: "Wucht",         blurb: "Kritische Treffer schlagen härter zu." },
+  // Armour penetration — the counter-stat to CONFIG.armorK. Its supply is
+  // deliberately narrow (the Macht arm's Zermalmen branch, two keystones and
+  // Falkenauge), so shredding plate is a detour a build chooses, like Dornen.
+  armorPen:   { stat: "armorPen",   theme: "might",   base: 0.25,  cost: 24, maxRank: 3,
+                title: "Durchschlag",   blurb: "Deine Zauber durchschlagen einen Teil der Panzerung des Getroffenen." },
   regen:      { stat: "regen",      theme: "sustain", base: 0.2,   cost: 20, maxRank: 3,
                 title: "Genesung",      blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
   leech:      { stat: "leech",      theme: "sustain", base: 0.025, cost: 26, maxRank: 3,
@@ -283,13 +288,15 @@ const ARMS = [
       "Ein Herz, das den Kampf sucht. Alles, was du wirkst, wiegt schwerer."),
     branches: [
       { title: "Schneide", arch: [A.dmgFlat, A.dmgFlat, A.dmgPct],
-        tip: uq("might", "Henkersklinge", KEYSTONE_COST, { flatDmg: 10 },
+        tip: uq("might", "Henkersklinge", KEYSTONE_COST, { flatDmg: 10, armorPen: 1.2 },
           "Ein Schnitt, der nicht fragt, wie viel Knochen im Weg steht.") },
       { title: "Zorn", arch: [A.dmgPct, A.dmgPct, A.dmgFlat],
         tip: uq("might", "Blinder Zorn", KEYSTONE_COST, { pctDmg: 0.18 },
           "Du hörst auf zu zielen und fängst an zu treffen.") },
-      { title: "Zermalmen", arch: [A.dmgFlat, A.critMult, A.dmgPct],
-        tip: uq("might", "Zermalmender Hieb", KEYSTONE_COST, { critMult: 0.35, flatDmg: 4 },
+      // Zermalmen is where armour penetration lives: crushing through the plate
+      // is the same idea as crushing through the body behind it.
+      { title: "Zermalmen", arch: [A.armorPen, A.dmgFlat, A.critMult],
+        tip: uq("might", "Zermalmender Hieb", KEYSTONE_COST, { critMult: 0.35, flatDmg: 4, armorPen: 0.6 },
           "Wenn es kritisch trifft, bleibt nichts stehen, das noch fallen könnte."),
         tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
           "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
@@ -315,7 +322,7 @@ const ARMS = [
   // ---- Precision: crit for the whole book.
   { key: "cri", kind: "generic", theme: "crit", title: "Präzision",
     prelude: [A.critChance, A.critMult, A.critChance, A.critMult],
-    notable: uq("crit", "Falkenauge", NOTABLE_COST, { critChance: 0.05 },
+    notable: uq("crit", "Falkenauge", NOTABLE_COST, { critChance: 0.05, armorPen: 0.3 },
       "Du liest den Gang wie eine Seite — und siehst, wo er dünn ist."),
     branches: [
       { title: "Treffsicherheit", arch: [A.critChance, A.critChance, A.critMult],
@@ -846,7 +853,7 @@ const SPELL_PARAM_STATS = [
 function recomputeMods() {
   const sum = {
     flatDmg: 0, flatHp: 0, pctDmg: 0, pctHp: 0,
-    critChance: 0, critMult: 0,
+    critChance: 0, critMult: 0, armorPen: 0,
     leech: 0, regen: 0, walkMult: 0, coinMult: 0, castHaste: 0,
     shieldChance: 0, shieldAmount: 0, shieldMax: 0,
     thorns: 0, spellFailProt: 0,
@@ -883,6 +890,9 @@ function recomputeMods() {
   state.mods = {
     critChance: Math.min(caps.critChance, sum.critChance),
     critMult: 1.5 + Math.min(caps.critMult, sum.critMult),  // base ×1.5 on a crit
+    // Armour points shredded off whatever the target wears, before the mitigation
+    // curve is read (see armorReduction in combat.js).
+    armorPen: Math.min(caps.armorPen, sum.armorPen),
     spellsUnlocked: unlocked,
     spellPct,
     spellParam,
@@ -945,6 +955,7 @@ const STAT_FMT = {
   pctHp:        (v) => `+${Math.round(v * 100)}% LP`,
   critChance:   (v) => `+${Math.round(v * 100)}% Krit-Chance`,
   critMult:     (v) => `+${Math.round(v * 100)}% Krit-Schaden`,
+  armorPen:     (v) => `+${(Math.round(v * 10) / 10)} Rüstungsbruch`,
   leech:        (v) => `${Math.round(v * 100)}% Lebensraub`,
   // Per-spell nodes — worded so the page they lift is named in the effect line.
   dmgFireball:  (v) => `+${Math.round(v * 100)}% Feuerball-Schaden`,
