@@ -22,6 +22,24 @@ function quizDirLabel(dir) {
   return dir === "it2de" ? "Italienisch → Deutsch" : "Deutsch → Italienisch";
 }
 
+// The session at a glance: one cell per question, coloured once it settles.
+// A learner can see how the round is going without counting, and the current
+// question has an unambiguous position in it.
+function renderQuizSteps() {
+  const cells = state.quizList.map((_, i) => {
+    const r = state.quizResults[i];
+    const cls = r ? `qstep ${r}` : i === state.quizIndex ? "qstep now" : "qstep";
+    return `<span class="${cls}"></span>`;
+  }).join("");
+  return `<div class="quiz-steps" role="progressbar" aria-label="Fortschritt"
+    aria-valuemin="0" aria-valuemax="${state.quizList.length}" aria-valuenow="${state.quizIndex}">${cells}</div>`;
+}
+
+// The screen is a fixed three-part column: a header that never moves, a stage
+// that holds whatever the exercise needs, and a footer pinned to the bottom
+// edge. Anchoring the action bar is the point — the primary button sits in the
+// same place for every exercise type and before/after checking, so answering
+// question after question never makes the target move under the thumb.
 function renderQuizFull() {
   const q = state.quizList[state.quizIndex];
   let body;
@@ -33,17 +51,26 @@ function renderQuizFull() {
     case "fill-type":   body = renderFillTypeBody(q); break;
     case "arrange":     body = renderArrangeBody(q); break;
   }
-  const dir = q.dir ? `<span class="quiz-badge">${quizDirLabel(q.dir)}</span>` : "";
+  const dir = q.dir ? `<span class="quiz-dir">${quizDirLabel(q.dir)}</span>` : "";
   app.innerHTML = `
     <div class="screen quiz-screen">
-      <div class="quiz-topbar">
-        <div class="quiz-progress">Frage ${state.quizIndex + 1} / ${state.quizList.length}
-          &middot; <span class="coin">◈</span> ${state.quizGoldEarned} verdient</div>
-        <button class="quiz-history-btn" data-act="openHistory">Lernverlauf</button>
+      <div class="frame quiz-frame">
+        <header class="quiz-header">
+          ${renderQuizSteps()}
+          <div class="quiz-meta">
+            <span class="quiz-count">Frage <b>${state.quizIndex + 1}</b> / ${state.quizList.length}</span>
+            <span class="quiz-purse" title="in dieser Runde verdient"><span class="coin">◈</span> ${state.quizGoldEarned}</span>
+            <button class="ghost-btn quiz-history-btn" data-act="openHistory">Lernverlauf</button>
+          </div>
+        </header>
+        <main class="quiz-body scroll-y">
+          <div class="quiz-stage">
+            <div class="quiz-task"><span class="quiz-kind">${QUIZ_TITLE[q.type]}</span>${dir}</div>
+            ${body}
+          </div>
+        </main>
+        ${renderQuizFoot(q)}
       </div>
-      <div class="quiz-typeline"><span class="quiz-badge kind">${QUIZ_TITLE[q.type]}</span>${dir}</div>
-      ${body}
-      ${renderQuizActions(q)}
     </div>`;
 
   // Keep focus in the text field for the typed exercises (only rebuilt on
@@ -55,16 +82,19 @@ function renderQuizFull() {
 }
 
 // Multiple-choice options grid, shared by translation-choose and fill-choose.
+// A settled option is marked with a glyph as well as a colour, so the outcome
+// still reads for a colour-blind player (and in a screenshot).
 function renderOptions(q) {
   const optsHtml = q.options
     .map((opt, i) => {
-      let cls = "quiz-opt";
+      let cls = "quiz-opt", mark = "";
       if (state.quizChecked) {
-        if (opt === q.answer) cls += " correct";
-        else if (i === state.quizPicked) cls += " wrong";
+        if (opt === q.answer) { cls += " correct"; mark = `<span class="opt-mark">✓</span>`; }
+        else if (i === state.quizPicked) { cls += " wrong"; mark = `<span class="opt-mark">✕</span>`; }
         else cls += " faded";
       }
-      return `<button class="${cls}" ${state.quizChecked ? "disabled" : ""} data-act="quizChoose" data-args="[${i}]">${opt}</button>`;
+      return `<button class="${cls}" ${state.quizChecked ? "disabled" : ""} data-act="quizChoose" data-args="[${i}]">
+        <span class="opt-text">${opt}</span>${mark}</button>`;
     })
     .join("");
   return `<div class="quiz-opts">${optsHtml}</div>`;
@@ -98,9 +128,11 @@ function renderTypeInput(checkFn) {
 // A sentence with its blank rendered as a slot; `filled` (a word) drops into
 // the slot once answered.
 function renderSentence(q, filled) {
+  // Empty, the slot is the underline itself — spelling it out with underscores
+  // as well drew a second, ragged line under the first.
   const slot = filled
     ? `<span class="blank filled">${filled}</span>`
-    : `<span class="blank">_____</span>`;
+    : `<span class="blank">&nbsp;</span>`;
   const parts = q.tokens.map((t, i) => (i === q.blankIdx ? slot : `<span>${t}</span>`));
   return `<p class="quiz-sentence">${parts.join(" ")}</p>`;
 }
@@ -126,8 +158,14 @@ function renderMatchBody(q) {
   };
   const left = q.left.map((t, i) => tile("left", i, t)).join("");
   const right = q.right.map((t, i) => tile("right", i, t)).join("");
+  // The board has no Check button — it settles itself — so it carries its own
+  // progress readout instead.
   return `
-    <p class="quiz-prompt">Ordne jedem italienischen Wort seine Bedeutung zu</p>
+    <div class="match-head">
+      <span>Italienisch</span>
+      <span class="match-count">${state.quizMatchDone.length} / ${q.pairs.length} Paare</span>
+      <span>Deutsch</span>
+    </div>
     <div class="match-cols">
       <div class="match-col">${left}</div>
       <div class="match-col">${right}</div>
@@ -151,31 +189,52 @@ function renderArrangeBody(q) {
     <div class="build-bank">${bankHtml}</div>`;
 }
 
-// Bottom action bar: a Check button before answering (for the exercises that
-// need an explicit submit), then the feedback banner + Continue afterwards.
-function renderQuizActions(q) {
+// Which exercises need an explicit submit; the rest settle on tap.
+const QUIZ_CHECK_FN = { type: "quizCheckType", "fill-type": "quizFillCheckType", arrange: "quizCheckArrange" };
+// What to do when an exercise offers no Check button, so the slot the button
+// would occupy carries the instruction instead of sitting empty.
+const QUIZ_CUE = {
+  choose: "Tippe eine Antwort an",
+  "fill-choose": "Tippe eine Antwort an",
+  match: "Tippe zwei zusammengehörende Wörter an",
+};
+
+// Bottom action bar, pinned to the foot of the frame. It always ends in the
+// same row — a primary button, or the cue that stands in for one — and grows
+// UPWARDS as the feedback banner appears, so nothing below the answer ever
+// shifts when a question settles.
+function renderQuizFoot(q) {
   if (state.quizChecked) {
     const last = state.quizIndex + 1 >= state.quizList.length;
     let banner;
     if (state.quizWasCorrect) {
-      banner = `<div class="quiz-feedback good">Richtig! <span class="coin">◈</span> +${quizReward()}</div>`;
+      banner = `<div class="quiz-feedback good"><span class="fb-mark">✓</span>
+        <span class="fb-text">Richtig</span><span class="fb-gain"><span class="coin">◈</span> +${quizReward()}</span></div>`;
     } else if (q.type === "match") {
       // match has no single answer string; it only pays out when self-solved
-      banner = `<div class="quiz-feedback reveal">Paare aufgedeckt — kein Gold verdient</div>`;
+      banner = `<div class="quiz-feedback reveal"><span class="fb-mark">◈</span>
+        <span class="fb-text">Paare aufgedeckt — kein Gold verdient</span></div>`;
     } else {
       const answer = q.type === "arrange" ? q.answer.join(" ") : q.answer;
-      const cls = state.quizRevealed ? "reveal" : "bad";
-      const label = state.quizRevealed ? "Lösung" : "Antwort";
-      banner = `<div class="quiz-feedback ${cls}">${label}: <strong>${answer}</strong></div>`;
+      const shown = state.quizRevealed;
+      banner = `<div class="quiz-feedback ${shown ? "reveal" : "bad"}"><span class="fb-mark">${shown ? "◈" : "✕"}</span>
+        <span class="fb-text">${shown ? "Lösung" : "Richtig wäre"}: <strong>${answer}</strong></span></div>`;
     }
-    return `${banner}<button class="fight-btn quiz-continue" data-act="advanceQuiz">${last ? "Fertig →" : "Weiter →"}</button>`;
+    return `<footer class="quiz-foot">${banner}
+      <button class="btn-primary quiz-continue" data-act="advanceQuiz">${last ? "Fertig" : "Weiter"} →</button>
+    </footer>`;
   }
-  // Not yet checked: choose/match resolve on tap, the rest need a Check button.
-  // Every type offers "I don't know" to reveal the solution without earning gold.
-  const checkFn = { type: "quizCheckType", "fill-type": "quizFillCheckType", arrange: "quizCheckArrange" }[q.type];
-  const reveal = `<button class="quiz-reveal" data-act="quizReveal">Ich weiß es nicht — Lösung zeigen</button>`;
-  const check = checkFn ? `<button class="fight-btn quiz-check" data-act="${checkFn}">Prüfen</button>` : "";
-  return `${check}${reveal}`;
+  // Not yet checked. Every type offers "I don't know" to reveal the solution
+  // without earning gold; it sits above the primary row so revealing an answer
+  // doesn't move the button it sits over.
+  const checkFn = QUIZ_CHECK_FN[q.type];
+  const action = checkFn
+    ? `<button class="btn-primary quiz-check" data-act="${checkFn}">Prüfen</button>`
+    : `<p class="quiz-cue">${QUIZ_CUE[q.type] || ""}</p>`;
+  return `<footer class="quiz-foot">
+    <button class="quiz-reveal" data-act="quizReveal">Ich weiß es nicht — Lösung zeigen</button>
+    ${action}
+  </footer>`;
 }
 
 // The upgrade phase is now the rune skill tree — see src/skilltree.js, which

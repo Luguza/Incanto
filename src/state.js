@@ -77,6 +77,7 @@ function freshState() {
     quizIndex: 0,
     quizCorrect: 0,
     quizGoldEarned: 0,
+    quizResults: [],         // per question, once settled: "right" | "wrong" | "shown" (drives the step bar)
     quizChecked: false,      // the current question has been answered/checked
     quizWasCorrect: false,   // result of the checked answer
     quizRevealed: false,     // solution shown via "I don't know" (checked, but no gold)

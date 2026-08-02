@@ -45,6 +45,17 @@ app.addEventListener("keydown", (e) => {
   if (typeof fn === "function") fn();
 });
 
+// A settled quiz question advances on Enter wherever the focus happens to be —
+// on a keyboard the whole session can be worked through without reaching for
+// the pointer. Only once the question is checked, so it can never skip past an
+// unanswered one; typed exercises keep their own Enter (above) for checking.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.repeat) return;
+  if (state.screen !== "quiz" || !state.quizChecked) return;
+  e.preventDefault();
+  advanceQuiz();
+});
+
 // ---------------------------------------------------------------------------
 // Bootstrap — you start straight in combat with the base build.
 // ---------------------------------------------------------------------------

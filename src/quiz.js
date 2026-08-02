@@ -136,6 +136,7 @@ function buildQuiz() {
   state.quizIndex = 0;
   state.quizCorrect = 0;
   state.quizGoldEarned = 0;
+  state.quizResults = [];
   resetQuizInput();
 }
 
@@ -171,6 +172,7 @@ function settleQuiz(correct) {
   if (state.quizChecked) return;
   state.quizChecked = true;
   state.quizWasCorrect = correct;
+  state.quizResults[state.quizIndex] = correct ? "right" : "wrong";
   // Tally the vocabulary this question drilled before anything else — every
   // question resolves through here exactly once (see vocab-history.js).
   recordQuizOutcome(state.quizList[state.quizIndex], correct);
@@ -207,6 +209,7 @@ function quizReveal() {
     state.quizPicked = null; // choose/fill-choose: highlight only the correct option
   }
   recordQuizOutcome(q, false); // a revealed solution is a word you didn't know
+  state.quizResults[state.quizIndex] = "shown";
   state.quizRevealed = true;
   state.quizChecked = true;
   state.quizWasCorrect = false;

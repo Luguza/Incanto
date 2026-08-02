@@ -322,36 +322,49 @@ function historyAgo(t) {
   return `vor ${days} Tagen`;
 }
 
+// One practice source as a compact "richtig von Versuchen" ratio. The long form
+// ("3 richtig, 2 falsch · 5× gezeigt", twice per row) buried the two numbers
+// that matter under punctuation; the full wording survives in the tooltip.
+function historySource(label, seen, right, wrong) {
+  if (seen === 0) return "";
+  const tries = right + wrong;
+  const ratio = tries === 0 ? "—" : `${right}/${tries}`;
+  const title = `${label}: ${right} richtig, ${wrong} falsch, ${seen}× gezeigt`;
+  return `<span class="hist-stat" title="${title}">${label} <b${wrong > right ? ' class="bad"' : ""}>${ratio}</b></span>`;
+}
+
 function renderHistoryRow(r) {
   const boosted = r.score > 0;
   const acc = r.accuracy === null ? "—" : historyPct(r.accuracy);
   const accCls = r.accuracy === null ? "none" : r.accuracy >= 0.8 ? "good" : r.accuracy >= 0.5 ? "mid" : "bad";
-  const bar = r.accuracy === null ? "" :
-    `<div class="hist-bar"><div class="hist-bar-fill ${accCls}" style="width:${(r.accuracy * 100).toFixed(0)}%"></div></div>`;
+  // The track is always drawn so every row is the same height; only a word with
+  // resolved attempts gets a fill.
+  const bar = `<div class="hist-bar">${r.accuracy === null ? "" :
+    `<div class="hist-bar-fill ${accCls}" style="width:${(r.accuracy * 100).toFixed(0)}%"></div>`}</div>`;
   // Appearances and attempts are different numbers — a rune can be dealt onto a
   // board the player never gets round to pairing — so the row states both
   // rather than folding them into one misleading ratio.
-  const source = (label, seen, right, wrong) => seen === 0 ? "" :
-    `<span class="hist-detail-item">${label}: <b>${right}</b> richtig, <b class="${wrong > 0 ? "bad" : ""}">${wrong}</b> falsch · ${seen}× gezeigt</span>`;
   const detail = r.seen === 0
-    ? `<span class="hist-detail-item">noch nicht begegnet</span>`
+    ? `<span class="hist-stat dim">noch nicht begegnet</span>`
     : [
-        source("Quiz", r.quizSeen, r.quizCorrect, r.quizWrong),
-        source("Kreis", r.runeSeen, r.runeCorrect, r.runeWrong),
-        r.lastSeenAt ? `<span class="hist-detail-item dim">zuletzt ${historyAgo(r.lastSeenAt)}</span>` : "",
+        historySource("Quiz", r.quizSeen, r.quizCorrect, r.quizWrong),
+        historySource("Kreis", r.runeSeen, r.runeCorrect, r.runeWrong),
+        `<span class="hist-stat dim">${r.seen}× gezeigt</span>`,
+        r.lastSeenAt ? `<span class="hist-stat dim">${historyAgo(r.lastSeenAt)}</span>` : "",
       ].filter(Boolean).join("");
   const badge = boosted
-    ? `<span class="hist-badge">⟳ ${r.recentWrong} Fehler in ${CONFIG.vocab.recentDays} Tagen</span>`
+    ? `<span class="hist-badge" title="${r.recentWrong} Fehler in den letzten ${CONFIG.vocab.recentDays} Tagen — erscheint häufiger im Runenkreis">⟳ ${r.recentWrong}</span>`
     : "";
   return `
     <div class="hist-row${boosted ? " boosted" : ""}">
       <div class="hist-head">
         <span class="hist-it">${r.it}</span>
         <span class="hist-de">${r.de}</span>
+        ${badge}
         <span class="hist-acc ${accCls}">${acc}</span>
       </div>
       ${bar}
-      <div class="hist-detail">${detail}${badge}</div>
+      <div class="hist-detail">${detail}</div>
     </div>`;
 }
 
@@ -363,34 +376,52 @@ function renderHistoryFull() {
   const struggling = all.filter((r) => r.score > 0);
   const correct = seen.reduce((s, r) => s + r.correct, 0);
   const wrong = seen.reduce((s, r) => s + r.wrong, 0);
-  const acc = correct + wrong > 0 ? historyPct(correct / (correct + wrong)) : "—";
+  const attempts = correct + wrong;
+  const acc = attempts > 0 ? historyPct(correct / attempts) : "—";
+  const coverage = Math.round((seen.length / WORD_POOL.length) * 100);
 
   const tabs = HISTORY_FILTERS.map((f) => {
     const n = f.id === "all" ? all.length
       : f.id === "seen" ? seen.length
       : f.id === "struggling" ? struggling.length
       : all.length - seen.length;
-    return `<button class="hist-tab${f.id === filter ? " active" : ""}" data-act="setHistoryFilter" data-args='["${f.id}"]'>${f.label} <span class="hist-tab-n">${n}</span></button>`;
+    return `<button class="hist-tab${f.id === filter ? " active" : ""}" role="tab" aria-selected="${f.id === filter}"
+      data-act="setHistoryFilter" data-args='["${f.id}"]'>${f.label} <span class="hist-tab-n">${n}</span></button>`;
   }).join("");
 
   const list = rows.length
     ? rows.map(renderHistoryRow).join("")
-    : `<p class="hist-empty">Noch nichts hier — übe im Quiz oder im Runenkreis.</p>`;
+    : `<div class="hist-empty">
+         <div class="hist-empty-mark">◈</div>
+         <p>Noch nichts hier — übe im Quiz oder im Runenkreis.</p>
+       </div>`;
+  // The ⟳ legend is only worth its line when a badge is actually on screen.
+  const legend = rows.some((r) => r.score > 0)
+    ? `<p class="hist-legend"><span class="hist-badge">⟳</span> zuletzt verwechselt — erscheint häufiger im Runenkreis</p>`
+    : "";
 
   app.innerHTML = `
     <div class="screen history-screen">
-      <div class="hist-top">
-        <button class="hist-back" data-act="closeHistory">← Zurück</button>
-        <div class="hist-title">Lernverlauf</div>
+      <div class="frame hist-frame">
+        <header class="hist-header">
+          <div class="hist-top">
+            <button class="ghost-btn hist-back" data-act="closeHistory" aria-label="Zurück zum Quiz">←</button>
+            <h1 class="hist-title">Lernverlauf</h1>
+            <span class="hist-top-pad" aria-hidden="true"></span>
+          </div>
+          <div class="hist-summary">
+            <div class="hist-sum">
+              <b>${seen.length}</b><span>von ${WORD_POOL.length} gesehen</span>
+              <div class="hist-sum-bar"><div class="hist-sum-fill" style="width:${coverage}%"></div></div>
+            </div>
+            <div class="hist-sum"><b class="${attempts ? "" : "none"}">${acc}</b><span>richtig${attempts ? ` · ${correct}/${attempts}` : ""}</span></div>
+            <div class="hist-sum"><b class="${struggling.length ? "warn" : ""}">${struggling.length}</b><span>schwierig · ${CONFIG.vocab.recentDays} Tage</span></div>
+          </div>
+          <div class="hist-tabs" role="tablist">${tabs}</div>
+          ${legend}
+        </header>
+        <div class="hist-list scroll-y">${list}</div>
       </div>
-      <div class="hist-summary">
-        <div class="hist-sum"><b>${seen.length}</b><span>von ${WORD_POOL.length} Vokabeln gesehen</span></div>
-        <div class="hist-sum"><b>${acc}</b><span>richtig (${correct}/${correct + wrong})</span></div>
-        <div class="hist-sum"><b>${struggling.length}</b><span>schwierig (${CONFIG.vocab.recentDays} Tage)</span></div>
-      </div>
-      <p class="hist-note">Wörter mit ⟳ hast du zuletzt verwechselt — sie erscheinen häufiger im Runenkreis.</p>
-      <div class="hist-tabs">${tabs}</div>
-      <div class="hist-list">${list}</div>
     </div>`;
 }
 

@@ -1,10 +1,20 @@
-/* base.css — @font-face, :root tokens, #app + .screen shell. Shared by all screens. */
+/* base.css — @font-face, :root design tokens, #app + .screen shell, shared
+   primitives (panels, buttons, pills, scrollbars). Shared by all screens. */
 
   @font-face {
     font-family: "RuneDisplay";
     src: url("../assets/rune_font.otf") format("opentype");
     font-display: swap;
   }
+
+  /* ---------------------------------------------------------------------------
+     Design tokens. Every screen draws its surfaces, edges, text and accents from
+     this one ramp, so the game reads as a single designed object instead of a
+     pile of separately-styled screens. Before this existed the same "panel" was
+     written three slightly different ways in three files — that mismatch is what
+     made the UI look ad-hoc. Add a shade here rather than inventing a hex value
+     in a screen stylesheet.
+     --------------------------------------------------------------------------- */
   :root {
     color-scheme: dark;
     /* Display face for spell words, titles and rune labels. Readability comes
@@ -13,13 +23,83 @@
        low-priority fallback — it only surfaces where none of the readable
        serifs exist. */
     --display-font: "Palatino Linotype", "Book Antiqua", Georgia, "RuneDisplay", serif;
+    --ui-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+    /* Surfaces — page, sunk, panel, raised (interactive). */
+    --bg:        #14101c;
+    --bg-sunk:   #0f0b16;
+    --panel-hi:  #241d33;
+    --panel-lo:  #1a1526;
+    --panel:     linear-gradient(160deg, var(--panel-hi), var(--panel-lo));
+    --raised-hi: #2b2340;
+    --raised-lo: #201a2f;
+    --raised:    linear-gradient(160deg, var(--raised-hi), var(--raised-lo));
+    --sunk:      #161221;
+
+    /* Edges — hairline, standard, emphasised. */
+    --edge-soft: #262039;
+    --edge:      #332c48;
+    --edge-hi:   #453d63;
+
+    /* Text ramp, brightest to quietest. */
+    --ink:   #f2eeff;
+    --ink-2: #cfc9de;
+    --ink-3: #9a93ad;
+    --ink-4: #6f6884;
+
+    /* Accents. Arcane cyan carries navigation and state; gold carries value,
+       vocabulary and the primary action. */
+    --arcane:      #4de3e0;
+    --arcane-lt:   #7ff0ed;
+    --arcane-pale: #cfeae9;
+    --arcane-dim:  #9fd8d6;
+    --arcane-1:    rgba(77, 227, 224, 0.08);
+    --arcane-2:    rgba(77, 227, 224, 0.16);
+    --arcane-3:    rgba(77, 227, 224, 0.34);
+
+    --gold:     #f2c14e;
+    --gold-lt:  #ffd571;
+    --gold-1:   rgba(242, 193, 78, 0.09);
+    --gold-2:   rgba(242, 193, 78, 0.18);
+    --gold-3:   rgba(242, 193, 78, 0.38);
+
+    --good:     #5ecf8f;
+    --good-ink: #d6ffe6;
+    --good-1:   rgba(94, 207, 143, 0.12);
+    --good-2:   rgba(94, 207, 143, 0.3);
+    --bad:      #e5545f;
+    --bad-ink:  #ffe1e5;
+    --bad-1:    rgba(229, 84, 95, 0.12);
+    --bad-2:    rgba(229, 84, 95, 0.3);
+
+    /* Radii — one small/medium/large step, plus the pill. */
+    --r-1: 9px;
+    --r-2: 13px;
+    --r-3: 18px;
+    --r-pill: 999px;
+
+    /* Elevation. */
+    --shadow-1: 0 2px 10px rgba(0, 0, 0, 0.35);
+    --shadow-2: 0 10px 28px rgba(0, 0, 0, 0.45);
+    --glow-arcane: 0 0 22px rgba(77, 227, 224, 0.22);
+    --glow-gold:   0 0 22px rgba(242, 193, 78, 0.22);
+
+    /* The reading column. Every text-first screen is capped at this width and
+       centred, so a desktop window shows a designed column rather than rows
+       stretched across 1400px. */
+    --measure: 480px;
+
+    /* Motion. */
+    --dur: 150ms;
+    --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
   }
+
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0; padding: 0; height: 100%;
-    background: #141018;
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    color: #f5f2ff;
+    background: var(--bg);
+    font-family: var(--ui-font);
+    color: var(--ink);
     overflow: hidden;
     user-select: none;
     -webkit-user-select: none;
@@ -32,13 +112,85 @@
   #app { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
   .screen { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
 
+  /* Keyboard focus is visible everywhere, and only for keyboard users — a
+     pointer tap never leaves a ring behind. */
+  :focus { outline: none; }
+  :focus-visible {
+    outline: 2px solid var(--arcane);
+    outline-offset: 2px;
+    border-radius: var(--r-1);
+  }
+
+  button { font-family: inherit; color: inherit; }
+
+  /* Scrollable regions keep a slim, in-palette scrollbar instead of the OS
+     default slab. */
+  .scroll-y {
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin; scrollbar-color: var(--edge-hi) transparent;
+  }
+  .scroll-y::-webkit-scrollbar { width: 8px; }
+  .scroll-y::-webkit-scrollbar-track { background: transparent; }
+  .scroll-y::-webkit-scrollbar-thumb { background: var(--edge); border-radius: var(--r-pill); border: 2px solid transparent; background-clip: content-box; }
+  .scroll-y::-webkit-scrollbar-thumb:hover { background: var(--edge-hi); background-clip: content-box; }
+
+  /* The reading column shared by the study-phase screens: full height, capped
+     width, centred, with the safe-area insets handled once. */
+  .frame {
+    display: flex; flex-direction: column;
+    width: 100%; max-width: var(--measure); height: 100%; min-height: 0;
+    margin: 0 auto;
+    padding: calc(env(safe-area-inset-top) + 10px) 14px 0;
+  }
+
+  /* Value written in coin. */
+  .coin { color: var(--gold); }
+
+  /* ---------------------------------------------------------------------------
+     Button primitives. One primary (gold, or arcane where the action is "move
+     on") and one ghost (quiet, secondary). Screens pick a primitive rather than
+     restyling a button from scratch — that's what keeps the Prüfen button, the
+     Kaufen button and the Fight button recognisably the same control.
+     --------------------------------------------------------------------------- */
+  .btn-primary, .fight-btn, .tree-buy {
+    display: block; width: 100%; padding: 14px 18px;
+    border: none; border-radius: var(--r-2); cursor: pointer;
+    font-size: 17px; font-weight: 700; letter-spacing: 0.6px;
+    color: #17121f;
+    background: linear-gradient(180deg, var(--gold-lt), var(--gold));
+    box-shadow: var(--glow-gold), var(--shadow-1);
+    transition: filter var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .btn-primary:hover:not(:disabled), .fight-btn:hover:not(:disabled), .tree-buy:hover:not(:disabled) { filter: brightness(1.06); }
+  .btn-primary:active:not(:disabled), .fight-btn:active:not(:disabled), .tree-buy:active:not(:disabled) { transform: translateY(1px); filter: brightness(1.12); }
+  .btn-primary:disabled, .fight-btn:disabled, .tree-buy:disabled {
+    background: var(--raised); color: var(--ink-4); box-shadow: none; cursor: default;
+    filter: none; transform: none;
+  }
+  /* Arcane variant — used where the button carries you onward rather than
+     spending something. */
+  .btn-primary.arcane, .fight-btn.arcane, .quiz-continue, .next-wave-btn, .study-btn, .tree-run-btn {
+    background: linear-gradient(180deg, var(--arcane-lt), var(--arcane));
+    box-shadow: var(--glow-arcane), var(--shadow-1);
+  }
+
+  .ghost-btn {
+    flex: 0 0 auto; cursor: pointer;
+    padding: 6px 12px; border-radius: var(--r-pill);
+    font-size: 12.5px; letter-spacing: 0.3px;
+    background: var(--arcane-1); border: 1px solid var(--edge); color: var(--ink-3);
+    transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+  }
+  .ghost-btn:hover { color: var(--arcane-pale); border-color: var(--arcane-3); background: var(--arcane-2); }
+  .ghost-btn:active { background: var(--arcane-2); color: var(--ink); }
+
   /* Bottom phase-switcher: one flush panel across the whole bottom edge with
      three equal, text-free pixel-art buttons — study · forge · combat. */
   .bottom-nav {
     flex: 0 0 auto;
     display: flex; width: 100%;
     background: #17131e;
-    border-top: 1px solid #3a3550;
+    border-top: 1px solid var(--edge);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
@@ -49,18 +201,24 @@
     display: flex; align-items: center; justify-content: center;
     background: transparent; border: none; outline: none;
     padding: 9px 0; min-height: 58px; cursor: pointer;
-    border-right: 1px solid #2a2436;
-    transition: background 120ms linear;
+    border-right: 1px solid var(--edge-soft);
+    transition: background var(--dur) linear;
   }
   .nav-btn:last-child { border-right: none; }
   .nav-btn:active { background: #2a2138; }
-  .nav-btn.active { background: #211a2e; box-shadow: inset 0 2px 0 #4de3e0; }
+  .nav-btn.active { background: #211a2e; box-shadow: inset 0 2px 0 var(--arcane); }
   .nav-icon {
     width: 32px; height: 32px; display: block;
     image-rendering: pixelated;
     opacity: 0.45;
-    transition: opacity 120ms linear, filter 120ms linear;
+    transition: opacity var(--dur) linear, filter var(--dur) linear;
   }
   .nav-btn:active .nav-icon { opacity: 0.8; }
   .nav-btn.active .nav-icon { opacity: 1; filter: drop-shadow(0 0 5px rgba(127, 244, 241, 0.55)); }
 
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
