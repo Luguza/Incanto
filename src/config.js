@@ -190,7 +190,10 @@ const CONFIG = {
     // Frostkegel — a cone off the staff that shoves the front ranks back down
     // the hall and freezes them where they land. Barely damages; it buys time
     // and sets up the shatter (see primeWindowMs).
-    frost: { dmgMult: 0.35, coneTiles: 6.5, pushTiles: 2.4, freezeMs: 2600, maxFreezeMs: 6000,
+    // `pushMs` is how long a caught body takes to SLIDE the pushTiles back —
+    // it is shoved, not teleported, and the slide starts as the drawn wedge
+    // sweeps over it (see the frost resolver + updateEnemies).
+    frost: { dmgMult: 0.35, coneTiles: 6.5, pushTiles: 2.4, pushMs: 280, freezeMs: 2600, maxFreezeMs: 6000,
              // Trimmed from 2.4 with the number rescale: the shatter multiplies a
              // crit on top of a fully-invested page, so it sets the game's single
              // largest number and is what the three-digit ceiling binds against.

@@ -404,6 +404,33 @@ function spellbookFlip(dir) {
 // ---------------------------------------------------------------------------
 let bookDragUntil = 0;
 
+// A released flip is finished for the player: the grabbed leaf swings the rest
+// of the way over to the spine, the spread changes under it, and the leaf now
+// facing up swings back OPEN on the other side. Letting go halfway through and
+// snapping the new spread in would show only the first half of a page turn.
+const FLIP_CLOSE_MS = 190;             // the grabbed leaf finishing its swing
+const FLIP_OPEN_MS = 230;              // the leaf beneath opening out
+// Which side's leaf should swing open once the book is rebuilt at its new
+// spread. Survives the re-render (the SVG is replaced wholesale), which is why
+// it lives out here rather than inside attachSpellbookDrag.
+let pendingOpenSide = 0;
+
+// Drive `setTurn` from one closed-fraction to another over `ms`, easing out.
+// Bails if the leaf is torn out from under it — a structural re-render mid-turn
+// replaces the whole book, and the fresh one is already in the right shape.
+function animateTurn(setTurn, leaf, from, to, ms, done) {
+  const t0 = performance.now();
+  const step = (now) => {
+    if (!leaf.isConnected) return;
+    const p = Math.min(1, (now - t0) / Math.max(1, ms));
+    const eased = p * (2 - p);
+    setTurn(leaf, from + (to - from) * eased);
+    if (p < 1) { requestAnimationFrame(step); return; }
+    if (done) done();
+  };
+  requestAnimationFrame(step);
+}
+
 // Bound to the freshly rendered book after every structural combat render (the
 // SVG is replaced wholesale, so there are no stale listeners to clean up).
 function attachSpellbookDrag() {
@@ -415,7 +442,8 @@ function attachSpellbookDrag() {
   // Which leaf a drag in this direction turns, and how far it has closed toward
   // the spine (0 = flat open, 1 = shut). Dragging left turns the right-hand
   // page over; dragging right turns the left-hand one back.
-  const leafFor = (d) => svg.querySelector(`.bk-page[data-side="${d < 0 ? 1 : -1}"]`);
+  const leafSide = (d) => (d < 0 ? 1 : -1);
+  const leafFor = (d) => svg.querySelector(`.bk-page[data-side="${leafSide(d)}"]`);
   const canTurn = (d) => (d < 0 ? (state.bookSpread || 0) < leaves - 1 : (state.bookSpread || 0) > 0);
 
   const setTurn = (leaf, closed) => {
@@ -451,16 +479,30 @@ function attachSpellbookDrag() {
     down = false;
     const w = svg.getBoundingClientRect().width || 1;
     const flipped = Math.abs(dx) > w * FLIP_THRESHOLD && canTurn(dx);
-    release();
     if (flipped) {
       // Swallow the click this same gesture is about to fire, so turning a page
       // never also re-arms the spell it let go over. Kept short — the click
       // arrives right behind pointerup, and a longer window would start eating
       // genuine taps made straight after a flip.
       bookDragUntil = performance.now() + 250;
-      spellbookFlip(dx < 0 ? 1 : -1);
+      const dir = dx < 0 ? 1 : -1;
+      const leaf = turning || leafFor(dx);
+      turning = null;
+      const closed = Math.min(1, Math.abs(dx) / (w * 0.5));
+      if (!leaf) { svg.classList.remove("dragging"); spellbookFlip(dir); return; }
+      // Keep `dragging` on so the CSS transition stays out of the way while the
+      // rAF drives the rest of the swing frame by frame.
+      svg.classList.add("dragging");
+      animateTurn(setTurn, leaf, closed, 1, FLIP_CLOSE_MS * (1 - closed) + 40, () => {
+        // The leaf that just turned lands on the OTHER side of the spine, so
+        // that is the side the swing continues on. Armed here rather than up
+        // front so a turn interrupted by a re-render leaves nothing pending.
+        pendingOpenSide = -leafSide(dx);
+        spellbookFlip(dir);   // marks the screen structurally dirty → book rebuilt
+      });
       return;
     }
+    release();
     // A tap. The pages still carry `data-act`, but the drag needs pointer
     // capture on the SVG, and a captured pointer makes the browser dispatch the
     // click to the CAPTURE TARGET — the SVG root — instead of to the leaf under
@@ -473,6 +515,24 @@ function attachSpellbookDrag() {
   };
   svg.addEventListener("pointerup", onUp);
   svg.addEventListener("pointercancel", onUp);
+
+  // Second half of a turn that was committed on the previous book: this render
+  // IS the new spread, so the leaf that came over the spine starts shut against
+  // it and swings out flat. Applied synchronously — attachSpellbookDrag runs
+  // inside the same frame's render, before anything is painted, so the page is
+  // never briefly seen already open.
+  if (pendingOpenSide) {
+    const incoming = svg.querySelector(`.bk-page[data-side="${pendingOpenSide}"]`);
+    pendingOpenSide = 0;
+    if (incoming) {
+      svg.classList.add("dragging");
+      setTurn(incoming, 1);
+      animateTurn(setTurn, incoming, 1, 0, FLIP_OPEN_MS, () => {
+        incoming.removeAttribute("transform");
+        svg.classList.remove("dragging");
+      });
+    }
+  }
 }
 
 window.Incanto.spellbook = { SPELL_ART, renderSpellbook, spellbookFlip, attachSpellbookDrag };

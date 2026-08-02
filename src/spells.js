@@ -250,26 +250,42 @@ const SPELL_RESOLVERS = {
     // Weiter Atem nodes push the cone further down the hall (the drawn cone reads
     // the same reach off the fx descriptor, so the art always matches the catch).
     const reach = cfg.coneTiles * (1 + (state.mods.spellParam.coneFrost || 0));
-    const land = ctx.castAt + cfg.castMs * 0.45;
+    // The drawn wedge grows to its full length over the first 45% of the cast
+    // (see SPELL_FX.cone), so its front passes a body at that fraction of the
+    // sweep. Every body is hit — and starts moving — when the ice actually
+    // reaches it, rather than all of them at one arbitrary instant.
+    const sweepMs = cfg.castMs * 0.45;
+    const sweepEnd = ctx.castAt + sweepMs;
     const caught = spellTargets().filter((e) => e.pos <= reach);
     let dealt = 0;
     for (const e of caught) {
+      const land = ctx.castAt + sweepMs * Math.min(1, e.pos / Math.max(0.001, reach));
       dealt += applySpellHit(e, ctx.power, land, {
         noCrit: true, color: CONFIG.colors.spell.frost.rgb,
       });
-      // Shoved back toward the far end, never past the edge of the visible
-      // track — a skeleton punted off camera would just be gone.
-      e.pos = Math.min(e.pos + cfg.pushTiles, trackEdgeTiles(e.scale || 1));
+      // A body the cone KILLED is left alone from here: applySpellHit has put it
+      // in `struck`, where it stands until the ice lands and then collapses.
+      // Shoving or freezing it would overwrite that phase, and a skeleton whose
+      // kill was decided but whose phase says "walk" never dies at all — it just
+      // marches on at 0 HP.
+      if (e.phase === "struck" || e.phase === "dying") continue;
+      // Shoved back toward the far end — as a slide across `pushMs`, not a jump.
+      // Only the timing is booked here; updateEnemies reads the body's position
+      // at the moment the shove actually starts (it may still be walking during
+      // the cast's wind-up) and carries it back from there.
+      e.pushAt = land;
+      e.pushUntil = land + cfg.pushMs;
+      e.pushBy = cfg.pushTiles;
+      e.pushFrom = null;
       e.frozenUntil = land + freeze;
-      e.phase = "walk";
       // Its swing timer resumes from the thaw, so freezing genuinely costs it a
       // hit rather than merely postponing one it had already wound up.
       e.attackAt = Math.max(e.attackAt, e.frozenUntil);
     }
-    state.spellPrimeUntil = land + CONFIG.spells.primeWindowMs;
+    state.spellPrimeUntil = sweepEnd + CONFIG.spells.primeWindowMs;
     state.castTargetId = caught.length ? caught[0].id : null;
     pushFx({
-      kind: "cone", spell: "frost", born: ctx.castAt, landAt: land,
+      kind: "cone", spell: "frost", born: ctx.castAt, landAt: sweepEnd,
       until: ctx.castAt + cfg.castMs, reach,
     });
     return dealt;

@@ -122,6 +122,30 @@ function updateEnemies(now, dt) {
         chainSettled = false;
         continue;
       }
+      // Shoved back by a Frostkegel. The body SLIDES the whole distance across
+      // the push window so it travels with the cone that hit it, instead of
+      // being teleported down the hall the instant the shape was drawn. The
+      // starting tile is read here rather than at cast time: the cast has a
+      // wind-up, and the skeleton is still walking through it.
+      if (e.pushUntil) {
+        if (now >= e.pushUntil) {
+          if (e.pushFrom != null) e.pos = e.pushTo;   // land exactly on the mark
+          e.pushUntil = 0; e.pushFrom = null;
+        } else if (now >= e.pushAt) {
+          if (e.pushFrom == null) {
+            e.pushFrom = e.pos;
+            // Never past the edge of the visible track — a skeleton punted off
+            // camera would just be gone.
+            e.pushTo = Math.min(e.pos + e.pushBy, trackEdgeTiles(e.scale || 1));
+          }
+          const q = (now - e.pushAt) / Math.max(1, e.pushUntil - e.pushAt);
+          e.pos = e.pushFrom + (e.pushTo - e.pushFrom) * (1 - (1 - q) * (1 - q));
+          e.phase = "frozen";                 // it's iced the moment it's hit
+          limit = e.pos + laneSpacing(e, behind);
+          chainSettled = false;
+          continue;
+        }
+      }
       // Frozen by a Frostkegel: it neither advances nor swings, but it still
       // holds its tile so the rank behind piles up against the ice rather than
       // walking through it. Breaking the settled chain here is what stops that
