@@ -156,12 +156,18 @@ const COUNT_STATS = { tgtFireball: 1, chainLightning: 1, countMeteor: 1 };
 // these that it cycles through outward, so "this branch is about crit" is a
 // property of the branch, not of thirty hand-written nodes.
 // ---------------------------------------------------------------------------
+// FLAT vs PERCENT under the ×8 number scale (see CONFIG.heroBaseDmg): a flat
+// value moved with its pool's cap — damage ×2, HP ×3, regen and other HP rates
+// ×8 — so it still takes the same walk to fill a pool. The PERCENT bases below
+// were deliberately left alone even though their caps came down: at +4% a single
+// rank now moves heroDmg 24 → 25 where before it moved 3 → 3, and being able to
+// see one rank do something is the whole point of the rescale.
 const A = {
-  dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 2,     cost: 15, maxRank: 3,
+  dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 4,     cost: 15, maxRank: 3,
                 title: "Schneide",      blurb: "Schärft deinen Grundschaden — jede Seite des Buches trifft härter." },
   dmgPct:     { stat: "pctDmg",     theme: "might",   base: 0.04,  cost: 22, maxRank: 3,
                 title: "Zorn",          blurb: "Verstärkt allen Schaden prozentual." },
-  hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 8,     cost: 14, maxRank: 3,
+  hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3,
                 title: "Zähigkeit",     blurb: "Erhöht deine maximalen Lebenspunkte." },
   hpPct:      { stat: "pctHp",      theme: "vigor",   base: 0.04,  cost: 20, maxRank: 3,
                 title: "Lebenskraft",   blurb: "Mehr Lebenspunkte prozentual." },
@@ -174,7 +180,7 @@ const A = {
   // Falkenauge), so shredding plate is a detour a build chooses, like Dornen.
   armorPen:   { stat: "armorPen",   theme: "might",   base: 0.25,  cost: 24, maxRank: 3,
                 title: "Durchschlag",   blurb: "Deine Zauber durchschlagen einen Teil der Panzerung des Getroffenen." },
-  regen:      { stat: "regen",      theme: "sustain", base: 0.2,   cost: 20, maxRank: 3,
+  regen:      { stat: "regen",      theme: "sustain", base: 1.6,   cost: 20, maxRank: 3,
                 title: "Genesung",      blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
   leech:      { stat: "leech",      theme: "sustain", base: 0.025, cost: 26, maxRank: 3,
                 title: "Aderlass",      blurb: "Heilt dich für einen Teil des Zauberschadens." },
@@ -223,7 +229,7 @@ function uq(theme, title, cost, effect, blurb) {
 // ---------------------------------------------------------------------------
 function bRawPower(L) {
   return { title: "Rohe Kraft", arch: [A.dmgFlat, A.dmgPct, A.dmgFlat],
-    tip: uq("might", `${L.word}gewalt`, KEYSTONE_COST, { flatDmg: 8, pctDmg: 0.06 },
+    tip: uq("might", `${L.word}gewalt`, KEYSTONE_COST, { flatDmg: 16, pctDmg: 0.06 },
       "Kraft, die keiner Seite gehört und darum jede trägt.") };
 }
 function bSigil(id, L) {
@@ -238,7 +244,7 @@ function bEdge(L) {
 }
 function bDrain(L) {
   return { title: "Zehrung", arch: [A.leech, A.regen, A.hpFlat],
-    tip: uq("sustain", `${L.word}zehrung`, KEYSTONE_COST, { leech: 0.06, regen: 0.4 },
+    tip: uq("sustain", `${L.word}zehrung`, KEYSTONE_COST, { leech: 0.06, regen: 3.2 },
       "Was du verbrennst, kehrt zu dir zurück.") };
 }
 
@@ -284,11 +290,11 @@ const ARMS = [
   // ---- Might: the plain damage arm. Lifts every page at once.
   { key: "mig", kind: "generic", theme: "might", title: "Macht",
     prelude: [A.dmgFlat, A.dmgFlat, A.dmgPct, A.dmgFlat],
-    notable: uq("might", "Kriegsherz", NOTABLE_COST, { flatDmg: 4, pctDmg: 0.06 },
+    notable: uq("might", "Kriegsherz", NOTABLE_COST, { flatDmg: 8, pctDmg: 0.06 },
       "Ein Herz, das den Kampf sucht. Alles, was du wirkst, wiegt schwerer."),
     branches: [
       { title: "Schneide", arch: [A.dmgFlat, A.dmgFlat, A.dmgPct],
-        tip: uq("might", "Henkersklinge", KEYSTONE_COST, { flatDmg: 10, armorPen: 1.2 },
+        tip: uq("might", "Henkersklinge", KEYSTONE_COST, { flatDmg: 20, armorPen: 1.2 },
           "Ein Schnitt, der nicht fragt, wie viel Knochen im Weg steht.") },
       { title: "Zorn", arch: [A.dmgPct, A.dmgPct, A.dmgFlat],
         tip: uq("might", "Blinder Zorn", KEYSTONE_COST, { pctDmg: 0.18 },
@@ -296,7 +302,7 @@ const ARMS = [
       // Zermalmen is where armour penetration lives: crushing through the plate
       // is the same idea as crushing through the body behind it.
       { title: "Zermalmen", arch: [A.armorPen, A.dmgFlat, A.critMult],
-        tip: uq("might", "Zermalmender Hieb", KEYSTONE_COST, { critMult: 0.35, flatDmg: 4, armorPen: 0.6 },
+        tip: uq("might", "Zermalmender Hieb", KEYSTONE_COST, { critMult: 0.35, flatDmg: 8, armorPen: 0.6 },
           "Wenn es kritisch trifft, bleibt nichts stehen, das noch fallen könnte."),
         tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
           "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
@@ -309,10 +315,10 @@ const ARMS = [
       bRawPower(SPELL_LORE.heal),
       bSigil("heal", SPELL_LORE.heal),
       { title: "Quell", arch: [A.regen, A.leech, A.regen],
-        tip: uq("sustain", "Ewige Quelle", KEYSTONE_COST, { regen: 1.0, leech: 0.05 },
+        tip: uq("sustain", "Ewige Quelle", KEYSTONE_COST, { regen: 8.0, leech: 0.05 },
           "Die Quelle versiegt nicht mehr, auch wenn du das Wort nicht sprichst.") },
       { title: "Fürsorge", arch: [A.hpFlat, A.hpPct, A.hpFlat],
-        tip: uq("vigor", "Zweites Leben", KEYSTONE_COST, { flatHp: 30, pctHp: 0.10 },
+        tip: uq("vigor", "Zweites Leben", KEYSTONE_COST, { flatHp: 90, pctHp: 0.10 },
           "Ein Leben in Reserve, für den Schlag, den du nicht kommen siehst.") },
       { title: "Gelassenheit", arch: [A.haste, A.failProt, A.hpFlat],
         tip: uq("focus", "Ruhige Hand", KEYSTONE_COST, { castHaste: 0.10, spellFailProt: 0.10 },
@@ -355,17 +361,17 @@ const ARMS = [
   // ---- Sustain: regen and leech, the arm that lets a build stay out longer.
   { key: "sus", kind: "generic", theme: "sustain", title: "Zehrung",
     prelude: [A.regen, A.leech, A.regen, A.hpFlat],
-    notable: uq("sustain", "Lebensband", NOTABLE_COST, { regen: 0.5, leech: 0.03 },
+    notable: uq("sustain", "Lebensband", NOTABLE_COST, { regen: 4.0, leech: 0.03 },
       "Ein Faden zwischen dir und allem, was du niederstreckst."),
     branches: [
       { title: "Genesung", arch: [A.regen, A.regen, A.hpFlat],
-        tip: uq("sustain", "Lebensstrom", KEYSTONE_COST, { regen: 1.1 },
+        tip: uq("sustain", "Lebensstrom", KEYSTONE_COST, { regen: 8.8 },
           "Wunden schließen sich, während du noch zeichnest.") },
       { title: "Aderlass", arch: [A.leech, A.leech, A.dmgFlat],
         tip: uq("sustain", "Blutdurst", KEYSTONE_COST, { leech: 0.09 },
           "Jeder Zauber bringt dir zurück, was er dem Gang nimmt.") },
       { title: "Wandeln", arch: [A.leech, A.hpPct, A.regen],
-        tip: uq("sustain", "Wandelndes Grab", KEYSTONE_COST, { leech: 0.05, regen: 0.5, flatHp: 12 },
+        tip: uq("sustain", "Wandelndes Grab", KEYSTONE_COST, { leech: 0.05, regen: 4.0, flatHp: 36 },
           "Du gehst durch die Toten, als wärst du einer von ihnen."),
         tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
           "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
@@ -387,17 +393,17 @@ const ARMS = [
   // ---- Guard: absorb, fail-protection, the arm that keeps a fragile build alive.
   { key: "gua", kind: "generic", theme: "guard", title: "Abwehr",
     prelude: [A.hpFlat, A.shield, A.failProt, A.hpFlat],
-    notable: uq("guard", "Wächterrune", NOTABLE_COST, { shieldChance: 0.08, shieldAmount: 6, shieldMax: 10 },
+    notable: uq("guard", "Wächterrune", NOTABLE_COST, { shieldChance: 0.08, shieldAmount: 15, shieldMax: 25 },
       "Eine Rune, die mitwacht, wenn du dich auf das Zeichnen konzentrierst."),
     branches: [
       { title: "Schildzauber", arch: [A.shield, A.shield, A.hpFlat],
-        tip: uq("guard", "Ewiger Wall", KEYSTONE_COST, { shieldChance: 0.12, shieldAmount: 10, shieldMax: 24 },
+        tip: uq("guard", "Ewiger Wall", KEYSTONE_COST, { shieldChance: 0.12, shieldAmount: 25, shieldMax: 60 },
           "Der Schild fällt nicht mehr ganz — er wird nur dünner.") },
       { title: "Schutzzauber", arch: [A.failProt, A.hpFlat, A.haste],
         tip: uq("guard", "Bannkreis", KEYSTONE_COST, { spellFailProt: 0.14 },
           "Ein misslungenes Zeichen kostet dich meist nur noch das Zeichen.") },
       { title: "Standhaftigkeit", arch: [A.hpFlat, A.shield, A.hpPct],
-        tip: uq("guard", "Eisenwille", KEYSTONE_COST, { flatHp: 20, spellFailProt: 0.06, shieldMax: 12 },
+        tip: uq("guard", "Eisenwille", KEYSTONE_COST, { flatHp: 60, spellFailProt: 0.06, shieldMax: 30 },
           "Was dich treffen will, muss erst durch deinen Entschluss."),
         tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
           "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
@@ -410,10 +416,10 @@ const ARMS = [
       bRawPower(SPELL_LORE.shield),
       bSigil("shield", SPELL_LORE.shield),
       { title: "Wirkung", arch: [A.shield, A.shield, sigil("shield")],
-        tip: uq("shield", "Unzerbrechlich", KEYSTONE_COST, { shieldChance: 0.15, shieldAmount: 12, shieldMax: 40 },
+        tip: uq("shield", "Unzerbrechlich", KEYSTONE_COST, { shieldChance: 0.15, shieldAmount: 30, shieldMax: 100 },
           "Der Bann hält, auch wenn du längst nicht mehr hinsiehst.") },
       { title: "Bollwerk", arch: [A.hpFlat, A.hpPct, A.hpFlat],
-        tip: uq("vigor", "Steinhaut", KEYSTONE_COST, { flatHp: 30, pctHp: 0.08 },
+        tip: uq("vigor", "Steinhaut", KEYSTONE_COST, { flatHp: 90, pctHp: 0.08 },
           "Knochen prallen ab, wo sie früher eindrangen.") },
       { title: "Wehrhaftigkeit", arch: [A.failProt, A.haste, A.hpFlat],
         tip: uq("guard", "Bannwall", KEYSTONE_COST, { spellFailProt: 0.12, castHaste: 0.06 },
@@ -423,17 +429,17 @@ const ARMS = [
   // ---- Vigour: the plain HP arm.
   { key: "vig", kind: "generic", theme: "vigor", title: "Zähigkeit",
     prelude: [A.hpFlat, A.hpFlat, A.hpPct, A.hpFlat],
-    notable: uq("vigor", "Eisenleib", NOTABLE_COST, { flatHp: 20, pctHp: 0.06 },
+    notable: uq("vigor", "Eisenleib", NOTABLE_COST, { flatHp: 60, pctHp: 0.06 },
       "Ein Körper, der gelernt hat, im Gang zu stehen."),
     branches: [
       { title: "Knochenbau", arch: [A.hpFlat, A.hpFlat, A.hpPct],
-        tip: uq("vigor", "Mark und Bein", KEYSTONE_COST, { flatHp: 34 },
+        tip: uq("vigor", "Mark und Bein", KEYSTONE_COST, { flatHp: 102 },
           "Du trägst mehr, als ein Mensch tragen sollte.") },
       { title: "Lebenskraft", arch: [A.hpPct, A.hpPct, A.hpFlat],
         tip: uq("vigor", "Zweites Herz", KEYSTONE_COST, { pctHp: 0.18 },
           "Ein zweiter Schlag hinter dem ersten, für den Fall der Fälle.") },
       { title: "Beharrlichkeit", arch: [A.hpFlat, A.regen, A.hpPct],
-        tip: uq("vigor", "Unbeugsam", KEYSTONE_COST, { regen: 0.9, flatHp: 12 },
+        tip: uq("vigor", "Unbeugsam", KEYSTONE_COST, { regen: 7.2, flatHp: 36 },
           "Du gehst weiter, weil Stehenbleiben nie zur Debatte stand."),
         tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
           "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
@@ -720,7 +726,7 @@ function archNode(arch, ring, path, maxRankOverride) {
   let effect;
   if (arch.special === "shield") {
     effect = { shieldChance: Math.min(0.12, 0.05 + 0.004 * ring),
-      shieldAmount: Math.round(3 * tier), shieldMax: Math.round(5 * tier) };
+      shieldAmount: Math.round(8 * tier), shieldMax: Math.round(13 * tier) };
   } else if (COUNT_STATS[arch.stat]) {
     effect = { [arch.stat]: 1 };
   } else {
@@ -759,7 +765,7 @@ function keyNode(arm) {
   const node = arm.notable
     ? uniqueNode(arm.notable, KEY_RING, arm.title)
     // Feuerball is already known, so its arm's key is a prize rather than a lock.
-    : uniqueNode(uq("fireball", "Feuermal", 40, { dmgFireball: 0.15, flatDmg: 2 },
+    : uniqueNode(uq("fireball", "Feuermal", 40, { dmgFireball: 0.15, flatDmg: 4 },
         "Das Zeichen, mit dem du geboren wurdest. Der Feuerball war nie versiegelt — er war nur nie geschärft."),
       KEY_RING, arm.title);
   node.beacon = true;
