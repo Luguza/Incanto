@@ -37,6 +37,11 @@ app.addEventListener("input", (e) => {
   if (typeof fn === "function") fn(el);
 });
 
+// The ONLY key this game listens for: the phone keyboard's Go/Enter on a typed
+// answer field, which submits it. That is the on-screen keyboard's own submit
+// button, not a desktop shortcut. Nothing else here is keyboard-driven, and
+// nothing else may become keyboard-driven — see "Incanto is a phone game" in
+// CLAUDE.md. Every action reaches the player as something to tap.
 app.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   const el = e.target.closest("[data-enter]");

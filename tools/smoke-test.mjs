@@ -235,6 +235,62 @@ try {
   check(seenTab.n > 0 && seenTab.allMet,
     "the 'Gesehen' tab lists only vocabulary actually met (" + seenTab.n + " rows)");
 
+  // 7. A wrong answer must STOP on the question and show the solution — that
+  //    pause is the whole point of the quiz, and it is only ever dismissed by
+  //    tapping Weiter. Driven the way a phone drives it: fill the field, tap
+  //    Prüfen, tap Weiter. Nothing here presses a key, because nothing in the
+  //    game may respond to one (see CLAUDE.md).
+  const start = await page.evaluate(() => {
+    goToQuiz();
+    state.quizIndex = state.quizList.findIndex((q) => q.type === "type");
+    resetQuizInput();
+    state._structuralDirty = true;
+    render(performance.now());
+    return state.quizIndex;
+  });
+  await page.fill("#quiz-input", "definitiv-falsch");
+  await page.click('[data-act="quizCheckType"]');
+  await page.waitForTimeout(120);
+  const checked = await page.evaluate(() => ({
+    i: state.quizIndex,
+    checked: state.quizChecked,
+    solution: /Richtig wäre/.test(document.querySelector(".quiz-feedback")?.textContent || ""),
+    weiter: !!document.querySelector(".quiz-continue"),
+  }));
+  check(checked.i === start && checked.checked && checked.solution && checked.weiter,
+    "a wrong typed answer holds on the question, names the solution, and waits for Weiter");
+  await page.click(".quiz-continue");
+  await page.waitForTimeout(120);
+  const advanced = await page.evaluate(() => state.quizIndex);
+  check(advanced === start + 1, "tapping Weiter moves on exactly one question (" + start + " -> " + advanced + ")");
+
+  //    Same on the tap path: a wrong option marks the right one and holds.
+  const tapped = await page.evaluate(() => {
+    state.quizIndex = 0;
+    resetQuizInput();
+    state._structuralDirty = true;
+    render(performance.now());
+    const q = state.quizList[0];
+    return q.options.findIndex((o) => o !== q.answer);
+  });
+  await page.click(`[data-act="quizChoose"][data-args="[${tapped}]"]`);
+  await page.waitForTimeout(120);
+  const held = await page.evaluate(() => ({
+    i: state.quizIndex,
+    marked: !!document.querySelector(".quiz-opt.correct"),
+  }));
+  check(held.i === 0 && held.marked, "a wrong tapped answer holds on the question and marks the right option");
+
+  //    …and no key may drive the game. The only keydown the app listens for is
+  //    the phone keyboard's Go on a typed answer field; a stray Enter anywhere
+  //    else must do nothing at all.
+  await page.evaluate(() => document.body.focus());
+  await page.keyboard.press("Enter");
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(120);
+  const inert = await page.evaluate(() => state.quizIndex);
+  check(inert === 0, "keys do not drive the game — a stray Enter/Space changes nothing (index " + inert + ")");
+
   check(errors.length === 0, "no console/page errors");
 
   console.log("\nSMOKE TEST PASSED");
