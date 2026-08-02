@@ -327,6 +327,12 @@ function render(now) {
       builtScreen = "quiz";
       state._structuralDirty = false;
     }
+  } else if (state.screen === "history") {
+    if (builtScreen !== "history" || state._structuralDirty) {
+      renderHistoryFull();
+      builtScreen = "history";
+      state._structuralDirty = false;
+    }
   } else if (state.screen === "upgrade") {
     if (builtScreen !== "upgrade" || state._structuralDirty) {
       renderUpgradeFull();

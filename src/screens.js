@@ -36,8 +36,11 @@ function renderQuizFull() {
   const dir = q.dir ? `<span class="quiz-badge">${quizDirLabel(q.dir)}</span>` : "";
   app.innerHTML = `
     <div class="screen quiz-screen">
-      <div class="quiz-progress">Frage ${state.quizIndex + 1} / ${state.quizList.length}
-        &middot; <span class="coin">◈</span> ${state.quizGoldEarned} verdient</div>
+      <div class="quiz-topbar">
+        <div class="quiz-progress">Frage ${state.quizIndex + 1} / ${state.quizList.length}
+          &middot; <span class="coin">◈</span> ${state.quizGoldEarned} verdient</div>
+        <button class="quiz-history-btn" data-act="openHistory">Lernverlauf</button>
+      </div>
       <div class="quiz-typeline"><span class="quiz-badge kind">${QUIZ_TITLE[q.type]}</span>${dir}</div>
       ${body}
       ${renderQuizActions(q)}

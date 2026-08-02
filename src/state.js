@@ -67,6 +67,11 @@ function freshState() {
     spellPrimeUntil: 0,       // a Frostkegel primes the next cast to shatter frozen bodies
     poolIndex: 0,
     wrongMatchCount: 0,
+    // Learning history (see vocab-history.js): key -> per-word tally of every
+    // sighting, hit and slip. Persisted under its own save key; `historyFilter`
+    // is which tab the Lernverlauf screen is showing and is pure UI.
+    vocab: {},
+    historyFilter: "seen",
     // Post-death vocab quiz — a mixed Duolingo-style session
     quizList: [],
     quizIndex: 0,
@@ -82,6 +87,7 @@ function freshState() {
     quizMatchDone: [],       // match: pair ids already solved
     quizMatchWrong: null,    // match: {left, right} flashing red, briefly
     quizMatchMisses: 0,      // match: wrong taps this question
+    quizWordMisses: [],      // WORD_POOL indices fumbled on the current question (see vocab-history.js)
     quizAnsweredAt: 0,
     clockMs: 0,               // internal clock warped by mode+selection, drives windup + instrumentation
     runStartMs: 0,            // wall-clock start of the run, for the end-screen summary
@@ -136,8 +142,11 @@ function loadProgress() {
   } catch (e) { return null; }
 }
 
+// A full reset: the meta-progression save AND the learning history, which is
+// stored separately but is just as much "progress".
 function clearProgress() {
   try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+  if (typeof clearVocabHistory === "function") clearVocabHistory();
 }
 
 // Overlay any persisted meta-progression onto a freshly built state, then derive
@@ -152,6 +161,9 @@ const REPLANT_REFUND = 40;
 
 function applySavedProgress() {
   const asCount = (v) => (Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0);
+  // The learning history rides along in its own save (see vocab-history.js) —
+  // restored first, because the very first loadout is dealt from it.
+  if (typeof loadVocabHistory === "function") state.vocab = loadVocabHistory();
   const data = loadProgress();
   let orphanedRanks = 0;
   if (data) {

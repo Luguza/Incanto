@@ -181,6 +181,60 @@ try {
   check(beacon.seen && beacon.blocked, "a spell key is lit through the fog but not buyable unreached");
   check(beacon.bought && beacon.unlocked, "walking its prelude makes the key buyable and opens the page");
 
+  // 6. Learning history (see vocab-history.js): quiz answers and rune pairings
+  //    both feed a per-word record, and a word fumbled inside the recent window
+  //    is dealt back into the circle far more often than the pool average —
+  //    until it is relearned, which retires the boost again.
+  const vocab = await page.evaluate(() => {
+    clearVocabHistory();
+    const pairs = drawLoadout();
+    const hard = pairs[0].id, confusedWith = pairs[1].id;
+    recordRuneMatch([hard, confusedWith], false);          // mispaired in the circle
+    recordQuizOutcome({ type: "choose", words: [hard] }, false); // and missed in the quiz
+    const e = vocabEntry(hard);
+    const inPool = struggleDrawPool().some((p) => p.idx === hard);
+    const deals = 300;
+    let hits = 0;
+    for (let i = 0; i < deals; i++) if (drawLoadout().some((p) => p.id === hard)) hits++;
+    const share = hits / deals;
+    const scoreBefore = vocabStruggleScore(e);
+    for (let i = 0; i < 12; i++) recordRuneMatch([hard], true); // relearn it
+    return {
+      runeWrong: e.runeWrong, quizWrong: e.quizWrong, seen: e.runeSeen > 0 && e.quizSeen === 1,
+      inPool, share, scoreBefore, retired: vocabStruggleScore(e) === 0,
+      baseline: CONFIG.pairsPerLoadout / WORD_POOL.length,
+    };
+  });
+  check(vocab.runeWrong === 1 && vocab.quizWrong === 1 && vocab.seen,
+    "a mispairing and a missed quiz answer are both tallied against the word");
+  check(vocab.inPool && vocab.scoreBefore > 0, "it lands in the recent-struggle review pool");
+  check(vocab.share > vocab.baseline * 5,
+    "the circle deals it far more often than pool average (" +
+    (vocab.share * 100).toFixed(0) + "% of boards vs " + (vocab.baseline * 100).toFixed(1) + "%)");
+  check(vocab.retired, "relearning it retires the boost");
+
+  //    …and the study phase can reach the record: a data-act button on the quiz
+  //    opens it, the nav stays on the study phase, and the filter tabs work.
+  await page.evaluate(() => { goToQuiz(); render(performance.now()); });
+  await page.click('[data-act="openHistory"]');
+  await page.waitForTimeout(120);
+  const hist = await page.evaluate(() => ({
+    screen: state.screen,
+    rows: document.querySelectorAll(".hist-row").length,
+    phase: (document.querySelector("#bottom-nav .nav-btn.active") || {}).dataset.phase,
+  }));
+  check(hist.screen === "history" && hist.rows > 0,
+    "the quiz's Lernverlauf button opens the history (" + hist.rows + " rows)");
+  check(hist.phase === "study", "the history sits inside the study phase (nav=" + hist.phase + ")");
+  await page.click('[data-act="setHistoryFilter"][data-args=\'["seen"]\']');
+  await page.waitForTimeout(120);
+  const seenTab = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll(".hist-row")];
+    return { n: rows.length, allMet: rows.every((r) => !/noch nicht begegnet/.test(r.textContent)) };
+  });
+  check(seenTab.n > 0 && seenTab.allMet,
+    "the 'Gesehen' tab lists only vocabulary actually met (" + seenTab.n + " rows)");
+
   check(errors.length === 0, "no console/page errors");
 
   console.log("\nSMOKE TEST PASSED");
