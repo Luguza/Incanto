@@ -7,6 +7,30 @@ split so parallel work doesn't collide). Preview by opening `index.html` in a
 browser, or serve the folder over HTTP. Every gameplay number is in the `CONFIG`
 object (`src/config.js`); the combat scene renders to a `<canvas class="scene">`.
 
+## Incanto is a phone game — never add keyboard controls
+
+It is played on a cellphone, with a thumb. **Never add a keyboard interaction:
+no shortcuts, no hotkeys, no "press Enter to continue", no arrow-key navigation,
+no `keydown`/`keyup`/`keypress` listener, no `accesskey`, no focus-ring styling
+for keyboard users.** This is not a preference to weigh against convenience — it
+is a standing rule, and it holds even when a keyboard path looks like a free
+accessibility win.
+
+The one and only exception, already in place, is the phone keyboard's own Go/
+Enter key submitting a typed answer field (`[data-enter]` in `src/main.js`).
+That is the on-screen keyboard's submit button, not a shortcut. Do not extend
+it, and do not add a second one.
+
+Why it is written this way: a "press Enter to advance" shortcut was added once
+and immediately broke the quiz. The keystroke that submitted a typed answer kept
+bubbling and also consumed the feedback, so a wrong answer jumped straight to the
+next word without ever showing the learner its solution. Every action must reach
+the player as something to tap.
+
+**Test the way it is played.** Drive headless runs with `page.click` / `page.fill`,
+never `page.keyboard.press`. `tools/smoke-test.mjs` asserts that a stray key
+changes nothing.
+
 ## Module map — where things live
 
 Load order is set by the `<script>` list in `index.html` (data → logic → render

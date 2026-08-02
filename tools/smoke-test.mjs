@@ -235,12 +235,11 @@ try {
   check(seenTab.n > 0 && seenTab.allMet,
     "the 'Gesehen' tab lists only vocabulary actually met (" + seenTab.n + " rows)");
 
-  // 7. A wrong answer must STOP on the question and show the solution. The
-  //    keystroke that checks a typed answer flips quizChecked mid-bubble, so a
-  //    document-level "Enter advances" handler will happily consume the same
-  //    press and skip the feedback entirely — the learner never sees the word
-  //    they just got wrong. Enter therefore has to check first and advance only
-  //    on a second, separate press.
+  // 7. A wrong answer must STOP on the question and show the solution — that
+  //    pause is the whole point of the quiz, and it is only ever dismissed by
+  //    tapping Weiter. Driven the way a phone drives it: fill the field, tap
+  //    Prüfen, tap Weiter. Nothing here presses a key, because nothing in the
+  //    game may respond to one (see CLAUDE.md).
   const start = await page.evaluate(() => {
     goToQuiz();
     state.quizIndex = state.quizList.findIndex((q) => q.type === "type");
@@ -249,40 +248,48 @@ try {
     render(performance.now());
     return state.quizIndex;
   });
-  await page.click("#quiz-input");
-  await page.type("#quiz-input", "definitiv-falsch");
-  await page.keyboard.press("Enter");
+  await page.fill("#quiz-input", "definitiv-falsch");
+  await page.click('[data-act="quizCheckType"]');
   await page.waitForTimeout(120);
   const checked = await page.evaluate(() => ({
     i: state.quizIndex,
     checked: state.quizChecked,
     solution: /Richtig wäre/.test(document.querySelector(".quiz-feedback")?.textContent || ""),
+    weiter: !!document.querySelector(".quiz-continue"),
   }));
-  check(checked.i === start && checked.checked && checked.solution,
-    "a wrong typed answer holds on the question and names the solution");
-  await page.keyboard.press("Enter");
+  check(checked.i === start && checked.checked && checked.solution && checked.weiter,
+    "a wrong typed answer holds on the question, names the solution, and waits for Weiter");
+  await page.click(".quiz-continue");
   await page.waitForTimeout(120);
   const advanced = await page.evaluate(() => state.quizIndex);
-  check(advanced === start + 1, "a second Enter moves on exactly one question (" + start + " -> " + advanced + ")");
+  check(advanced === start + 1, "tapping Weiter moves on exactly one question (" + start + " -> " + advanced + ")");
 
-  //    The same must hold on the tap path, and pressing Enter with the Weiter
-  //    button focused must not advance twice (keydown + the button's own click).
+  //    Same on the tap path: a wrong option marks the right one and holds.
   const tapped = await page.evaluate(() => {
     state.quizIndex = 0;
     resetQuizInput();
     state._structuralDirty = true;
     render(performance.now());
     const q = state.quizList[0];
-    quizChoose(q.options.findIndex((o) => o !== q.answer));
-    render(performance.now());
-    document.querySelector(".quiz-continue").focus();
-    return { i: state.quizIndex, marked: !!document.querySelector(".quiz-opt.correct") };
+    return q.options.findIndex((o) => o !== q.answer);
   });
-  check(tapped.i === 0 && tapped.marked, "a wrong tapped answer holds on the question and marks the right option");
-  await page.keyboard.press("Enter");
+  await page.click(`[data-act="quizChoose"][data-args="[${tapped}]"]`);
   await page.waitForTimeout(120);
-  const afterBtn = await page.evaluate(() => state.quizIndex);
-  check(afterBtn === 1, "Enter on the focused Weiter button advances once, not twice (0 -> " + afterBtn + ")");
+  const held = await page.evaluate(() => ({
+    i: state.quizIndex,
+    marked: !!document.querySelector(".quiz-opt.correct"),
+  }));
+  check(held.i === 0 && held.marked, "a wrong tapped answer holds on the question and marks the right option");
+
+  //    …and no key may drive the game. The only keydown the app listens for is
+  //    the phone keyboard's Go on a typed answer field; a stray Enter anywhere
+  //    else must do nothing at all.
+  await page.evaluate(() => document.body.focus());
+  await page.keyboard.press("Enter");
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(120);
+  const inert = await page.evaluate(() => state.quizIndex);
+  check(inert === 0, "keys do not drive the game — a stray Enter/Space changes nothing (index " + inert + ")");
 
   check(errors.length === 0, "no console/page errors");
 

@@ -37,30 +37,17 @@ app.addEventListener("input", (e) => {
   if (typeof fn === "function") fn(el);
 });
 
+// The ONLY key this game listens for: the phone keyboard's Go/Enter on a typed
+// answer field, which submits it. That is the on-screen keyboard's own submit
+// button, not a desktop shortcut. Nothing else here is keyboard-driven, and
+// nothing else may become keyboard-driven — see "Incanto is a phone game" in
+// CLAUDE.md. Every action reaches the player as something to tap.
 app.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   const el = e.target.closest("[data-enter]");
   if (!el) return;
   const fn = window[el.dataset.enter];
   if (typeof fn === "function") fn();
-});
-
-// A settled quiz question advances on Enter, so a keyboard session doesn't have
-// to reach for the pointer between questions.
-//
-// It must never be the SAME keystroke that settled it. Enter in the answer field
-// checks the answer (the [data-enter] listener above), which flips quizChecked
-// before the event finishes bubbling up to here — so without this guard one
-// press both checked the answer and skipped the feedback, and a wrong answer
-// jumped straight to the next word without ever showing the solution. Whichever
-// control owns Enter keeps it: the answer field checks, a focused button fires
-// its own click, and only a press that belongs to neither advances.
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Enter" || e.repeat) return;
-  if (state.screen !== "quiz" || !state.quizChecked) return;
-  if (e.target.closest("[data-enter], [data-act], input, button, a")) return;
-  e.preventDefault();
-  advanceQuiz();
 });
 
 // ---------------------------------------------------------------------------
