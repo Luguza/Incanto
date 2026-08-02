@@ -418,6 +418,17 @@ function patchCombatContinuous(now) {
 
   renderScene(now);
 
+  // The book answers a cast: while a freshly queued effect is still in the air,
+  // the open page's miniature swells and its light pool floods the paper. Driven
+  // from the descriptors already on `state.spellFx` (see render-spells.js) rather
+  // than from a second timer, so the page flares exactly as long as the spell is
+  // on screen — and it's a classList toggle, not a rebuild of the book.
+  const book = document.getElementById("spellbook");
+  if (book) {
+    const casting = (state.spellFx || []).some((f) => now - f.born < CONFIG.book.castFlashMs);
+    book.classList.toggle("casting", casting);
+  }
+
   const shapeFlashActive = now < state.shapeFlashUntil;
   document.querySelectorAll(".chord, .chord-glow").forEach((el) => el.classList.toggle("flash", shapeFlashActive));
 

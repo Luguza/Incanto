@@ -112,38 +112,156 @@
     touch-action: none;
     filter: drop-shadow(0 -3px 10px rgba(6, 4, 12, 0.6));
   }
+  /* ---- Boards ---- A board is leather over wood: grain, a bevel catching the
+     light along the cut head edge, and two blind-tooled fillets run round
+     inside it. */
   .bk-cover { fill: #3d2b1c; stroke: #150f0a; stroke-width: 2; stroke-linejoin: round; }
-  /* Fanned page edges behind the open leaf. Fill is set per sliver (it darkens
-     with depth into the block), so it must NOT be declared here — a CSS `fill`
-     would override the presentation attribute and flatten the fan. */
-  .bk-stack { stroke: #8d8264; stroke-width: 0.7; }
-  /* The leaf's fill is a per-side gradient (defined in the book's own <defs>),
-     so light runs from the lit outer edge into the shadowed gutter instead of
-     the whole page being one flat colour. */
+  .bk-grain { filter: url(#bkGrain); opacity: 0.5; mix-blend-mode: multiply; pointer-events: none; }
+  .bk-cover-bevel { fill: none; stroke: #7d5c3c; stroke-width: 1.2; opacity: 0.55; }
+  .bk-tool { fill: none; stroke: #241708; stroke-width: 1.4; opacity: 0.6; }
+  .bk-tool.thin { stroke-width: 0.8; opacity: 0.4; }
+
+  /* ---- The text block's fore-edge ---- Fill is set per sliver (it darkens with
+     depth into the block), so it must NOT be declared here — a CSS `fill` would
+     override the presentation attribute and flatten the fan. */
+  .bk-stack { stroke: #9c9070; stroke-width: 0.5; }
+
+  /* ---- Paper ---- The leaf's fill is a per-side gradient (defined in the
+     book's own <defs>), so light runs from the lit outer edge into the shadowed
+     gutter instead of the whole page being one flat colour. Over that: a fibre
+     wash, a little foxing, the gutter shadow and the fore-edge sheen — all
+     clipped to the leaf, all static, all painted once. */
   .bk-leaf {
     fill: url(#bkPaperL); stroke: #a29673; stroke-width: 1.2; stroke-linejoin: round;
     transition: stroke 140ms linear;
   }
   .bk-page[data-side="1"] .bk-leaf { fill: url(#bkPaperR); }
-  /* Shadow welling out of the gutter, and the lit paper-cut along the top edge. */
-  .bk-gutter { pointer-events: none; }
+  .bk-fibre { filter: url(#bkFibre); opacity: 0.55; mix-blend-mode: multiply; pointer-events: none; }
+  .bk-foxing { fill: #a3763f; opacity: 0.07; mix-blend-mode: multiply; pointer-events: none; }
+  .bk-gutter, .bk-foreedge { pointer-events: none; }
   .bk-cut {
     fill: none; stroke: #fffcf0; stroke-width: 1.1; opacity: 0.55;
     stroke-linecap: round; pointer-events: none;
   }
   /* Sealed pages keep the paper's shading and are darkened over the top of it,
      so they read as the same book rather than as a different material. */
-  .bk-sealed { fill: #191428; opacity: 0.82; stroke: #4a4360; stroke-width: 1.2; }
+  .bk-sealed { fill: #211a35; opacity: 0.62; stroke: #4a4360; stroke-width: 1.2; }
   /* The active page's border: a crisp line over a blurred copy of itself. One
      blurred stroke on its own reads as a fuzzy halo with no edge to it. */
   .bk-halo { fill: none; stroke-width: 5; opacity: 0.3; filter: url(#bkGlow); }
   .bk-lit { fill: none; stroke-width: 2; opacity: 0.9; }
-  /* The ruled border around a page's contents — it rides the page plane, which
-     is a good part of what makes the tilt read as a surface. */
-  .bk-frame {
-    fill: none; stroke: #a8956a; stroke-width: 1.1; opacity: 0.5;
+
+  /* ---- What is written on the leaf ---- Everything below rides the page frame
+     (one matrix, see pageFrame in spellbook.js), so the ruling, the script and
+     the miniature all lie on the same plane. That shared plane is most of what
+     sells the tilt: ruled lines seen at an angle read as a surface. */
+  .bk-margin { fill: none; stroke: #7d6440; stroke-width: 1; opacity: 0.4; }
+  .bk-rule { stroke-width: 1.3; opacity: 0.6; stroke-linecap: round; }
+  .bk-rule.thin { stroke-width: 0.7; opacity: 0.4; }
+  .bk-name {
+    font-family: var(--display-font);
+    font-weight: 700; letter-spacing: 0.4px;
+    paint-order: stroke; stroke: rgba(24, 18, 10, 0.45); stroke-width: 2.2px;
   }
-  .bk-page.locked .bk-frame { stroke: #5b5170; opacity: 0.55; }
+  /* The body of the page: ~500 glyphs emitted into ONE path (see pageScript), so
+     a full page of writing costs a single element and a single stroke. */
+  .bk-script {
+    fill: none; stroke: #5c4526; stroke-width: 1.35; opacity: 0.5;
+    stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
+  }
+  .bk-initial { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .bk-initial-box { fill: rgba(179, 146, 78, 0.14); stroke: #b3924e; stroke-width: 0.9; opacity: 0.8; }
+  /* A sealed page is written like any other — the page exists, you simply can't
+     read it yet — so sealing only drains the ink. */
+  .bk-page.locked .bk-script { stroke: #6b6389; opacity: 0.5; }
+  .bk-page.locked .bk-initial-box { stroke: #5b5170; fill: none; }
+
+  /* ---- The miniature ---- A gilt plate seated in the text block. */
+  /* Dark ground, deliberately: the effect on it is LIGHT, and light only reads
+     as light against something darker than the paper around it. The plate is a
+     window cut through the vellum into the aether, not a picture printed on it. */
+  .bk-plate { fill: #17122a; stroke: #b3924e; stroke-width: 1.6; }
+  .bk-plate-shadow { fill: #2e2213; opacity: 0.28; }
+  .bk-plate-rule { fill: none; stroke: #d8b969; stroke-width: 0.8; opacity: 0.5; }
+  .bk-page.locked .bk-plate { fill: #120e20; stroke: #5b5170; }
+  .bk-page.locked .bk-plate-rule { stroke: #5b5170; }
+  .bk-wax { fill: #7c2434; stroke: #4d1420; stroke-width: 1.4; }
+  .bk-wax-shadow { fill: #120c1c; opacity: 0.5; }
+  .bk-wax-rim { fill: none; stroke: #a5455a; stroke-width: 2; opacity: 0.85; }
+  .bk-sealmark { font-family: var(--display-font); font-size: 22px; font-weight: 700; fill: #e5b3bc; opacity: 0.8; }
+  .bk-ribbon { opacity: 0.9; }
+  .bk-spine { stroke: #100c08; stroke-width: 5; stroke-linecap: round; opacity: 0.85; }
+
+  /* ---- The spell playing ON TOP of the page --------------------------------
+     Not an illustration printed on the plate: the effect hovers over it, which
+     is carried by three things together — a pool of its own coloured light
+     spilling onto the paper, a glow on the art itself, and the art overhanging
+     the plate's gilt border instead of sitting inside it. */
+  .bk-pool, .bk-aura { pointer-events: none; }
+  .bk-fx { pointer-events: none; }
+  .bk-page:not(.active) .bk-fx { opacity: 0.72; }
+  .bk-fx-glyph { fill: none; stroke-width: 1.6; opacity: 0.5; stroke-linecap: round; }
+
+  /* Every moving part is a CSS loop — no JS driver, nothing per frame. Each
+     class has ONE duration; the matching period is passed to `D()` in
+     spellbook.js, which hands back a negative animation-delay that both staggers
+     an element against its siblings and picks the loop up at the phase the game
+     clock has already reached, so rebuilding the book doesn't restart the motion.
+     Anything scaled or spun needs fill-box, or SVG rotates it about the
+     viewBox's origin instead of its own centre. */
+  .bk-fx-pulse, .bk-fx-ripple, .bk-fx-lick, .bk-fx-mote, .bk-fx-flash, .bk-fx-bolt,
+  .bk-fx-sweep, .bk-fx-drift, .bk-fx-spin, .bk-fx-fall, .bk-fx-burst, .bk-fx-ward,
+  .bk-fx-turn, .bk-fx-float {
+    transform-box: fill-box; transform-origin: 50% 50%;
+    animation-iteration-count: infinite; animation-timing-function: ease-in-out;
+  }
+  .bk-fx-pulse  { animation-name: bkPulse;  animation-duration: 2600ms; }
+  .bk-fx-ripple { animation-name: bkRipple; animation-duration: 3000ms; animation-timing-function: ease-out; }
+  .bk-fx-lick   { animation-name: bkLick;   animation-duration: 1800ms; animation-timing-function: ease-out; }
+  .bk-fx-mote   { animation-name: bkMote;   animation-duration: 2400ms; animation-timing-function: linear; }
+  .bk-fx-flash  { animation-name: bkFlash;  animation-duration: 1500ms; }
+  .bk-fx-bolt   { animation-name: bkBolt;   animation-duration: 1500ms; animation-timing-function: steps(1, end); }
+  .bk-fx-sweep  { animation-name: bkSweep;  animation-duration: 2600ms; }
+  .bk-fx-drift  { animation-name: bkDrift;  animation-duration: 2800ms; animation-timing-function: linear; }
+  .bk-fx-spin   { animation-name: bkSpin;   animation-duration: 4200ms; animation-timing-function: linear; }
+  .bk-fx-fall   { animation-name: bkFall;   animation-duration: 1900ms; animation-timing-function: ease-in; }
+  .bk-fx-burst  { animation-name: bkBurst;  animation-duration: 1900ms; animation-timing-function: ease-out; }
+  .bk-fx-ward   { animation-name: bkWard;   animation-duration: 3000ms; animation-timing-function: ease-out; }
+  .bk-fx-turn   { animation-name: bkSpin;   animation-duration: 24000ms; animation-timing-function: linear; }
+  .bk-fx-float  { animation-name: bkFloat;  animation-duration: 3200ms; }
+
+  @keyframes bkPulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.11); } }
+  @keyframes bkRipple { 0% { transform: scale(0.55); opacity: 0.75; } 100% { transform: scale(1.7); opacity: 0; } }
+  @keyframes bkLick   { 0% { transform: translateY(5px) scale(0.6); opacity: 0; }
+                        35% { opacity: 0.95; }
+                        100% { transform: translateY(-13px) scale(1.05); opacity: 0; } }
+  @keyframes bkMote   { 0% { transform: translateY(6px); opacity: 0; }
+                        30% { opacity: 0.9; }
+                        100% { transform: translateY(-26px); opacity: 0; } }
+  @keyframes bkFlash  { 0%, 12% { opacity: 0.35; } 26%, 100% { opacity: 0.08; } }
+  @keyframes bkBolt   { 0% { opacity: 1; } 20%, 100% { opacity: 0; } }
+  @keyframes bkSweep  { 0% { opacity: 0; } 45% { opacity: 0.3; } 100% { opacity: 0; } }
+  @keyframes bkDrift  { 0% { transform: translateX(-14px) scale(0.5); opacity: 0; }
+                        30% { opacity: 1; }
+                        100% { transform: translateX(20px) scale(1.1); opacity: 0; } }
+  @keyframes bkSpin   { to { transform: rotate(360deg); } }
+  @keyframes bkFall   { 0% { transform: translate(-13px, -44px); opacity: 0; }
+                        16%, 84% { opacity: 1; }
+                        100% { transform: translate(0, 22px); opacity: 0; } }
+  @keyframes bkBurst  { 0%, 84% { transform: scaleX(0.3); opacity: 0; }
+                        90% { transform: scaleX(1.2); opacity: 0.9; }
+                        100% { transform: scaleX(1.6); opacity: 0; } }
+  @keyframes bkWard   { 0% { transform: scale(0.82); opacity: 0.55; }
+                        100% { transform: scale(1.16); opacity: 0; } }
+  @keyframes bkFloat  { 0%, 100% { transform: translateY(2px); } 50% { transform: translateY(-3px); } }
+
+  /* A cast lights its own page for a beat. The class is toggled on the book by
+     patchCombatContinuous while a freshly queued effect is still running, so it
+     costs one classList call per frame rather than a rebuild. */
+  .bk-fx-cast { transform-box: fill-box; transform-origin: 50% 50%; transition: transform 120ms ease-out; }
+  .spellbook.casting .bk-page.active .bk-fx-cast { transform: scale(1.16); }
+  .spellbook.casting .bk-page.active .bk-pool { opacity: 1.7; }
+
   /* Every leaf takes the pointer — a tap selects the spell, a drag across the
      book turns the page (see attachSpellbookDrag). Locked leaves are draggable
      too: you can leaf past a sealed page, you just can't cast from it. */
@@ -154,19 +272,11 @@
      while the finger is down it has to track it exactly, so no transition. */
   .bk-page { transition: transform 170ms ease-out; transform-origin: 0 0; }
   .spellbook.dragging .bk-page { transition: none; }
-  .bk-spine { stroke: #100c08; stroke-width: 5; stroke-linecap: round; opacity: 0.85; }
-  /* Page contents: line art in the spell's own colour, ringed by the same
-     procedural runic glyphs the wheel above is written in. */
-  .book-glyph { fill: none; stroke-width: 1.7; opacity: 0.55; stroke-linecap: round; stroke-linejoin: round; }
-  .bk-page.active .book-glyph { opacity: 0.95; }
-  .bk-art { opacity: 0.95; }
-  .bk-name {
-    font-family: var(--display-font);
-    font-size: 15px; font-weight: 700; letter-spacing: 0.4px;
-    paint-order: stroke; stroke: rgba(24, 18, 10, 0.5); stroke-width: 2.5px;
+
+  /* Motion here is ambience, not information — every loop is safe to stop. */
+  @media (prefers-reduced-motion: reduce) {
+    .spellbook [class*="bk-fx-"] { animation: none !important; }
   }
-  .bk-sealmark { font-family: var(--display-font); font-size: 22px; font-weight: 700; fill: #6d6484; }
-  .bk-ribbon { opacity: 0.9; }
   /* The static arcane wheel is a baked high-fidelity image; live SVG on top
      draws only what changes: word bubbles, chords, filigree, sparks, and the
      rotating inner script ring */
