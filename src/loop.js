@@ -109,18 +109,103 @@ function updateEnemies(now, dt) {
   }
   for (const group of lanes.values()) {
     group.sort((a, b) => a.pos - b.pos);
+    // How far back each body in this lane may be driven. Walked from the BACK,
+    // so a body's ceiling accounts for every rank behind it and not just its
+    // neighbour: the rearmost stops at the edge of the visible track (a skeleton
+    // punted off camera would just be gone), and each one in front of it stops a
+    // body's width short of that. A shove that runs out of hall therefore stalls
+    // the queue ahead of it rather than driving the last rank into the dark.
+    const ceiling = new Array(group.length);
+    for (let i = group.length - 1; i >= 0; i--) {
+      const own = trackEdgeTiles(group[i].scale || 1);
+      ceiling[i] = i === group.length - 1
+        ? own
+        : Math.min(own, ceiling[i + 1] - laneSpacing(group[i], group[i + 1]));
+    }
     let limit = CONFIG.enemyStandoffTiles; // how far forward the next skeleton may advance
     let chainSettled = true;               // is everything ahead in this lane settled against the hero?
     let frontRank = true;                  // only the lane's leading skeleton stands in melee
     for (let i = 0; i < group.length; i++) {
       const e = group[i];
       const behind = group[i + 1];         // whoever queues up next in this lane
+      const front = group[i - 1];          // whoever is queued ahead of it, toward the hero
+      // A Frostkegel's shove PROPAGATES down the lane. `limit` is already the
+      // tile no body may come in front of; here it also does the pushing, so a
+      // body the rank ahead has been driven into is driven back itself. That is
+      // what makes the cone bulldoze a whole lane into one clump instead of
+      // stopping dead at the first skeleton it didn't catch — and since the rank
+      // ahead is sliding smoothly, everything it shunts slides smoothly too.
+      //
+      // `room` is what the hall actually leaves for that. An over-full lane can
+      // have less room than the bodies in it need, so it is floored at the tile
+      // the body already stands on: a queue with nowhere to go stalls where it
+      // is rather than being dragged forward into the hero.
+      const room = Math.max(e.pos, ceiling[i]);
+      const shoved = Math.min(Math.max(e.pos, limit), room);
+      if (shoved > e.pos + 1e-6 && front && now < (front.frozenUntil || 0)) {
+        // Shoved by a body the cone froze, so the ice travels with the shove —
+        // and this is what makes the Frostkegel a setup rather than a nudge.
+        // The front ranks are driven into the ranks behind, the lane bunches
+        // into one clump, and the whole clump ends up frozen, which is exactly
+        // what an area spell wants: a frozen body is auto-targeted by the next
+        // cast AND shattered by it (see pickTargets and applySpellHit), so the
+        // follow-up lands on every skeleton the shove reached, not just the
+        // ones the wedge itself covered.
+        //
+        // The thaw time is INHERITED, never restarted. A body comes loose with
+        // whoever shoved it, so a chain of shoves can't keep extending its own
+        // freeze, and the clump can't outlast the cone that made it.
+        e.frozenUntil = Math.max(e.frozenUntil || 0, front.frozenUntil);
+        e.attackAt = Math.max(e.attackAt, e.frozenUntil);
+      }
+      // Ground the rank in front has already given a body counts against what
+      // the cone still owes it: the ice drives a skeleton 2.4 tiles from where
+      // it was STANDING, not 2.4 on top of however far it was shunted first.
+      // The wedge sweeps outward, so a body is nearly always shunted before the
+      // ice reaches it, and letting the two stack fans the lane out down the
+      // hall instead of bunching it up. Credited until the slide actually
+      // starts — `pushFrom == null` and not `now < pushAt`, because the frame
+      // the slide begins on is shunted here first and reads the total below.
+      if (shoved > e.pos + 1e-6 && e.pushUntil && e.pushFrom == null) {
+        e.shunted = (e.shunted || 0) + (shoved - e.pos);
+      }
+      e.pos = shoved;
       if (e.phase === "dying" || e.phase === "struck") {
         // a doomed/crumbling skeleton still holds its tile until it's culled, so
         // the ranks behind it can't walk through the corpse
         limit = e.pos + laneSpacing(e, behind);
         chainSettled = false;
         continue;
+      }
+      // Shoved back by a Frostkegel. The body SLIDES the whole distance across
+      // the push window so it travels with the cone that hit it, instead of
+      // being teleported down the hall the instant the shape was drawn. The
+      // starting tile is read here rather than at cast time: the cast has a
+      // wind-up, and the skeleton is still walking through it.
+      //
+      // Nothing here looks at the rank behind — `room` above is the only bound,
+      // and the shove drives whatever is in its way rather than stopping against
+      // it. A body that has run out of hall stops where it stands and the ice
+      // simply doesn't move it.
+      if (e.pushUntil) {
+        if (now >= e.pushUntil) {
+          if (e.pushFrom != null) e.pos = Math.max(e.pos, Math.min(e.pushTo, room));
+          e.pushUntil = 0; e.pushFrom = null;
+        } else if (now >= e.pushAt) {
+          if (e.pushFrom == null) {
+            e.pushFrom = e.pos;
+            // Only what the shunt hasn't already delivered is left to slide.
+            e.pushTo = Math.max(e.pos, e.pos - (e.shunted || 0) + e.pushBy);
+            e.shunted = 0;
+          }
+          const q = (now - e.pushAt) / Math.max(1, e.pushUntil - e.pushAt);
+          const slid = e.pushFrom + (e.pushTo - e.pushFrom) * (1 - (1 - q) * (1 - q));
+          e.pos = Math.max(e.pos, Math.min(slid, room));
+          e.phase = "frozen";                 // it's iced the moment it's hit
+          limit = e.pos + laneSpacing(e, behind);
+          chainSettled = false;
+          continue;
+        }
       }
       // Frozen by a Frostkegel: it neither advances nor swings, but it still
       // holds its tile so the rank behind piles up against the ice rather than

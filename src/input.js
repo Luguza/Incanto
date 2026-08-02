@@ -15,6 +15,10 @@
 // are delegated off document/window so they survive the SVG being rebuilt.
 const DRAG_MOVE_THRESHOLD = 6; // px of pointer travel before a press counts as a drag
 let dragStartClient = null;
+// Did THIS press arm the rune it started on? A second tap on an armed rune
+// releases it, but the tap that armed it must not release it again on its own
+// pointerup — so the two are told apart here rather than by state alone.
+let armedThisPress = false;
 
 function clientToArena(clientX, clientY) {
   const svg = document.querySelector("svg.arena");
@@ -37,7 +41,16 @@ function onRunePointerDown(e) {
   if (state.screen !== "combat") return;
   if (e.pointerType === "mouse" && e.button !== 0) return;
   const id = runeIdAtPoint(e.clientX, e.clientY);
-  if (id === null) return;
+  if (id === null) {
+    // Pressed the empty board with a rune armed → let it go. Only inside the
+    // arena itself: a press on the spell book or the HUD is that widget's
+    // business and shouldn't quietly disarm the circle behind it.
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if (state.selectedRuneId !== null && el && el.closest && el.closest("svg.arena")) {
+      handleRuneClick(state.selectedRuneId);
+    }
+    return;
+  }
   const rune = state.runes.find((r) => r.id === id);
   if (!rune || rune.matchState === "matched") return;
 
@@ -51,7 +64,8 @@ function onRunePointerDown(e) {
   }
 
   // Otherwise begin dragging from this rune, arming it first if needed.
-  if (state.selectedRuneId === null) handleRuneClick(id);
+  armedThisPress = state.selectedRuneId === null;
+  if (armedThisPress) handleRuneClick(id);
   state.dragActive = true;
   state.dragMoved = false;
   state.dragPointer = { x: rune.x, y: rune.y };
@@ -83,14 +97,22 @@ function onRunePointerUp(e) {
     handleRuneClick(target);            // resolve the match against the armed rune
   } else if (state.dragMoved) {
     handleRuneClick(from);              // dragged off and released → cancel the arm
+  } else if (target === from && !armedThisPress) {
+    // Tapped the armed rune a second time → release it. Guarded on
+    // `armedThisPress` because the tap that ARMS a rune also lands here, and
+    // without the guard it would disarm it again on the way up, leaving the
+    // circle impossible to select on at all.
+    handleRuneClick(from);
   }
-  // A tap with no real movement leaves the rune armed so a second tap can match.
+  // Otherwise a first tap leaves the rune armed so a second tap can match.
+  armedThisPress = false;
 }
 
 function onRunePointerCancel() {
   if (!state.dragActive) return;
   state.dragActive = false;
   state.dragPointer = null;
+  armedThisPress = false;
   if (state.dragMoved && state.selectedRuneId !== null) handleRuneClick(state.selectedRuneId);
 }
 window.Incanto.input = { onRunePointerDown, onRunePointerMove, onRunePointerUp, onRunePointerCancel };
