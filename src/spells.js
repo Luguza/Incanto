@@ -247,9 +247,12 @@ const SPELL_RESOLVERS = {
   frost(ctx) {
     const cfg = CONFIG.spells.frost;
     const freeze = Math.min(cfg.maxFreezeMs, cfg.freezeMs + (state.mods.spellParam.freezeFrost || 0));
-    // Weiter Atem nodes push the cone further down the hall (the drawn cone reads
-    // the same reach off the fx descriptor, so the art always matches the catch).
-    const reach = cfg.coneTiles * (1 + (state.mods.spellParam.coneFrost || 0));
+    // Weiter Atem nodes push the cone further down the hall, up to `maxConeTiles`
+    // — the whole branch is worth four tiles of reach and no more (the drawn cone
+    // reads the same figure off the fx descriptor, so the art always matches the
+    // catch).
+    const reach = Math.min(cfg.maxConeTiles,
+      cfg.coneTiles * (1 + (state.mods.spellParam.coneFrost || 0)));
     // The drawn wedge grows to its full length over the first 45% of the cast
     // (see SPELL_FX.cone), so its front passes a body at that fraction of the
     // sweep. Every body is hit — and starts moving — when the ice actually

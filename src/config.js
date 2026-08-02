@@ -193,7 +193,17 @@ const CONFIG = {
     // `pushMs` is how long a caught body takes to SLIDE the pushTiles back —
     // it is shoved, not teleported, and the slide starts as the drawn wedge
     // sweeps over it (see the frost resolver + updateEnemies).
-    frost: { dmgMult: 0.35, coneTiles: 6.5, pushTiles: 2.4, pushMs: 280, freezeMs: 2600, maxFreezeMs: 6000,
+    //
+    // Reach: the cone opens 4 tiles down the hall on the page you unlock, which
+    // is the front two or three ranks of each lane and no more — a wedge that
+    // swept the corridor from the moment the page opened would leave the whole
+    // Weiter Atem branch with nothing to sell. `maxConeTiles` is the far end of
+    // that branch: every rank of it together adds FOUR tiles and not a tile
+    // more, so the fully-invested cone doubles its reach and stops there. The
+    // hall itself is 10 tiles deep on a phone and nearly 20 on a desktop, so
+    // even the maxed cone is a front-ranks spell rather than a screen clear.
+    frost: { dmgMult: 0.35, coneTiles: 4, maxConeTiles: 8, pushTiles: 2.4, pushMs: 280,
+             freezeMs: 2600, maxFreezeMs: 6000,
              // Trimmed from 2.4 with the number rescale: the shatter multiplies a
              // crit on top of a fully-invested page, so it sets the game's single
              // largest number and is what the three-digit ceiling binds against.
@@ -277,7 +287,12 @@ const CONFIG = {
     // spell without erasing its trade-off. The whole-body counts (an extra target,
     // hop, rock) are absent on purpose: each spell's own maximum in CONFIG.spells
     // already bounds those.
-    coneFrost: 0.9,        // frost cone reach, as a fraction of coneTiles
+    // Cone reach doubles and stops — the spell's own `maxConeTiles` is what
+    // actually binds it (in tiles, where the design rule lives). This cap is
+    // here so the STAT can't advertise growth the spell won't deliver: the tree
+    // has +148% of Kegelweite in it, and a node tooltip promising a reach past
+    // the ceiling would be a lie told at 30 gold a rank.
+    coneFrost: 1.0,        // frost cone reach, as a fraction of coneTiles
     aoeMeteor: 1.0,        // meteor crater size, as a fraction of radiusTiles
     falloffLightning: 0.2, // added to lightning's per-hop falloff (0.72 → at most 0.92)
   },
