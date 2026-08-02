@@ -120,10 +120,11 @@ function primeActive(now) {
 }
 
 // ---------------------------------------------------------------------------
-// Damage application — one funnel so every spell rolls crits, pops its damage
-// number at the right moment, counts the kill and feeds leech identically.
-// `at` is when the hit visually LANDS: the number pops then, and a fatal target
-// stands `struck` until that moment before it collapses.
+// Damage application — one funnel so every spell rolls crits, is mitigated by
+// the target's armour, pops its damage number at the right moment, counts the
+// kill and feeds leech identically. `at` is when the hit visually LANDS: the
+// number pops then, and a fatal target stands `struck` until that moment before
+// it collapses.
 // ---------------------------------------------------------------------------
 function applySpellHit(target, amount, at, opts = {}) {
   const m = state.mods;
@@ -133,12 +134,18 @@ function applySpellHit(target, amount, at, opts = {}) {
   if (opts.shatter && target.frozenUntil && at < target.frozenUntil) {
     dmg *= CONFIG.spells.frost.primeMult;
   }
-  dmg = Math.max(1, Math.round(dmg));
-  hitEnemy(target, dmg);
+  // Armour is applied inside hitEnemy, which hands back what actually landed —
+  // so the number that pops, the life-leech it feeds and the kill decided below
+  // are all the same figure the HP bar just lost. A mitigated hit pops in steel
+  // rather than cream (a crit still wins that contest: it's the louder read).
+  const armored = armorReduction(target) > 0;
+  const dealt = hitEnemy(target, dmg);
   target.hitFlashAt = at;          // the body blinks white when the hit lands (see renderScene)
   spawnDmgFloat({
-    value: dmg,
-    color: crit ? CONFIG.colors.dmgFloat.crit : (opts.color || CONFIG.colors.dmgFloat.enemy),
+    value: dealt,
+    color: crit ? CONFIG.colors.dmgFloat.crit
+      : armored ? CONFIG.colors.dmgFloat.armored
+      : (opts.color || CONFIG.colors.dmgFloat.enemy),
     born: at,
     targetId: target.id,
     x: scene ? scene.enemyLineX + target.pos * TILE : 0,
@@ -152,7 +159,7 @@ function applySpellHit(target, amount, at, opts = {}) {
     target.struckUntil = at;
     state.kills++;
   }
-  return dmg;
+  return dealt;
 }
 
 // Queue a visual for render-spells to draw. Descriptors are plain data; nothing

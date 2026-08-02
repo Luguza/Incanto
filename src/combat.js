@@ -1,7 +1,7 @@
 "use strict";
 // ==============================================================================
 // combat.js — rune matching + spell resolution. Owns: handleRuneClick,
-// onShapeComplete, hitPlayer, hitEnemy, TAP_TRACE_MS.
+// onShapeComplete, hitPlayer, hitEnemy, armorReduction, TAP_TRACE_MS.
 // ==============================================================================
 
 // ---------------------------------------------------------------------------
@@ -142,8 +142,28 @@ function hitPlayer(n) {
   }
 }
 
-function hitEnemy(enemy, n) {
-  enemy.hp = Math.max(0, enemy.hp - n);
+// The fraction of an incoming hit this body's armour turns aside. Ratio-based
+// (see CONFIG.armorK), so it is scale-free: a 2-damage meteor rock and a
+// 40-damage fireball both lose the same share, which is what keeps the
+// many-small-hits pages of the book playable against an armoured target. The
+// hero's penetration shreds armour POINTS first, so a pen build bends the whole
+// curve down rather than chipping at the far end of it.
+function armorReduction(enemy) {
+  const armor = Math.max(0, (enemy.armor || 0) - (state.mods.armorPen || 0));
+  if (armor <= 0) return 0;
+  return Math.min(CONFIG.armorMaxReduction, armor / (armor + CONFIG.armorK));
 }
 
-window.Incanto.combat = { handleRuneClick, onShapeComplete, hitPlayer, hitEnemy, healHero, livingEnemies, frontEnemy };
+// The ONE place a skeleton's HP goes down, and therefore the one place armour is
+// applied — a spell hit, a shattered freeze, a thorns reflection all land here,
+// so none of them can quietly bypass the mitigation. Takes RAW damage, returns
+// what actually landed, so whoever called it can pop that number, feed leech
+// with it and decide the kill from the same figure the HP bar lost. Floored at 1
+// after mitigation: armour makes a hit small, never nothing.
+function hitEnemy(enemy, n) {
+  const dealt = Math.max(1, Math.round(n * (1 - armorReduction(enemy))));
+  enemy.hp = Math.max(0, enemy.hp - dealt);
+  return dealt;
+}
+
+window.Incanto.combat = { handleRuneClick, onShapeComplete, hitPlayer, hitEnemy, armorReduction, healHero, livingEnemies, frontEnemy };

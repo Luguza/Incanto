@@ -165,8 +165,9 @@ function updateEnemies(now, dt) {
         }
         // Thorns: reflect a slice of the blow back onto the attacker.
         if (state.mods.thorns > 0) {
-          const refl = Math.max(1, Math.round(e.dmg * state.mods.thorns));
-          hitEnemy(e, refl);
+          // Reflected through the same funnel as a spell, so an armoured body
+          // shrugs part of it off too (hitEnemy returns what actually landed).
+          const refl = hitEnemy(e, e.dmg * state.mods.thorns);
           if (onScreen) {
             spawnDmgFloat({
               value: refl,

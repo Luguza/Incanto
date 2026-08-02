@@ -11,8 +11,22 @@ const CONFIG = {
   // couple of skeleton blows so the very first upgradeless run is a real fight
   // (not an instant death) — a few cheap early nodes then tip a lone skeleton in
   // the hero's favour; see CONFIG.caps for why stacking past that plateaus.
-  heroBaseHP: 14,
-  heroBaseDmg: 3,
+  // NUMBER SCALE. Every damage and HP figure in the game is carried at ×8 the
+  // scale it reads at naturally, for one reason: a PERCENTAGE needs resolution
+  // to express itself. At the old scale a fresh hero's frost cone hit for 1 and
+  // his fifth lightning hop for 0.77, so a 33% armour reduction rounded to 0%
+  // or 50% and a +4% damage node moved nothing at all — four ranks of it left
+  // heroDmg at 3. At ×8 the smallest routine hit is ~6 and every percentage in
+  // the game lands within a few points of its advertised value.
+  //
+  // The scale-up is paid for by COMPRESSING growth rather than sliding the whole
+  // window up (see caps): a damage number must never reach four digits, and the
+  // old spread already ran 0.77 → 778, wider than the three-digit space itself.
+  // So the floor came up ×8 and the ceiling stayed put — the hero now starts at
+  // 24 damage and tops out near 102 instead of starting at 3 and topping out at
+  // 50, and the largest number the game can pop is still ~816.
+  heroBaseHP: 112,
+  heroBaseDmg: 24,
   dmgPerLevel: 2,
   hpPerLevel: 25,
   dmgUpgradeBaseCost: 30,
@@ -49,8 +63,8 @@ const CONFIG = {
   // cadence. There is no per-wave scaling — a skeleton's strength comes from its
   // VARIANT (see `enemyTypes` below), and a pack's threat from its shape, its
   // head count, and which variants the plan put in it.
-  enemyBaseHP: 10,
-  enemyBaseDmg: 6,
+  enemyBaseHP: 80,
+  enemyBaseDmg: 48,
   // Enemy variants — what a kind of skeleton IS. The multipliers scale the base
   // numbers above; `scale` is the drawn size of the 16x16 skeleton art and
   // `tint` a wash laid over its pixels, together the tell that a tougher one
@@ -62,16 +76,39 @@ const CONFIG = {
   // per-arrival roll — that draw is gone, since it would have put randomness
   // back into the one thing the encounter plan exists to make designable.)
   enemyTypes: [
-    { id: "skeleton", hpMult: 1, dmgMult: 1, attackSpeedMult: 1, scale: 1, tint: null, label: null },
-    // Brute: a head taller, darker bone, twice the HP and damage, and swings
-    // ~40% faster. `label` is called out on the enemy HP bar while it leads the
-    // queue, so a slow-draining bar reads as "this one is tougher", not stuck.
+    { id: "skeleton", hpMult: 1, dmgMult: 1, attackSpeedMult: 1, armor: 0, scale: 1, tint: null, label: null },
+    // Brute: a head taller, darker bone, twice the HP and damage, swings ~40%
+    // faster, and the only body in the hall that wears ARMOUR (see armorK).
+    // `label` is called out on the enemy HP bar while it leads the queue, so a
+    // slow-draining bar reads as "this one is tougher", not stuck.
     {
       id: "brute",
-      hpMult: 2, dmgMult: 2, attackSpeedMult: 1.4,
+      hpMult: 2, dmgMult: 2, attackSpeedMult: 1.4, armor: 5,
       scale: 1.375, tint: "rgba(26, 20, 34, 0.34)", label: "KNOCHENKOLOSS",
     },
   ],
+  // ARMOUR. A body's armour turns aside a FRACTION of every hit that lands on
+  // it, never a flat amount:
+  //
+  //   reduction = min(armorMaxReduction, eff / (eff + armorK))
+  //   eff       = max(0, armor - mods.armorPen)
+  //
+  // Percentage rather than subtraction, for two reasons rooted in this game:
+  //  · `state.heroDmg` runs from 3 to ~48 across a fully-grown tree (heroBaseDmg
+  //    plus caps.flatDmg / caps.pctDmg), so any flat deduction big enough to
+  //    matter at 3 damage is a wall, and any small enough to be fair at 3 is
+  //    invisible at 48. A fraction holds its meaning across that whole span.
+  //  · most pages of the book deal their damage in many small hits (a meteor
+  //    rock at 0.5x, a fifth lightning hop at 0.27x, a frost cone at 0.35x).
+  //    A flat deduction taxes each hit separately and would collapse those into
+  //    applySpellHit's minimum of 1, i.e. read as broken rather than as armour.
+  //
+  // The useful identity: armour A multiplies a body's EFFECTIVE HP by
+  // (1 + A/armorK). With armorK 10 the brute's armour 5 turns aside a third of
+  // every hit — its 20 HP take 30 damage to chew through — and the cap means no
+  // amount of armour ever makes a body immune.
+  armorK: 10,
+  armorMaxReduction: 0.75,
   wrongPenaltyFraction: 0.15, // a wrong match backfires for this fraction of the hero's MAX HP
   enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
   // DESIGNED ENCOUNTERS. Skeletons don't trickle in on a timer — the hall is a
@@ -154,7 +191,10 @@ const CONFIG = {
     // the hall and freezes them where they land. Barely damages; it buys time
     // and sets up the shatter (see primeWindowMs).
     frost: { dmgMult: 0.35, coneTiles: 6.5, pushTiles: 2.4, freezeMs: 2600, maxFreezeMs: 6000,
-             primeMult: 2.4, castMs: 620 },
+             // Trimmed from 2.4 with the number rescale: the shatter multiplies a
+             // crit on top of a fully-invested page, so it sets the game's single
+             // largest number and is what the three-digit ceiling binds against.
+             primeMult: 2.0, castMs: 620 },
     // Meteoritenschauer — rocks fall on random spots across the WHOLE visible
     // track, not on chosen targets. Low per-hit damage over a wide, random area:
     // it thins a spread-out mob rather than deleting a front rank.
@@ -189,24 +229,41 @@ const CONFIG = {
   // early upgrades feel strong, then asymptoting so each extra point returns
   // less), and the sustain/crit stats use hard ceilings. Enemies never scale, so
   // these caps are what keep the fight a fight no matter how deep the tree goes.
+  //
+  // These are also the COMPRESSION half of the ×8 number scale (see heroBaseDmg).
+  // The base figures went up ×8 while these went up only ~2–3×, which is what
+  // holds the ceiling still: growth used to run ×16.7 on damage and ×10.5 on HP,
+  // and now runs ~×4.3 on both. That is the trade the three-digit rule forces —
+  // and it is the direction the tree already claims for itself, since the arms
+  // are meant to pay out in BREADTH (more pages, more bodies hit, more
+  // keystones) rather than in a bigger single number.
   caps: {
-    flatHp: 60,         // soft-cap on summed +flat HP (before % HP)
-    flatDmg: 22,        // soft-cap on summed +flat damage (before % damage)
-    pctHp: 1.0,         // soft-cap on summed % HP  (approaches +100%)
-    pctDmg: 1.0,        // soft-cap on summed % damage (approaches +100%)
+    flatHp: 190,        // soft-cap on summed +flat HP (before % HP)
+    flatDmg: 44,        // soft-cap on summed +flat damage (before % damage)
+    pctHp: 0.6,         // soft-cap on summed % HP  (approaches +60%)
+    pctDmg: 0.5,        // soft-cap on summed % damage (approaches +50%)
     critChance: 0.6,    // hard ceiling on crit chance
-    critMult: 1.5,      // hard ceiling on bonus crit damage (max crit ×3.0)
+    critMult: 1.0,      // hard ceiling on bonus crit damage (max crit ×2.5)
+    // Armour penetration, in armour POINTS shredded off whatever the body wears
+    // (see CONFIG.armorK). Deliberately below the brute's armour 5: a build that
+    // commits the whole Macht arm to penetration wears the brute's mitigation
+    // down from a third to a sixth, but never erases it — and there is headroom
+    // left for a heavier-plated variant later.
+    armorPen: 3,
     // Per-spell % damage. Soft-capped like the generic pools, and separately —
     // a page's own nodes plateau on their own, so pouring an entire sector into
     // one spell still leaves the other five worth visiting.
-    spellPct: 1.2,
-    regen: 2.0,         // hard ceiling on HP/s regen (below a full mob's DPS)
+    spellPct: 0.6,
+    regen: 16,          // hard ceiling on HP/s regen (below a full mob's DPS) — an HP
+                        // rate, so it took the full ×8 rather than the compression
     // No thorns entry: reflection is bounded by supply instead of by a ceiling —
     // only five unique nodes in the whole tree grant it, 10% each (see skilltree.js).
     leech: 0.5,         // hard ceiling on life-leech fraction
     shieldChance: 0.5,  // hard ceiling on per-cast shield chance
-    shieldAmount: 60,   // hard ceiling on absorb granted per proc
-    shieldMax: 140,     // hard ceiling on the absorb pool a hero may bank
+    // Absorb is measured in HP, so these track the hero's pool rather than the
+    // ×8: the bankable shield stays worth roughly one full health bar, as before.
+    shieldAmount: 150,  // hard ceiling on absorb granted per proc
+    shieldMax: 350,     // hard ceiling on the absorb pool a hero may bank
     spellFailProt: 0.6, // hard ceiling on backfire-ward chance
     castHaste: 0.45,    // hard ceiling on how much of the cast charge can be shaved off
     // Fortuna is a whole arm of the tree now, and neither of its stats is bounded
@@ -259,6 +316,10 @@ const CONFIG = {
       enemy: "255, 236, 200",
       hero: "255, 92, 96",
       crit: "255, 214, 90",   // a crit bites gold
+      // A hit that armour has bitten into pops in dulled steel instead of warm
+      // cream, so "that number is smaller than it should be" is visible on the
+      // body rather than something the player has to infer from the HP bar.
+      armored: "176, 192, 208",
     },
     // One signature colour per spell page, shared by the book art, the scene
     // effect and the spell's skill-tree sector so a page, its nodes and its
