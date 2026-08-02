@@ -58,6 +58,20 @@ const CONFIG = {
   goldPerCorrect: 12,
   quizKillBonus: 5, // bonus gold per question, scaled by skeletons slain last run
   quizFeedbackMs: 650,   // how long a wrong match flashes red before clearing
+  // Learning history (see vocab-history.js): every word the player meets — in a
+  // quiz question or in the rune circle — is tallied, and the words they have
+  // recently slipped on are dealt back into the circle more often. The window is
+  // deliberately short: a word you fumbled this morning should come back today,
+  // not haunt the circle for a fortnight.
+  vocab: {
+    recentDays: 3,        // the "recently struggled with" window, in calendar days
+    keepDays: 21,         // per-day buckets older than this are dropped from the save
+    reviewSlotChance: 0.5, // chance a rune-circle slot is filled from the review pool instead of the curriculum
+    maxReviewSlots: 2,    // never fill a whole loadout with review words — the curriculum must keep moving
+    recoveryCredit: 0.5,  // recent correct answers that cancel one recent mistake (2 rights ⇒ 1 wrong forgiven)
+    mistakeWeight: 2.2,   // how much one recent mistake adds to a word's draw weight
+    weightCap: 12,        // ceiling on that weight, so one disastrous word can't own the circle
+  },
   // Skeletons arrive in designed packs (see encounters.js) and walk toward the
   // hero; each only attacks once it reaches melee range, at its own steady
   // cadence. There is no per-wave scaling — a skeleton's strength comes from its

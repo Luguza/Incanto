@@ -42,6 +42,16 @@ function synonymsFor(pair, promptKey, answerKey) {
   return [...new Set(WORD_POOL.filter((p) => p[promptKey] === pair[promptKey]).map((p) => p[answerKey]))];
 }
 
+// Which WORD_POOL entry a question is drilling. Every question carries its
+// `words` (pool indices) so the learning history can tally the outcome against
+// the vocabulary itself rather than the exercise — see vocab-history.js. The
+// samplers hand back pool objects by reference, so identity is enough.
+function wordIndexOf(pair) { return WORD_POOL.indexOf(pair); }
+// The sentence exercises drill a whole phrase; only the blank itself is a piece
+// of vocabulary the history can meaningfully track, and only when the pool
+// actually holds it as a standalone word.
+function wordIndexByIt(word) { return WORD_POOL.findIndex((p) => p.it === word); }
+
 // --- per-type question builders ---------------------------------------------
 function makeChoose(dir) {
   // dir: "it2de" (show Italian, pick German) or "de2it" (show German, pick Italian)
@@ -54,7 +64,8 @@ function makeChoose(dir) {
   const distractors = sampleN(WORD_POOL, CONFIG.quizOptionCount - 1,
     (p) => p[answerKey] !== answer && p[promptKey] !== pair[promptKey])
     .map((p) => p[answerKey]);
-  return { type: "choose", dir, prompt: pair[promptKey], answer, options: shuffleArray([answer, ...distractors]) };
+  return { type: "choose", dir, prompt: pair[promptKey], answer, words: [wordIndexOf(pair)],
+    options: shuffleArray([answer, ...distractors]) };
 }
 
 function makeType(dir) {
@@ -62,15 +73,18 @@ function makeType(dir) {
   const promptKey = dir === "it2de" ? "it" : "de";
   const answerKey = dir === "it2de" ? "de" : "it";
   return { type: "type", dir, prompt: pair[promptKey], answer: pair[answerKey],
-    accept: synonymsFor(pair, promptKey, answerKey) };
+    words: [wordIndexOf(pair)], accept: synonymsFor(pair, promptKey, answerKey) };
 }
 
 function makeMatch() {
   const n = CONFIG.quizMatchPairs;
-  const pairs = sampleDistinctWords(n).map((p, i) => ({ id: i, it: p.it, de: p.de }));
+  // Each tile keeps the pool index of the word it carries (`wid`), so a wrong
+  // tap can be blamed on the two specific words that were confused.
+  const pairs = sampleDistinctWords(n).map((p, i) => ({ id: i, it: p.it, de: p.de, wid: wordIndexOf(p) }));
   return {
     type: "match",
     pairs,
+    words: pairs.map((p) => p.wid),
     left: shuffleArray(pairs.map((p) => ({ id: p.id, word: p.it }))),
     right: shuffleArray(pairs.map((p) => ({ id: p.id, word: p.de }))),
   };
@@ -81,7 +95,9 @@ function makeFill(kind) {
   const s = sampleN(SENTENCE_POOL, 1)[0];
   const tokens = s.it.split(" ");
   const blankIdx = tokens.indexOf(s.blank);
-  const q = { type: kind, tokens, blankIdx, answer: s.blank, de: s.de, pos: s.pos };
+  const blankWord = wordIndexByIt(s.blank);
+  const q = { type: kind, tokens, blankIdx, answer: s.blank, de: s.de, pos: s.pos,
+    words: blankWord >= 0 ? [blankWord] : [] };
   if (kind === "fill-choose") {
     const distractors = sampleN(BLANKS_BY_POS[s.pos] || [], CONFIG.quizOptionCount - 1, (w) => w !== s.blank);
     q.options = shuffleArray([s.blank, ...distractors]);
@@ -96,6 +112,8 @@ function makeArrange() {
   // Bank tiles are shuffled; each carries the token plus a stable tile id so a
   // repeated word (e.g. two "il") stays individually addressable.
   const bank = shuffleArray([...answer, ...distractors].map((word, i) => ({ id: i, word })));
+  // No `words`: word order is what's being drilled here, not any one vocable, so
+  // the learning history stays out of it.
   return { type: "arrange", answer, de: s.de, bank };
 }
 
@@ -132,6 +150,7 @@ function resetQuizInput() {
   state.quizMatchDone = [];
   state.quizMatchWrong = null;
   state.quizMatchMisses = 0;
+  state.quizWordMisses = [];
 }
 
 function goToQuiz() {
@@ -152,6 +171,9 @@ function settleQuiz(correct) {
   if (state.quizChecked) return;
   state.quizChecked = true;
   state.quizWasCorrect = correct;
+  // Tally the vocabulary this question drilled before anything else — every
+  // question resolves through here exactly once (see vocab-history.js).
+  recordQuizOutcome(state.quizList[state.quizIndex], correct);
   if (correct) {
     state.quizCorrect++;
     const reward = quizReward();
@@ -184,6 +206,7 @@ function quizReveal() {
   } else {
     state.quizPicked = null; // choose/fill-choose: highlight only the correct option
   }
+  recordQuizOutcome(q, false); // a revealed solution is a word you didn't know
   state.quizRevealed = true;
   state.quizChecked = true;
   state.quizWasCorrect = false;
@@ -256,6 +279,13 @@ function quizMatchTap(col, idx) {
   } else {
     // wrong pair — flash both red briefly, then clear
     state.quizMatchMisses++;
+    // Both words the player just confused are marked, so the board still blames
+    // them once it settles (which it does as "correct" if the rest works out).
+    const pairOf = (t) => q.pairs.find((p) => p.id === t.id);
+    for (const t of [selTile, tile]) {
+      const p = pairOf(t);
+      if (p) noteQuizWordMiss(p.wid);
+    }
     const left = sel.col === "left" ? sel : { col, idx };
     const right = sel.col === "right" ? sel : { col, idx };
     state.quizMatchWrong = { left: left.idx, right: right.idx };

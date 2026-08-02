@@ -103,3 +103,85 @@
   }
   .quiz-reveal:active { color: #cfc9de; }
 
+
+  /* Quiz top bar — progress on the left, the way into the learning history on
+     the right (the study phase's second screen). */
+  .quiz-topbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    width: min(440px, 92vw); margin: 0 auto 14px;
+  }
+  .quiz-topbar .quiz-progress { margin: 0; text-align: left; }
+  .quiz-history-btn {
+    flex: 0 0 auto; font-size: 13px; padding: 7px 13px; border-radius: 999px;
+    background: rgba(77, 227, 224, 0.1); border: 1px solid rgba(77, 227, 224, 0.35);
+    color: #9fd8d6; cursor: pointer; letter-spacing: 0.4px;
+  }
+  .quiz-history-btn:active { background: rgba(77, 227, 224, 0.22); color: #eafffe; }
+
+  /* ---------------------------------------------------------------------------
+     Lernverlauf — one row per word in the pool: how often it has been met, how
+     often it went right, and where it went wrong. Fixed header + tab strip with
+     the list scrolling underneath, so the filters stay reachable on a phone.
+     --------------------------------------------------------------------------- */
+  .history-screen {
+    justify-content: flex-start; align-items: stretch; overflow: hidden;
+    padding: calc(env(safe-area-inset-top) + 8px) 12px 0; text-align: left;
+  }
+  .hist-top { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+  .hist-back {
+    font-size: 14px; padding: 7px 12px; border-radius: 999px;
+    background: none; border: 1px solid #3a3550; color: #cfc9de; cursor: pointer;
+  }
+  .hist-back:active { background: #2a2340; }
+  .hist-title {
+    font-family: var(--display-font); font-size: 20px; letter-spacing: 2px; color: #eafffe;
+    text-shadow: 0 0 16px rgba(127, 240, 237, 0.35);
+  }
+  .hist-summary { display: flex; gap: 8px; margin: 12px 0 8px; flex: 0 0 auto; }
+  .hist-sum {
+    flex: 1 1 0; min-width: 0; text-align: center; padding: 8px 4px; border-radius: 10px;
+    background: linear-gradient(160deg, #241d33, #1a1526); border: 1px solid #332c48;
+  }
+  .hist-sum b { display: block; font-size: 19px; color: #7ff0ed; }
+  .hist-sum span { font-size: 11px; color: #8a8398; line-height: 1.3; display: block; }
+  .hist-note { font-size: 12px; color: #8a8398; font-style: italic; margin: 2px 0 8px; flex: 0 0 auto; }
+  .hist-tabs { display: flex; gap: 6px; flex: 0 0 auto; overflow-x: auto; padding-bottom: 8px; }
+  .hist-tab {
+    flex: 0 0 auto; font-size: 13px; padding: 6px 11px; border-radius: 999px; cursor: pointer;
+    background: rgba(77, 227, 224, 0.06); border: 1px solid #332c48; color: #9a93ad;
+  }
+  .hist-tab.active { border-color: #4de3e0; color: #eafffe; background: rgba(77, 227, 224, 0.16); }
+  .hist-tab-n { color: #6b6580; font-size: 11px; }
+  .hist-tab.active .hist-tab-n { color: #9fd8d6; }
+
+  .hist-list {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    display: flex; flex-direction: column; gap: 8px; padding-bottom: 14px;
+  }
+  .hist-empty { color: #6b6580; font-style: italic; text-align: center; margin-top: 26px; }
+  .hist-row {
+    background: linear-gradient(160deg, #221c30, #191424); border: 1px solid #2f2942;
+    border-radius: 10px; padding: 9px 11px;
+  }
+  .hist-row.boosted { border-color: #f2c14e; box-shadow: 0 0 14px rgba(242, 193, 78, 0.12); }
+  .hist-head { display: flex; align-items: baseline; gap: 8px; }
+  .hist-it { font-family: var(--display-font); font-size: 17px; color: #f2c14e; letter-spacing: 0.5px; }
+  .hist-de { flex: 1 1 auto; min-width: 0; font-size: 14px; color: #cfc9de; }
+  .hist-acc { font-size: 14px; font-weight: 700; }
+  .hist-acc.good { color: #5ecf8f; }
+  .hist-acc.mid  { color: #f2c14e; }
+  .hist-acc.bad  { color: #e5545f; }
+  .hist-acc.none { color: #6b6580; }
+  .hist-bar { height: 3px; border-radius: 2px; background: #2a2436; margin: 7px 0 6px; overflow: hidden; }
+  .hist-bar-fill { height: 100%; }
+  .hist-bar-fill.good { background: #5ecf8f; }
+  .hist-bar-fill.mid  { background: #f2c14e; }
+  .hist-bar-fill.bad  { background: #e5545f; }
+  .hist-detail { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11.5px; color: #8a8398; }
+  .hist-detail-item b { color: #cfc9de; font-weight: 700; }
+  .hist-detail-item b.bad, .hist-detail-item.bad { color: #d98a92; }
+  .hist-detail-item.dim { color: #6b6580; }
+  .hist-badge {
+    font-size: 11px; color: #f2c14e; border: 1px solid rgba(242, 193, 78, 0.4);
+    background: rgba(242, 193, 78, 0.08); border-radius: 999px; padding: 1px 8px;
+  }

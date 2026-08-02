@@ -53,6 +53,9 @@ function handleRuneClick(id, viaTap = false) {
   const availableAt = state.pairAvailableAtClockMs[first.pairId] ?? state.clockMs;
   const secondsAvailable = ((state.clockMs - availableAt) / 1000).toFixed(1);
   logAttempt(correct, first, rune, secondsAvailable);
+  // Feed the learning history: a correct link credits the pair it joined, a
+  // wrong one blames both words that were confused (see vocab-history.js).
+  recordRuneMatch(correct ? [first.pairId] : [first.pairId, rune.pairId], correct);
   state._structuralDirty = true;
 
   if (correct) {
