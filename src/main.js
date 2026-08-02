@@ -45,13 +45,20 @@ app.addEventListener("keydown", (e) => {
   if (typeof fn === "function") fn();
 });
 
-// A settled quiz question advances on Enter wherever the focus happens to be —
-// on a keyboard the whole session can be worked through without reaching for
-// the pointer. Only once the question is checked, so it can never skip past an
-// unanswered one; typed exercises keep their own Enter (above) for checking.
+// A settled quiz question advances on Enter, so a keyboard session doesn't have
+// to reach for the pointer between questions.
+//
+// It must never be the SAME keystroke that settled it. Enter in the answer field
+// checks the answer (the [data-enter] listener above), which flips quizChecked
+// before the event finishes bubbling up to here — so without this guard one
+// press both checked the answer and skipped the feedback, and a wrong answer
+// jumped straight to the next word without ever showing the solution. Whichever
+// control owns Enter keeps it: the answer field checks, a focused button fires
+// its own click, and only a press that belongs to neither advances.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || e.repeat) return;
   if (state.screen !== "quiz" || !state.quizChecked) return;
+  if (e.target.closest("[data-enter], [data-act], input, button, a")) return;
   e.preventDefault();
   advanceQuiz();
 });

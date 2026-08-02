@@ -235,6 +235,55 @@ try {
   check(seenTab.n > 0 && seenTab.allMet,
     "the 'Gesehen' tab lists only vocabulary actually met (" + seenTab.n + " rows)");
 
+  // 7. A wrong answer must STOP on the question and show the solution. The
+  //    keystroke that checks a typed answer flips quizChecked mid-bubble, so a
+  //    document-level "Enter advances" handler will happily consume the same
+  //    press and skip the feedback entirely — the learner never sees the word
+  //    they just got wrong. Enter therefore has to check first and advance only
+  //    on a second, separate press.
+  const start = await page.evaluate(() => {
+    goToQuiz();
+    state.quizIndex = state.quizList.findIndex((q) => q.type === "type");
+    resetQuizInput();
+    state._structuralDirty = true;
+    render(performance.now());
+    return state.quizIndex;
+  });
+  await page.click("#quiz-input");
+  await page.type("#quiz-input", "definitiv-falsch");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(120);
+  const checked = await page.evaluate(() => ({
+    i: state.quizIndex,
+    checked: state.quizChecked,
+    solution: /Richtig wäre/.test(document.querySelector(".quiz-feedback")?.textContent || ""),
+  }));
+  check(checked.i === start && checked.checked && checked.solution,
+    "a wrong typed answer holds on the question and names the solution");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(120);
+  const advanced = await page.evaluate(() => state.quizIndex);
+  check(advanced === start + 1, "a second Enter moves on exactly one question (" + start + " -> " + advanced + ")");
+
+  //    The same must hold on the tap path, and pressing Enter with the Weiter
+  //    button focused must not advance twice (keydown + the button's own click).
+  const tapped = await page.evaluate(() => {
+    state.quizIndex = 0;
+    resetQuizInput();
+    state._structuralDirty = true;
+    render(performance.now());
+    const q = state.quizList[0];
+    quizChoose(q.options.findIndex((o) => o !== q.answer));
+    render(performance.now());
+    document.querySelector(".quiz-continue").focus();
+    return { i: state.quizIndex, marked: !!document.querySelector(".quiz-opt.correct") };
+  });
+  check(tapped.i === 0 && tapped.marked, "a wrong tapped answer holds on the question and marks the right option");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(120);
+  const afterBtn = await page.evaluate(() => state.quizIndex);
+  check(afterBtn === 1, "Enter on the focused Weiter button advances once, not twice (0 -> " + afterBtn + ")");
+
   check(errors.length === 0, "no console/page errors");
 
   console.log("\nSMOKE TEST PASSED");
