@@ -10,19 +10,23 @@
 // which pulls the arena's box down over the book's upper half).
 //
 // One spell per page, and the page is WRITTEN: a rubricated title under a ruled
-// head, an illuminated initial, and runic script filling everything else —
-// running down both sides of the miniature and off the bottom of the screen. The
-// miniature itself is a dark plate, a window cut through the vellum, and the
-// spell's effect plays over it, animated, lighting the paper around it.
+// head, an illuminated initial, the page's own great rune sunk into the middle
+// of it, and runic script over every line from the head to off the bottom of the
+// screen. The spell's effect plays over the whole leaf — no frame, no plate, no
+// window cut into the paper.
 //
-// Three things are worth knowing before changing any of it:
-//   * Everything written on a leaf is laid out in the page's own (u,v) frame and
-//     mapped on with ONE matrix (see pageFrame), so nothing is rotated by hand.
-//   * A page of script is ~500 glyphs, emitted into a single <path> and cached —
+// Four things are worth knowing before changing any of it:
+//   * Content is laid out in the page's own paper coordinates and mapped on by a
+//     PROJECTIVE transform (see pageProject), not a rotation. The book is tilted
+//     toward the player, so a page converges as it recedes; anything laid on it
+//     with a rotation stays stubbornly rectangular and reads as a sticker.
+//   * A page of script is ~700 glyphs, emitted into a single <path> and cached —
 //     the book is rebuilt wholesale on every structural render.
 //   * The effects animate from CSS keyframes (combat.css), never from JS. Each
 //     class has one duration, and spellbook hands it a negative animation-delay
 //     so a rebuild doesn't restart the motion.
+//   * Each side of the spread carries an UNDER-LEAF, the page a turn would bring
+//     up. It is what a page turn uncovers; without it a turn reveals the board.
 //
 // Everything here is drawn in the book SVG's own 600-wide viewBox, which is the
 // same width as the arena's, so the two share a horizontal scale and the notch
@@ -112,81 +116,117 @@ function ribbonPath(side) {
     `L${f(at(13, 52))} L${f(at(7, 64))} Z"/>`;
 }
 
-// --- The page plane's own coordinate frame -----------------------------------
-// Everything WRITTEN on a leaf — the script, the ruled margins, the miniature —
-// is laid out in (u,v). `u` runs along the top edge in reading order and `v`
-// runs straight down the page from it. One `matrix(...)` maps that frame onto
-// the leaf, so content arrives already lying on the page plane and nothing needs
-// rotating glyph by glyph.
+// --- The page plane, in perspective ------------------------------------------
+// Everything WRITTEN on a leaf is laid out in the page's own paper coordinates
+// (u across, v down, PAGE_W x PAGE_H) and mapped onto the leaf by a PROJECTIVE
+// transform — the homography taking the unit square to the leaf's four corners.
 //
-// Reading order is the book's, not the screen's: the left leaf reads fore-edge →
-// spine and the right leaf reads gutter → fore-edge, which is how the two halves
-// of a spread are actually written. Because the leaves are mirror images that
-// works out to left-to-right on screen for both, so no glyph is ever mirrored.
-function pageFrame(side) {
+// It has to be projective rather than a rotation, because the book is tilted
+// toward the player: the head of a page is further away than its foot. The leaf
+// itself is already drawn that way — its foot edge is the wider of the two — and
+// a rotation lays dead-straight, dead-parallel content onto a shape that
+// converges. A rectangle would stay a rectangle instead of narrowing as it
+// recedes, which is exactly what gives a flat sticker stuck on a tilted plane.
+// Under the homography a page rectangle comes out as the trapezoid you would
+// actually see, straight lines stay straight, and glyphs shrink toward the head
+// on their own without anything scaling them by hand.
+//
+// SVG has no projective transform, so none of this is done with a `transform`
+// attribute: paths are emitted point by point through `at()`. The two things
+// that CANNOT be warped that way — SVG <text>, and the spell effect floating
+// above the paper — are placed with `frameAt()`, the projection differentiated
+// at a point. That puts them on the page plane at the right tilt and the right
+// size for their depth without bending the letters of a word or squashing the
+// effect's circles into eggs.
+//
+// Reading order is the book's, not the screen's: u runs fore-edge -> spine on
+// the left leaf and gutter -> fore-edge on the right, which is how the two
+// halves of a spread are actually written. Because the leaves are mirror images
+// that comes out left-to-right on screen for both, so no glyph is ever mirrored.
+const PAGE_W = 285, PAGE_H = 250;      // the leaf in paper units, head to foot
+
+function pageProject(side) {
   const c = pageCorners(side);
-  const o = side < 0 ? c[0] : c[1];      // where a line begins
-  const t = side < 0 ? c[1] : c[0];      // where it runs out to
-  const len = Math.hypot(t.x - o.x, t.y - o.y) || 1;
-  const e = { x: (t.x - o.x) / len, y: (t.y - o.y) / len };
-  const d = { x: -e.y, y: e.x };         // rot90 of e — down the page on both leaves
-  const proj = (p) => ({
-    u: (p.x - o.x) * e.x + (p.y - o.y) * e.y,
-    v: (p.x - o.x) * d.x + (p.y - o.y) * d.y,
-  });
-  // The leaf is a quad, not a rectangle: the spine edge is vertical while the
-  // frame is tilted, so a line's width grows as it goes down the page. Both side
-  // edges are straight, so solve each once and interpolate — that's what keeps
-  // the ragged edges of the script parallel to the real edges of the paper.
-  const edge = (p, q) => {
-    const P = proj(p), Q = proj(q);
-    const dv = Q.v - P.v;
-    return (v) => (Math.abs(dv) < 1e-6 ? P.u : P.u + ((Q.u - P.u) * (v - P.v)) / dv);
+  // (0,0) is where the first line starts, (1,0) where it ends, and (.,1) the
+  // foot of the leaf below each.
+  const [P0, P1, P2, P3] = side < 0 ? [c[0], c[1], c[2], c[3]] : [c[1], c[0], c[3], c[2]];
+  const sx = P0.x - P1.x + P2.x - P3.x;
+  const sy = P0.y - P1.y + P2.y - P3.y;
+  let a, b, d, e, g, h;
+  if (Math.abs(sx) < 1e-9 && Math.abs(sy) < 1e-9) {
+    // A parallelogram has no vanishing point, so the homography degenerates to
+    // the affine case — and the general solution below would divide by zero.
+    g = 0; h = 0;
+    a = P1.x - P0.x; b = P3.x - P0.x;
+    d = P1.y - P0.y; e = P3.y - P0.y;
+  } else {
+    const dx1 = P1.x - P2.x, dx2 = P3.x - P2.x;
+    const dy1 = P1.y - P2.y, dy2 = P3.y - P2.y;
+    const den = dx1 * dy2 - dx2 * dy1;
+    g = (sx * dy2 - dx2 * sy) / den;
+    h = (dx1 * sy - sx * dy1) / den;
+    a = P1.x - P0.x + g * P1.x; b = P3.x - P0.x + h * P3.x;
+    d = P1.y - P0.y + g * P1.y; e = P3.y - P0.y + h * P3.y;
+  }
+  const cx = P0.x, cy = P0.y;
+  const at = (u, v) => {
+    const s = u / PAGE_W, t = v / PAGE_H;
+    const w = g * s + h * t + 1;
+    return { x: (a * s + b * t + cx) / w, y: (d * s + e * t + cy) / w };
   };
-  const f = (n) => n.toFixed(4);
   return {
-    m: `matrix(${f(e.x)} ${f(e.y)} ${f(d.x)} ${f(d.y)} ${o.x} ${o.y})`,
-    startAt: edge(o, side < 0 ? c[3] : c[2]),   // the edge lines begin on
-    endAt: edge(t, side < 0 ? c[2] : c[3]),     // the edge they run out to
+    at,
+    // A paper point as path data.
+    p: (u, v) => { const q = at(u, v); return q.x.toFixed(1) + " " + q.y.toFixed(1); },
+    // The projection's local affine frame at a point, for the children that
+    // can't be warped vertex by vertex.
+    frameAt: (u, v) => {
+      const o = at(u, v), k = 4;
+      const eu = at(u + k, v), ev = at(u, v + k);
+      const m = [(eu.x - o.x) / k, (eu.y - o.y) / k, (ev.x - o.x) / k, (ev.y - o.y) / k, o.x, o.y];
+      return `matrix(${m.map((n) => n.toFixed(4)).join(" ")})`;
+    },
   };
 }
 
-// --- Manuscript layout (all in the page frame) -------------------------------
-// A written page, not a label with a picture on it: a rubricated title under a
-// ruled head, an illuminated initial, and body script filling everything left —
-// running down both sides of the miniature and off the bottom of the screen.
-const MARGIN = 15;                     // ink-free strip inside both side edges
-const HEAD_V = 27;                     // baseline of the title
-const RULE_V = 37;                     // the double rule under it
-const BODY_TOP = 48;                   // first line of body script
-const BODY_BOTTOM = 236;               // last line worth emitting; the leaf clip cuts it
-const LINE_H = 11;                     // leading
-const GLYPH_H = 6.6;                   // cap height of a script glyph
-const GLYPH_ADV = 5.2;                 // pen advance between glyphs
-const WORD_GAP = 4.2;                  // and between words
-const INITIAL = { w: 17, h: 18 };      // the illuminated capital opening the body
-// The miniature: a gilt-framed plate the spell's effect plays over, set into the
-// text block with script running down either side of it.
-const PLATE = { top: 63, h: 78, w: 168 };
-const PLATE_MID = PLATE.top + PLATE.h / 2;
+// --- Manuscript layout (all in paper units) ----------------------------------
+// A written page: a rubricated title under a ruled head, an illuminated initial,
+// the page's own great rune sunk into the middle of it, and runic script filling
+// every line from the head to off the bottom of the screen.
+const MARGIN = 16;                     // ink-free strip inside both side edges
+const HEAD_V = 25;                     // baseline of the title
+const RULE_V = 35;                     // the double rule under it
+const BODY_TOP = 47;                   // first line of body script
+const LINE_H = 11.5;                   // leading
+const GLYPH_H = 7;                     // cap height of a script glyph
+const GLYPH_ADV = 5.4;                 // pen advance between glyphs
+const WORD_GAP = 4.4;                  // and between words
+const INITIAL = { w: 18, h: 19 };      // the illuminated capital opening the body
+// The page's great rune: one glyph blown up to most of the text block, ringed
+// twice. It is the page's GROUND, not a picture set into a hole in it, so the
+// script runs straight over the top of it.
+const SIGIL = { u: PAGE_W / 2, v: 94, h: 88, r: 63 };
+// Where the spell's effect is anchored. It plays over the whole leaf rather than
+// inside a frame, so this is only the origin of its local page frame.
+const FX = { u: PAGE_W / 2, v: 92, scale: 1.12 };
 
-// One glyph as an absolute subpath. The whole body of a page is emitted into a
-// SINGLE <path> this way: ~500 glyphs as 500 elements would be a real cost on a
-// phone, and they all share one stroke anyway.
-function glyphSub(u, v, h, seed) {
-  const t = GLYPH_TEMPLATES[tileHash(seed, 31) % GLYPH_TEMPLATES.length];
+// One glyph as an absolute subpath, every vertex taken through the projection.
+// The whole body of a page is emitted into a SINGLE <path> this way: ~700 glyphs
+// as 700 elements would be a real cost on a phone, and they all share one stroke.
+function glyphSub(P, u, v, h, seed) {
+  const tpl = GLYPH_TEMPLATES[tileHash(seed, 31) % GLYPH_TEMPLATES.length];
   const k = h / 10;                    // templates span -5..5
   let s = "";
-  for (let i = 0; i < t.length; i++) {
-    s += (i ? "L" : "M") + (u + t[i][0] * k).toFixed(1) + " " + (v + t[i][1] * k).toFixed(1);
+  for (let i = 0; i < tpl.length; i++) {
+    s += (i ? "L" : "M") + P.p(u + tpl[i][0] * k, v + tpl[i][1] * k);
   }
   return s;
 }
 
-// Fill one horizontal run of a line with words of 2–6 glyphs, stopping when the
-// next word would overrun. The leftover is the line's ragged edge — a hard stop
-// at a fixed width would read as a printed block rather than a written one.
-function scriptRun(u0, u1, v, seed, n0) {
+// Fill one line with words of 2-6 glyphs, stopping when the next word would
+// overrun. The leftover is the line's ragged edge — a hard stop at a fixed width
+// would read as a printed block rather than a written one.
+function scriptRun(P, u0, u1, v, seed, n0) {
   let s = "", u = u0, n = n0;
   while (u < u1) {
     let word = 2 + (tileHash(seed, n * 7 + 3) % 5);
@@ -194,203 +234,252 @@ function scriptRun(u0, u1, v, seed, n0) {
       word = 2;                        // try to squeeze a short word into the tail
       if (u + word * GLYPH_ADV > u1) break;
     }
-    for (let i = 0; i < word; i++) s += glyphSub(u + i * GLYPH_ADV, v, GLYPH_H, seed * 13 + n * 11 + i);
+    for (let i = 0; i < word; i++) s += glyphSub(P, u + i * GLYPH_ADV, v, GLYPH_H, seed * 13 + n * 11 + i);
     u += word * GLYPH_ADV + WORD_GAP;
     n++;
   }
   return s;
 }
 
-// The body of a page. Lines that cross the miniature are split into the two
-// runs beside it; the first two lines start clear of the illuminated initial.
-// Deterministic in `seed`, so a page reads the same every time it is opened.
-function pageScript(frame, seed) {
-  let s = "";
-  let n = 0;
-  for (let v = BODY_TOP, line = 0; v <= BODY_BOTTOM; v += LINE_H, line++) {
-    let u0 = frame.startAt(v) + MARGIN;
-    const u1 = frame.endAt(v) - MARGIN;
-    if (line < 2) u0 += INITIAL.w + 4;                 // wrapped around the initial
-    const overPlate = v + GLYPH_H / 2 > PLATE.top && v - GLYPH_H / 2 < PLATE.top + PLATE.h;
-    if (!overPlate) {
-      s += scriptRun(u0, u1, v, seed, n);
-      n += 9;
-      continue;
-    }
-    // Beside the miniature: two short columns, one per side.
-    const mid = (frame.startAt(PLATE_MID) + frame.endAt(PLATE_MID)) / 2;
-    s += scriptRun(u0, mid - PLATE.w / 2 - 5, v, seed, n);
-    s += scriptRun(mid + PLATE.w / 2 + 5, u1, v, seed, n + 4);
+// The body of a page: every line from under the head to past the foot of the
+// screen, the first two wrapped around the illuminated initial. Deterministic in
+// `seed`, so a page reads the same every time it is opened.
+function pageScript(P, seed) {
+  let s = "", n = 0;
+  for (let v = BODY_TOP, line = 0; v <= PAGE_H; v += LINE_H, line++) {
+    s += scriptRun(P, MARGIN + (line < 2 ? INITIAL.w + 4 : 0), PAGE_W - MARGIN, v, seed, n);
     n += 9;
   }
   return s;
 }
 
-// Building ~500 glyphs into a path string is cheap but not free, and the book is
+// Building ~700 glyphs into a path string is cheap but not free, and the book is
 // rebuilt wholesale on every structural render (a re-deal, a page turn, picking
 // a spell). The script is deterministic, so compute it once per page and keep it.
 const scriptCache = {};
-function cachedScript(frame, seed, key) {
-  if (scriptCache[key] === undefined) scriptCache[key] = pageScript(frame, seed);
+function cachedScript(P, seed, key) {
+  if (scriptCache[key] === undefined) scriptCache[key] = pageScript(P, seed);
   return scriptCache[key];
 }
 
-// --- Page illustrations ------------------------------------------------------
-// One per spell, playing over the miniature plate in a box of roughly ±80 × ±34.
-// They're line art in the spell's own colour, matching the game's other
-// procedural glyph work — `c` is the CONFIG.colors.spell entry, so a page, its
-// bolt on the canvas and its sector in the tree all read as the same magic.
+// The ruled box the text block sits in. Its four corners go through the same
+// projection as everything else, so it arrives as a trapezoid that converges
+// with the leaf instead of a rectangle pasted flat on top of it. The foot is
+// left open — it runs off the screen with the rest of the page.
+function marginRule(P, inset) {
+  const vTop = HEAD_V - 16, vBot = PAGE_H;
+  return `M${P.p(inset, vBot)} L${P.p(inset, vTop)} ` +
+    `L${P.p(PAGE_W - inset, vTop)} L${P.p(PAGE_W - inset, vBot)}`;
+}
+
+// The illuminated initial opening the body text, in a gilt box the first two
+// lines of script wrap around.
+function pageInitial(P, colour, seed) {
+  const u = MARGIN, v = BODY_TOP - GLYPH_H / 2, w = INITIAL.w, h = INITIAL.h;
+  return `<path class="bk-initial-box" d="M${P.p(u, v)} L${P.p(u + w, v)} ` +
+      `L${P.p(u + w, v + h)} L${P.p(u, v + h)} Z"/>` +
+    `<path class="bk-initial" stroke="${colour}" ` +
+      `d="${glyphSub(P, u + w / 2, v + h / 2, h - 4, seed * 7 + 5)}"/>`;
+}
+
+// The page's great rune, laid under the script. Both rings are emitted as
+// projected polygons rather than <circle>s — a circle drawn on a page tilted
+// away from you is not a circle on screen, and the rings are the clearest place
+// on the whole page to read that.
+function pageSigil(P, colour, seed) {
+  const ring = (r, n) => {
+    let s = "";
+    for (let i = 0; i <= n; i++) {
+      const ang = (i / n) * Math.PI * 2;
+      s += (i ? "L" : "M") + P.p(SIGIL.u + Math.cos(ang) * r, SIGIL.v + Math.sin(ang) * r);
+    }
+    return s + "Z";
+  };
+  let ticks = "";
+  for (let i = 0; i < 12; i++) {
+    const ang = (i / 12) * Math.PI * 2 + 0.26;
+    const co = Math.cos(ang), si = Math.sin(ang);
+    ticks += `M${P.p(SIGIL.u + co * SIGIL.r * 0.9, SIGIL.v + si * SIGIL.r * 0.9)}` +
+      `L${P.p(SIGIL.u + co * SIGIL.r, SIGIL.v + si * SIGIL.r)}`;
+  }
+  return `<g class="bk-sigil" stroke="${colour}">` +
+    `<path class="bk-sigil-ring" d="${ring(SIGIL.r, 56)}"/>` +
+    `<path class="bk-sigil-ring thin" d="${ring(SIGIL.r * 0.87, 56)}"/>` +
+    `<path class="bk-sigil-tick" d="${ticks}"/>` +
+    `<path class="bk-sigil-rune" d="${glyphSub(P, SIGIL.u, SIGIL.v, SIGIL.h, seed * 17 + 3)}"/>` +
+    `</g>`;
+}
+
+// A spell's colour blended toward the page's ink, for the outlines of its
+// effect. The palette in CONFIG is LIGHT — those tones were picked to glow on
+// the dark combat canvas — and light-on-cream is barely a line at all. Three of
+// the six (lightning, frost, heal) all but vanish on vellum at full tint.
+//
+// Darkening the same hue is what an illuminator would do: the art on the page is
+// pigment, not a projection, so it reads by being darker than the paper rather
+// than brighter. That keeps the vellum clean — the alternative, pooling shadow
+// under the effect to give the light something to glow against, dims the very
+// page the writing is supposed to fill.
+function inkShade(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = [[(n >> 16) & 255, 0x2c], [(n >> 8) & 255, 0x1b], [n & 255, 0x12]];
+  return "#" + ch.map(([c, t]) => Math.round(c + (t - c) * k).toString(16).padStart(2, "0")).join("");
+}
+
+// --- Page effects ------------------------------------------------------------
+// One per spell, playing over the WHOLE leaf — authored in a box of roughly
+// +-100 x +-95 paper units, which the page frame then lays onto the tilt. They
+// are line art in the spell's own colour, matching the game's other procedural
+// glyph work: `c` is the CONFIG.colors.spell entry, so a page, its bolt on the
+// canvas and its sector in the tree all read as the same magic.
 //
 // The art is ANIMATED, and animated declaratively: every moving part carries a
 // CSS class whose keyframes live in combat.css, so the loop costs nothing per
-// frame and survives without a JS driver. `D(period, phase)` is handed in by the
-// caller — it returns a negative `animation-delay` that both staggers an element
-// against its siblings and starts the loop at the phase the game clock is
-// already at, so a structural re-render doesn't visibly restart the motion.
+// frame and needs no JS driver. `D(period, phase)` is handed in by the caller —
+// it returns a negative `animation-delay` that both staggers an element against
+// its siblings and starts the loop at the phase the game clock is already at, so
+// a structural re-render doesn't visibly restart the motion.
 const SPELL_ART = {
-  // A burning orb that breathes, throwing licks of flame and embers upward.
-  fireball: (c, D) => `
-    <circle class="bk-fx-pulse" cx="0" cy="2" r="30" fill="${c.mid}" opacity="0.18" style="${D(2600, 0)}"/>
-    <circle class="bk-fx-ripple" cx="0" cy="2" r="19" fill="none" stroke="${c.mid}"
-      stroke-width="1.8" style="${D(3000, 0)}"/>
-    <circle class="bk-fx-pulse" cx="0" cy="2" r="17" fill="${c.mid}" opacity="0.8" style="${D(2600, 420)}"/>
-    <circle class="bk-fx-pulse" cx="0" cy="2" r="9" fill="${c.core}" style="${D(2600, 900)}"/>
-    <g fill="none" stroke="${c.mid}" stroke-width="2.4" stroke-linecap="round">
-      <path class="bk-fx-lick" d="M-12 -11 Q-8 -23 -1 -30" style="${D(1800, 0)}"/>
-      <path class="bk-fx-lick" d="M4 -13 Q8 -24 15 -31" style="${D(1800, 600)}"/>
-      <path class="bk-fx-lick" d="M-24 -6 Q-27 -17 -21 -25" style="${D(1800, 1200)}"/>
+  // A burning heart to the page, throwing licks of flame the height of it and
+  // embers drifting up off the paper everywhere.
+  fireball: (c, D) => {
+    let motes = "";
+    for (let i = 0; i < 11; i++) {
+      const x = -88 + ((tileHash(i, 5) % 180));
+      const y = 18 + ((tileHash(i, 9) % 70));
+      motes += `<circle class="bk-fx-mote" cx="${x}" cy="${y}" ` +
+        `r="${(1.8 + (tileHash(i, 13) % 22) / 10).toFixed(1)}" style="${D(2400, i * 218)}"/>`;
+    }
+    return `
+    <circle class="bk-fx-pulse" cx="0" cy="4" r="66" fill="${c.mid}" opacity="0.1" style="${D(2600, 0)}"/>
+    <circle class="bk-fx-ripple" cx="0" cy="4" r="42" fill="none" stroke="${c.deep}"
+      stroke-width="2.8" style="${D(3000, 0)}"/>
+    <circle class="bk-fx-ripple" cx="0" cy="4" r="42" fill="none" stroke="${c.deep}"
+      stroke-width="1.8" style="${D(3000, 1500)}"/>
+    <circle class="bk-fx-pulse" cx="0" cy="4" r="34" fill="${c.mid}" opacity="0.45" stroke="${c.deep}"
+      stroke-width="2" style="${D(2600, 420)}"/>
+    <circle class="bk-fx-pulse" cx="0" cy="4" r="15" fill="${c.core}" stroke="${c.deep}"
+      stroke-width="1.6" style="${D(2600, 900)}"/>
+    <g fill="none" stroke="${c.deep}" stroke-width="4.2" stroke-linecap="round">
+      <path class="bk-fx-lick" d="M-26 -24 Q-20 -54 -6 -80" style="${D(1800, 0)}"/>
+      <path class="bk-fx-lick" d="M12 -28 Q24 -56 34 -78" style="${D(1800, 600)}"/>
+      <path class="bk-fx-lick" d="M-50 -12 Q-60 -42 -48 -68" style="${D(1800, 1200)}"/>
+      <path class="bk-fx-lick" d="M40 -6 Q56 -32 50 -60" style="${D(1800, 900)}"/>
     </g>
-    <g fill="${c.core}">
-      <circle class="bk-fx-mote" cx="-27" cy="8" r="2" style="${D(2400, 0)}"/>
-      <circle class="bk-fx-mote" cx="23" cy="12" r="1.7" style="${D(2400, 800)}"/>
-      <circle class="bk-fx-mote" cx="-42" cy="14" r="1.5" style="${D(2400, 1600)}"/>
-      <circle class="bk-fx-mote" cx="40" cy="6" r="1.8" style="${D(2400, 400)}"/>
-      <circle class="bk-fx-mote" cx="9" cy="16" r="1.4" style="${D(2400, 2000)}"/>
-    </g>`,
+    <g fill="${c.core}" stroke="${c.deep}" stroke-width="1.2">${motes}</g>`;
+  },
 
-  // A bolt that never strikes twice the same way: three forks take it in turn,
-  // each lit for a fifth of the cycle, over a flash that fires with them.
+  // A bolt down the whole height of the page: three forks take it in turn, each
+  // lit for a fifth of the cycle, over a flash that fires with them.
   lightning: (c, D) => `
-    <ellipse class="bk-fx-flash" cx="0" cy="0" rx="30" ry="26" fill="${c.mid}"
-      opacity="0.22" style="${D(1500, 0)}"/>
-    <g fill="${c.core}" stroke="${c.mid}" stroke-width="1.5" stroke-linejoin="round">
-      <path class="bk-fx-bolt" d="M6 -28 L-8 0 L2 1 L-6 28 L14 -5 L4 -6 Z" style="${D(1500, 0)}"/>
-      <path class="bk-fx-bolt" d="M2 -28 L-12 -2 L-1 -1 L-9 28 L10 -3 L0 -4 Z" style="${D(1500, 500)}"/>
-      <path class="bk-fx-bolt" d="M11 -28 L-3 -1 L7 0 L-1 28 L19 -4 L9 -5 Z" style="${D(1500, 1000)}"/>
+    <ellipse class="bk-fx-flash" cx="0" cy="0" rx="88" ry="82" fill="${c.mid}"
+      opacity="0.15" style="${D(1500, 0)}"/>
+    <g fill="${c.mid}" stroke="${c.deep}" stroke-width="2.6" stroke-linejoin="round">
+      <path class="bk-fx-bolt" d="M18 -92 L-22 -6 L8 -2 L-16 92 L44 -14 L14 -18 Z" style="${D(1500, 0)}"/>
+      <path class="bk-fx-bolt" d="M6 -92 L-34 -8 L-2 -4 L-26 92 L32 -12 L2 -16 Z" style="${D(1500, 500)}"/>
+      <path class="bk-fx-bolt" d="M32 -92 L-8 -4 L22 0 L-2 92 L58 -12 L28 -16 Z" style="${D(1500, 1000)}"/>
     </g>
-    <g fill="none" stroke="${c.mid}" stroke-width="1.8" stroke-linecap="round">
-      <path class="bk-fx-bolt" d="M-26 -13 L-34 -2 L-26 -1" style="${D(1500, 250)}"/>
-      <path class="bk-fx-bolt" d="M27 9 L35 19 L27 19" style="${D(1500, 750)}"/>
+    <g fill="none" stroke="${c.deep}" stroke-width="3" stroke-linecap="round">
+      <path class="bk-fx-bolt" d="M-30 -44 L-74 -14 L-52 -8" style="${D(1500, 250)}"/>
+      <path class="bk-fx-bolt" d="M34 26 L82 56 L58 62" style="${D(1500, 750)}"/>
+      <path class="bk-fx-bolt" d="M-26 34 L-70 62 L-48 68" style="${D(1500, 1250)}"/>
     </g>`,
 
-  // A cone with shards tumbling out along it and a shimmer running through.
+  // A cone opening clear across the page, with crystals tumbling down it.
   frost: (c, D) => {
     const shard = (x, y, s, phase) =>
       `<g transform="translate(${x},${y}) scale(${s})"><g class="bk-fx-drift" style="${D(2800, phase)}">` +
       `<g class="bk-fx-spin" style="${D(4200, phase)}">` +
-      `<path d="M-6 0 L6 0 M0 -6 L0 6 M-4 -4 L4 4 M4 -4 L-4 4"/></g></g></g>`;
+      `<path d="M-14 0 L14 0 M0 -14 L0 14 M-10 -10 L10 10 M10 -10 L-10 10"/></g></g></g>`;
     return `
-    <path d="M-46 0 L26 -25 L26 25 Z" fill="${c.mid}" opacity="0.18"/>
-    <path class="bk-fx-sweep" d="M-46 0 L26 -25 L26 25 Z" fill="${c.core}"
-      opacity="0.16" style="${D(2600, 0)}"/>
-    <path d="M-46 0 L26 -25 M-46 0 L26 25" fill="none" stroke="${c.mid}" stroke-width="2.2"
+    <path d="M-96 2 L86 -76 L86 80 Z" fill="${c.mid}" opacity="0.1"/>
+    <path class="bk-fx-sweep" d="M-96 2 L86 -76 L86 80 Z" fill="${c.core}"
+      opacity="0.14" style="${D(2600, 0)}"/>
+    <path d="M-96 2 L86 -76 M-96 2 L86 80" fill="none" stroke="${c.deep}" stroke-width="3.4"
       stroke-linecap="round"/>
-    <path d="M26 -25 L26 25" stroke="${c.core}" stroke-width="1.5" opacity="0.55"/>
-    <g stroke="${c.core}" stroke-width="1.7" stroke-linecap="round" fill="none">
-      ${shard(-16, -8, 1, 0)}${shard(-4, 9, 0.85, 900)}${shard(6, -3, 1.15, 1800)}
+    <path d="M86 -76 L86 80" stroke="${c.deep}" stroke-width="2.2" opacity="0.5"/>
+    <g stroke="${c.deep}" stroke-width="2.6" stroke-linecap="round" fill="none">
+      ${shard(-34, -22, 1, 0)}${shard(0, 24, 0.8, 700)}${shard(18, -14, 1.2, 1400)}${shard(-14, 50, 0.7, 2100)}
     </g>`;
   },
 
-  // Rocks falling in sequence onto a cracked ground line, each landing in a
-  // flash of its own — the burst is on the same period as its rock, timed to
-  // the end of the fall.
+  // Rocks falling the height of the page onto a cracked ground line near the
+  // foot, each landing in a flash of its own — the burst is on the same period
+  // as its rock, timed to the end of the fall.
   meteor: (c, D) => {
     const rock = (x, r, phase) =>
       `<g transform="translate(${x},0)"><g class="bk-fx-fall" style="${D(1900, phase)}">` +
-      `<path d="M${(-r * 2.4).toFixed(1)} ${(-r * 3.4).toFixed(1)} L0 0" stroke="${c.mid}"
-        stroke-width="2.2" stroke-linecap="round" opacity="0.85"/>` +
-      `<circle r="${r}" fill="${c.core}"/></g>` +
-      `<ellipse class="bk-fx-burst" cy="24" rx="${(r * 2.6).toFixed(1)}" ry="${(r * 0.9).toFixed(1)}"
+      `<path d="M${(-r * 2.6).toFixed(1)} ${(-r * 3.6).toFixed(1)} L0 0" stroke="${c.deep}"
+        stroke-width="3.4" stroke-linecap="round" opacity="0.9"/>` +
+      `<circle r="${r}" fill="${c.core}" stroke="${c.deep}" stroke-width="1.6"/></g>` +
+      `<ellipse class="bk-fx-burst" cy="50" rx="${(r * 2.8).toFixed(1)}" ry="${(r * 0.9).toFixed(1)}"
         fill="${c.core}" style="${D(1900, phase)}"/></g>`;
+    // The ground line has to sit well above the foot of the art box: the lower
+    // third of a leaf runs off the bottom of the screen, so anything landing at
+    // the box's own floor lands where nobody can see it.
     return `
-    <path d="M-54 24 L54 24" stroke="${c.mid}" stroke-width="2.2" stroke-linecap="round"/>
-    <path d="M-30 24 L-35 33 M2 24 L-2 34 M31 24 L36 33" stroke="${c.mid}" stroke-width="1.6"
-      stroke-linecap="round" opacity="0.7"/>
-    ${rock(-30, 4.2, 0)}${rock(2, 3.2, 700)}${rock(31, 3.6, 1350)}`;
+    <path d="M-94 50 L94 50" stroke="${c.deep}" stroke-width="3.4" stroke-linecap="round"/>
+    <path d="M-64 50 L-74 70 M-24 50 L-32 72 M18 50 L12 70 M60 50 L70 68" stroke="${c.deep}"
+      stroke-width="2.4" stroke-linecap="round" opacity="0.7"/>
+    ${rock(-66, 9, 0)}${rock(-30, 7, 500)}${rock(6, 8, 980)}${rock(44, 6, 1440)}${rock(74, 5, 260)}`;
   },
 
-  // A kite shield riding on its own ward: a rune ring turning around it and a
-  // barrier pulsing out past the frame.
+  // A ward standing over the whole page: a rune ring turning around a kite
+  // shield, and a barrier pulsing out past the margins.
   shield: (c, D) => {
     let ring = "";
-    for (let i = 0; i < 12; i++) ring += glyphAt(0, 0, 31, i * 30, 7, 91 + i, "bk-fx-glyph");
+    for (let i = 0; i < 16; i++) ring += glyphAt(0, 0, 74, i * 22.5, 15, 91 + i, "bk-fx-glyph");
     return `
-    <ellipse class="bk-fx-ward" rx="36" ry="32" fill="none" stroke="${c.mid}"
-      stroke-width="1.6" style="${D(3000, 0)}"/>
-    <g class="bk-fx-turn" stroke="${c.mid}" style="${D(24000, 0)}">${ring}</g>
+    <ellipse class="bk-fx-ward" rx="90" ry="86" fill="none" stroke="${c.deep}"
+      stroke-width="2.6" style="${D(3000, 0)}"/>
+    <g class="bk-fx-turn" stroke="${c.deep}" style="${D(24000, 0)}">${ring}</g>
     <g class="bk-fx-float" style="${D(3200, 0)}">
-      <path d="M0 -25 L20 -16 L20 5 Q20 21 0 29 Q-20 21 -20 5 L-20 -16 Z"
-        fill="${c.mid}" fill-opacity="0.22" stroke="${c.mid}" stroke-width="2.2" stroke-linejoin="round"/>
-      <path d="M0 -15 L0 17 M-11 -3 L11 -3" stroke="${c.core}" stroke-width="2.2" stroke-linecap="round"/>
-      <path d="M-6 -9 L0 -15 L6 -9" fill="none" stroke="${c.core}" stroke-width="1.8"
+      <path d="M0 -62 L46 -38 L46 10 Q46 50 0 70 Q-46 50 -46 10 L-46 -38 Z"
+        fill="${c.mid}" fill-opacity="0.4" stroke="${c.deep}" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M0 -38 L0 42 M-26 -6 L26 -6" stroke="${c.deep}" stroke-width="4.4" stroke-linecap="round"/>
+      <path d="M-14 -24 L0 -38 L14 -24" fill="none" stroke="${c.deep}" stroke-width="3.4"
         stroke-linecap="round" stroke-linejoin="round"/>
     </g>`;
   },
 
-  // A living sprig over a rising pulse — growth rather than a medical cross —
-  // shedding motes that drift up off the page.
-  heal: (c, D) => `
-    <ellipse class="bk-fx-ward" rx="34" ry="31" fill="none" stroke="${c.mid}"
-      stroke-width="1.5" style="${D(3000, 0)}"/>
+  // A living sprig over a pulse running the width of the page — growth rather
+  // than a medical cross — shedding motes that drift up off the paper.
+  heal: (c, D) => {
+    let motes = "";
+    for (let i = 0; i < 9; i++) {
+      const x = -86 + ((tileHash(i, 21) % 176));
+      const y = 10 + ((tileHash(i, 27) % 66));
+      motes += `<circle class="bk-fx-mote" cx="${x}" cy="${y}" ` +
+        `r="${(1.7 + (tileHash(i, 31) % 20) / 10).toFixed(1)}" style="${D(2400, i * 267)}"/>`;
+    }
+    return `
+    <ellipse class="bk-fx-ward" rx="86" ry="82" fill="none" stroke="${c.deep}"
+      stroke-width="2.2" style="${D(3000, 0)}"/>
     <g class="bk-fx-float" style="${D(3200, 0)}">
-      <path d="M0 -25 Q14 -6 14 5 Q14 19 0 19 Q-14 19 -14 5 Q-14 -6 0 -25 Z"
-        fill="${c.mid}" fill-opacity="0.3" stroke="${c.mid}" stroke-width="2.2" stroke-linejoin="round"/>
-      <path d="M0 -14 L0 11 M-8 -2 L8 -2" stroke="${c.core}" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M0 -66 Q38 -16 38 12 Q38 50 0 50 Q-38 50 -38 12 Q-38 -16 0 -66 Z"
+        fill="${c.mid}" fill-opacity="0.45" stroke="${c.deep}" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M0 -36 L0 30 M-21 -5 L21 -5" stroke="${c.deep}" stroke-width="4.6" stroke-linecap="round"/>
     </g>
-    <path d="M-52 26 L-30 26 L-22 17 L-11 32 L-2 22 L7 26 L52 26" fill="none" stroke="${c.mid}"
-      stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" opacity="0.8"/>
-    <g fill="${c.core}">
-      <circle class="bk-fx-mote" cx="-30" cy="10" r="1.9" style="${D(2400, 0)}"/>
-      <circle class="bk-fx-mote" cx="28" cy="6" r="1.6" style="${D(2400, 800)}"/>
-      <circle class="bk-fx-mote" cx="-44" cy="4" r="1.5" style="${D(2400, 1600)}"/>
-      <circle class="bk-fx-mote" cx="43" cy="12" r="1.7" style="${D(2400, 400)}"/>
-    </g>`,
+    <path d="M-94 70 L-54 70 L-38 46 L-18 88 L-2 60 L14 70 L94 70" fill="none" stroke="${c.deep}"
+      stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.8"/>
+    <g fill="${c.core}" stroke="${c.deep}" stroke-width="1.2">${motes}</g>`;
+  },
 };
 
 // --- Page rendering ----------------------------------------------------------
-
-// The margin rule: the ruled box the text block sits in, traced in the page
-// frame. Its two side rules follow the leaf's real edges (which converge, since
-// the spine is vertical and the page is tilted), so the ruling reads as drawn on
-// the paper rather than pasted over it. The bottom is left open — it runs off
-// the screen with the rest of the page.
-function marginRule(frame, inset) {
-  const vTop = HEAD_V - 17, vBot = BOOK_H + 30;
-  const p = (u, v) => `${u.toFixed(1)} ${v.toFixed(1)}`;
-  const l = (v) => frame.startAt(v) + inset, r = (v) => frame.endAt(v) - inset;
-  return `M${p(l(vBot), vBot)} L${p(l(vTop), vTop)} L${p(r(vTop), vTop)} L${p(r(vBot), vBot)}`;
-}
-
-// The illuminated initial opening the body text: a gilt box with an oversized
-// glyph in it, the first two lines of script wrapped around its right side.
-function pageInitial(frame, colour, seed) {
-  const u = frame.startAt(BODY_TOP) + MARGIN;
-  const v = BODY_TOP - GLYPH_H / 2;
-  return `<rect class="bk-initial-box" x="${u.toFixed(1)}" y="${v.toFixed(1)}" ` +
-    `width="${INITIAL.w}" height="${INITIAL.h}"/>` +
-    `<path class="bk-initial" stroke="${colour}" ` +
-    `d="${glyphSub(u + INITIAL.w / 2, v + INITIAL.h / 2, INITIAL.h - 4, seed * 7 + 5)}"/>`;
-}
-
-// One page of the book: a written leaf — rubricated title over a ruled head,
-// body script filling the whole text block, and the spell's effect playing on a
-// gilt plate set into it. `side` is -1 for the left leaf, +1 for the right; a
-// sealed page keeps its writing but is illegible under a wax seal, and the page
-// the book is CAST from carries a ribbon and a lit border.
-function spellPage(spell, side) {
+// One page of the book: a written leaf — a rubricated title under a ruled head,
+// an illuminated initial, the page's great rune, and script over every line of
+// it — with the spell's effect playing over the whole thing.
+//
+// `side` is -1 for the left leaf, +1 for the right. A sealed page keeps its
+// writing but is illegible under a wax seal, and the page the book is CAST from
+// carries a ribbon and a lit border. `under` marks an under-leaf: the page a
+// turn would bring up, drawn beneath the open one and only ever glimpsed for a
+// fifth of a second mid-turn, so it gets no effect, no ribbon and no tap target.
+function spellPage(spell, side, under) {
   const d = leafPath(side);
   const key = side < 0 ? "L" : "R";
-  const frame = pageFrame(side);
+  const P = pageProject(side);
   // The paper itself: a gradient-filled leaf, a fibre wash and a little foxing
   // to break the flat fill, a shadow welling out of the gutter, a sheen along
   // the fore-edge where the sheet lifts, and the lit cut along the top edge.
@@ -411,14 +500,19 @@ function spellPage(spell, side) {
         `width="54" height="${BOOK_H}" fill="url(#bkFore${key})"/>` +
     `</g>` +
     `<path class="bk-cut" d="${leafTopEdge(side)}"/>`;
+  // Raised as the leaf swings over during a page turn (see setTurn): paper
+  // turning away from the light goes dark, and without that a turn reads as a
+  // page being squeezed thin rather than lifted.
+  const shade = `<path class="bk-shade" d="${d}" opacity="0"/>`;
 
   if (!spell) {
     // An odd-numbered book would leave one blank leaf; draw it as empty vellum
     // rather than skipping it, so the spread keeps its shape.
-    return `<g class="bk-page blank" data-side="${side}">${paper}</g>`;
+    return `<g class="bk-page blank${under ? " under" : ""}" data-side="${side}">${paper}${shade}</g>`;
   }
 
-  const c = CONFIG.colors.spell[spell.id];
+  const base = CONFIG.colors.spell[spell.id];
+  const c = { ...base, deep: inkShade(base.mid, 0.55) };
   const unlocked = spellUnlocked(spell.id);
   const active = unlocked && spell.id === activeSpellId();
   const idx = SPELLS.indexOf(spell);
@@ -431,95 +525,76 @@ function spellPage(spell, side) {
   const D = (period, phase) =>
     `animation-delay:${(-((((state.clockMs || 0) + phase) % period) | 0)).toFixed(0)}ms`;
 
-  // The text block. Written the same on a sealed page as an open one — the page
-  // exists, you simply can't read it yet — so sealing changes only the ink.
-  const body =
-    `<path class="bk-script" d="${cachedScript(frame, idx + 1, spell.id + key)}"/>` +
-    pageInitial(frame, ink, idx + 1);
+  // The title heads the page over a ruled band. It is the one thing on the leaf
+  // that can't be warped vertex by vertex, so it rides the projection's local
+  // frame instead. The font is scaled to the name's length rather than squeezed
+  // to a fixed width: `textLength` stretches short names into a caricature of
+  // themselves, and only the longest name in the book (Meteoritenschauer) needs
+  // any help at all.
+  const name = unlocked ? spell.name : "Versiegelt";
+  const head =
+    `<g transform="${P.frameAt(PAGE_W / 2, HEAD_V)}"><text class="bk-name" text-anchor="middle" ` +
+      `fill="${ink}" style="font-size:${Math.min(17, 190 / name.length).toFixed(1)}px">${name}</text></g>` +
+    `<path class="bk-rule" stroke="${ink}" ` +
+      `d="M${P.p(MARGIN, RULE_V)} L${P.p(PAGE_W - MARGIN, RULE_V)}"/>` +
+    `<path class="bk-rule thin" stroke="${ink}" ` +
+      `d="M${P.p(MARGIN + 7, RULE_V + 3.5)} L${P.p(PAGE_W - MARGIN - 7, RULE_V + 3.5)}"/>`;
 
-  // The miniature: a gilt plate seated in the text block, with the spell's
-  // effect floating ABOVE it — a shadow cast down onto the paper and a pool of
-  // its own coloured light spilling out past the frame are what sell the effect
-  // as hovering over the page rather than printed on it.
-  const mid = (frame.startAt(PLATE_MID) + frame.endAt(PLATE_MID)) / 2;
-  const px = mid - PLATE.w / 2;
-  // The pool goes UNDER the plate, so what shows of it is the light spilling out
-  // past the frame onto the vellum — over the plate it would only wash out the
-  // effect it is supposed to be coming from.
-  const plate =
-    `<ellipse class="bk-pool" cx="${mid.toFixed(1)}" cy="${PLATE_MID}" rx="${PLATE.w * 0.72}" ` +
-      `ry="${PLATE.h * 0.95}" fill="url(#bkPool${key})"/>` +
-    `<rect class="bk-plate-shadow" x="${(px + 3).toFixed(1)}" y="${PLATE.top + 4}" ` +
-      `width="${PLATE.w}" height="${PLATE.h}" rx="4"/>` +
-    `<rect class="bk-plate" x="${px.toFixed(1)}" y="${PLATE.top}" ` +
-      `width="${PLATE.w}" height="${PLATE.h}" rx="4"/>` +
-    `<rect class="bk-plate-rule" x="${(px + 4).toFixed(1)}" y="${PLATE.top + 4}" ` +
-      `width="${PLATE.w - 8}" height="${PLATE.h - 8}" rx="2"/>`;
+  // The spell playing over the leaf. Not framed and not printed: it hovers over
+  // the whole page, on a wash of its own coloured light that falls on the paper
+  // under it. Placed on the projection's local frame so it lies at the page's
+  // tilt without its circles being pulled into eggs by the perspective.
+  const fx = under || !unlocked ? "" :
+    `<g transform="${P.frameAt(FX.u, FX.v)}">` +
+      `<ellipse class="bk-wash" rx="112" ry="100" fill="url(#bkPool${key})"/>` +
+      `<g class="bk-fx" transform="scale(${FX.scale})">` +
+        `<g class="bk-fx-cast">${SPELL_ART[spell.id](c, D)}</g></g></g>`;
 
-  let art;
-  if (unlocked) {
-    art =
-      `<ellipse class="bk-aura" cx="${mid.toFixed(1)}" cy="${PLATE_MID}" rx="${PLATE.w * 0.44}" ` +
-        `ry="${PLATE.h * 0.46}" fill="url(#bkPool${key})"/>` +
-      `<g class="bk-fx" transform="translate(${mid.toFixed(1)},${PLATE_MID})">` +
-        `<g class="bk-fx-cast">${SPELL_ART[spell.id](c, D)}</g></g>`;
-  } else {
-    // Sealed: a blob of wax pressed over the plate, its sigil unread. The name
-    // is withheld too — the tree node that opens the page is where you learn
-    // what it is.
-    const blob = "M0 -21 Q14 -21 19 -11 Q26 -2 19 8 Q14 20 2 21 Q-12 22 -19 12 " +
-      "Q-26 1 -19 -10 Q-13 -20 0 -21 Z";
-    art =
-      `<g transform="translate(${mid.toFixed(1)},${PLATE_MID})">` +
-        `<path class="bk-wax-shadow" d="${blob}" transform="translate(1.5,2)"/>` +
-        `<path class="bk-wax" d="${blob}"/>` +
-        `<path class="bk-wax-rim" d="${blob}" transform="scale(0.82)"/>` +
-        `<text class="bk-sealmark" y="8" text-anchor="middle">?</text></g>`;
+  // Sealed: a blob of wax pressed over the page's own rune, its sigil unread.
+  // The name is withheld too — the tree node that opens the page is where you
+  // learn what it is.
+  let seal = "";
+  if (!unlocked) {
+    const blob = "M0 -32 Q21 -32 29 -17 Q39 -3 29 12 Q21 30 3 32 Q-18 33 -29 18 " +
+      "Q-39 2 -29 -15 Q-20 -30 0 -32 Z";
+    seal = `<g transform="${P.frameAt(SIGIL.u, SIGIL.v)}">` +
+      `<path class="bk-wax-shadow" d="${blob}" transform="translate(2,3)"/>` +
+      `<path class="bk-wax" d="${blob}"/>` +
+      `<path class="bk-wax-rim" d="${blob}" transform="scale(0.82)"/>` +
+      `<text class="bk-sealmark" y="11" text-anchor="middle">?</text></g>`;
   }
 
-  // The title heads the page over a ruled band. The font is scaled to the name's
-  // length instead of being squeezed to a fixed width: `textLength` stretches
-  // short names into a caricature of themselves, and only the longest name in
-  // the book (Meteoritenschauer) needs any help at all.
-  const name = unlocked ? spell.name : "Versiegelt";
-  const uMid = (frame.startAt(HEAD_V) + frame.endAt(HEAD_V)) / 2;
-  const head =
-    `<text class="bk-name" x="${uMid.toFixed(1)}" y="${HEAD_V}" text-anchor="middle" ` +
-      `fill="${ink}" ` +
-      `style="font-size:${Math.min(17, 190 / name.length).toFixed(1)}px">${name}</text>` +
-    `<path class="bk-rule" stroke="${ink}" d="M${(frame.startAt(RULE_V) + MARGIN).toFixed(1)} ${RULE_V} ` +
-      `L${(frame.endAt(RULE_V) - MARGIN).toFixed(1)} ${RULE_V}"/>` +
-    `<path class="bk-rule thin" stroke="${ink}" d="M${(frame.startAt(RULE_V + 3) + MARGIN + 6).toFixed(1)} ${RULE_V + 3} ` +
-      `L${(frame.endAt(RULE_V + 3) - MARGIN - 6).toFixed(1)} ${RULE_V + 3}"/>`;
+  const ribbon = active && !under ? `<g class="bk-ribbon" fill="${c.mid}">${ribbonPath(side)}</g>` : "";
 
-  const ribbon = active ? `<g class="bk-ribbon" fill="${c.mid}">${ribbonPath(side)}</g>` : "";
-
-  // Everything written rides the page frame — one matrix, so the script, the
-  // rules and the plate all lie on the same plane. That shared plane is most of
-  // what sells the tilt: ruled lines seen at an angle read as a surface.
+  // The clip and the page content must sit on SEPARATE groups from any
+  // transform. A `clip-path` with the default userSpaceOnUse resolves in the
+  // user space its own element establishes, so hanging one off a transformed
+  // group measures the leaf's outline in page coordinates instead of viewBox
+  // ones and cuts the page to ribbons.
   //
-  // The clip and the frame must sit on SEPARATE groups, in that order. A
-  // `clip-path` with the default userSpaceOnUse resolves in the user space its
-  // own element establishes — so putting both on one group would measure the
-  // leaf's outline in (u,v) instead of viewBox coords and cut the page to
-  // ribbons (the title, sitting above the leaf's top corner in that misreading,
-  // vanishes outright).
+  // Order is the order a scribe worked in: rule the page, lay in the great rune,
+  // write over it, illuminate, then head it — and the spell on top of all of it.
   const written =
-    `<g clip-path="url(#bkClip${key})"><g transform="${frame.m}">` +
-      `<path class="bk-margin" d="${marginRule(frame, MARGIN - 7)}"/>` +
-      `${head}${body}${plate}${art}` +
-    `</g></g>`;
+    `<g clip-path="url(#bkClip${key})">` +
+      `<path class="bk-margin" d="${marginRule(P, MARGIN - 7)}"/>` +
+      pageSigil(P, ink, idx + 1) +
+      `<path class="bk-script" d="${cachedScript(P, idx + 1, spell.id + key)}"/>` +
+      pageInitial(P, ink, idx + 1) +
+      head + seal + fx +
+    `</g>`;
 
   // `data-side` lets the drag handler find the leaf it should turn without
   // re-deriving which spell is on it.
-  const act = unlocked ? ` data-act="spellSelect" data-args='["${spell.id}"]'` : "";
-  return `<g class="bk-page${active ? " active" : ""}${unlocked ? "" : " locked"}" data-side="${side}"${act}>
+  const act = unlocked && !under ? ` data-act="spellSelect" data-args='["${spell.id}"]'` : "";
+  return `<g class="bk-page${active ? " active" : ""}${unlocked ? "" : " locked"}` +
+    `${under ? " under" : ""}" data-side="${side}"${act}>
       ${paper}
       ${unlocked ? "" : `<path class="bk-sealed" d="${d}"/>`}
       ${written}
-      ${active ? `<path class="bk-halo" d="${d}" stroke="${c.mid}"/>` +
+      ${active && !under ? `<path class="bk-halo" d="${d}" stroke="${c.mid}"/>` +
                  `<path class="bk-lit" d="${d}" stroke="${c.mid}"/>` : ""}
       ${ribbon}
+      ${shade}
     </g>`;
 }
 
@@ -603,7 +678,22 @@ function renderSpellbook() {
     `<path class="bk-tool" d="${coverPath(side, 7)}"/>` +
     `<path class="bk-tool thin" d="${coverPath(side, 10)}"/>`;
 
-  // The pool of light the miniature's effect throws onto the paper around it.
+  // The leaf lying under each side of the spread: the page a turn in that
+  // direction brings up. Completely hidden by the open leaf on top of it until
+  // that leaf is dragged off — and WITHOUT it a page turn squeezes a leaf away
+  // to reveal the board underneath, which is why a flip only ever read as its
+  // own first half.
+  //
+  // Which page it is follows the physical turn, not the array: turning the right
+  // leaf over uncovers the next leaf's recto on the right, and turning the left
+  // one back uncovers the previous leaf's verso on the left.
+  const under = (side) => {
+    const to = spread + (side < 0 ? -1 : 1);
+    if (to < 0 || to >= leaves) return "";
+    return spellPage(SPELLS[to * 2 + (side < 0 ? 0 : 1)], side, true);
+  };
+
+  // The wash of light the effect lays on the paper around it.
   // Tinted with that page's own spell, so it has to be built per spread rather
   // than declared once — an unlocked page gets none.
   const pool = (key, spell) => {
@@ -688,6 +778,8 @@ function renderSpellbook() {
       ${cover(1)}
       ${pageStack(-1, spread * 2)}
       ${pageStack(1, SPELLS.length - spread * 2 - 2)}
+      ${under(-1)}
+      ${under(1)}
       ${spellPage(left, -1)}
       ${spellPage(right, 1)}
       <path class="bk-spine" d="M${SPINE_X} ${NOTCH_Y - 2} L${SPINE_X} ${BOOK_H}"/>
@@ -753,7 +845,9 @@ function attachSpellbookDrag() {
   // the spine (0 = flat open, 1 = shut). Dragging left turns the right-hand
   // page over; dragging right turns the left-hand one back.
   const leafSide = (d) => (d < 0 ? 1 : -1);
-  const leafFor = (d) => svg.querySelector(`.bk-page[data-side="${leafSide(d)}"]`);
+  // `:not(.under)` matters: the under-leaf is the FIRST match for its side, and
+  // grabbing it would turn the page that is meant to be revealed.
+  const leafFor = (d) => svg.querySelector(`.bk-page:not(.under)[data-side="${leafSide(d)}"]`);
   const canTurn = (d) => (d < 0 ? (state.bookSpread || 0) < leaves - 1 : (state.bookSpread || 0) > 0);
 
   const setTurn = (leaf, closed) => {
@@ -762,9 +856,20 @@ function attachSpellbookDrag() {
     // and swinging over — the right motion for a book seen this close to flat.
     leaf.setAttribute("transform",
       `translate(${SPINE_X},0) scale(${Math.max(0.02, 1 - closed).toFixed(3)},1) translate(${-SPINE_X},0)`);
+    // ...and it goes dark as it turns away from the light. Squeezing alone reads
+    // as a page being compressed; losing the light is what makes it read as one
+    // being lifted off the leaf underneath.
+    const sh = leaf.querySelector(".bk-shade");
+    if (sh) sh.setAttribute("opacity", (closed * 0.62).toFixed(3));
+  };
+  const clearTurn = (leaf) => {
+    if (!leaf) return;
+    leaf.removeAttribute("transform");
+    const sh = leaf.querySelector(".bk-shade");
+    if (sh) sh.setAttribute("opacity", "0");
   };
   const release = () => {
-    if (turning) turning.removeAttribute("transform");
+    clearTurn(turning);
     svg.classList.remove("dragging");
     turning = null;
   };
@@ -838,7 +943,7 @@ function attachSpellbookDrag() {
       svg.classList.add("dragging");
       setTurn(incoming, 1);
       animateTurn(setTurn, incoming, 1, 0, FLIP_OPEN_MS, () => {
-        incoming.removeAttribute("transform");
+        clearTurn(incoming);
         svg.classList.remove("dragging");
       });
     }

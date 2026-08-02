@@ -176,15 +176,18 @@
   .bk-page.locked .bk-script { stroke: #6b6389; opacity: 0.5; }
   .bk-page.locked .bk-initial-box { stroke: #5b5170; fill: none; }
 
-  /* ---- The miniature ---- A gilt plate seated in the text block. */
-  /* Dark ground, deliberately: the effect on it is LIGHT, and light only reads
-     as light against something darker than the paper around it. The plate is a
-     window cut through the vellum into the aether, not a picture printed on it. */
-  .bk-plate { fill: #17122a; stroke: #b3924e; stroke-width: 1.6; }
-  .bk-plate-shadow { fill: #2e2213; opacity: 0.28; }
-  .bk-plate-rule { fill: none; stroke: #d8b969; stroke-width: 0.8; opacity: 0.5; }
-  .bk-page.locked .bk-plate { fill: #120e20; stroke: #5b5170; }
-  .bk-page.locked .bk-plate-rule { stroke: #5b5170; }
+  /* ---- The page's great rune ---- Laid UNDER the script, which runs straight
+     over it: it is the page's ground, not a picture set into a hole in it. Both
+     rings are projected polygons, so they arrive as the ellipses you'd see on a
+     page tilted away from you rather than as flat circles. */
+  .bk-sigil { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  .bk-sigil-rune { stroke-width: 4; opacity: 0.38; }
+  .bk-sigil-ring { stroke-width: 1.8; opacity: 0.3; }
+  .bk-sigil-ring.thin { stroke-width: 1; opacity: 0.22; }
+  .bk-sigil-tick { stroke-width: 1.6; opacity: 0.26; }
+  .bk-page.active .bk-sigil-rune { opacity: 0.48; }
+  .bk-page.locked .bk-sigil { opacity: 0.7; }
+
   .bk-wax { fill: #7c2434; stroke: #4d1420; stroke-width: 1.4; }
   .bk-wax-shadow { fill: #120c1c; opacity: 0.5; }
   .bk-wax-rim { fill: none; stroke: #a5455a; stroke-width: 2; opacity: 0.85; }
@@ -193,13 +196,14 @@
   .bk-spine { stroke: #100c08; stroke-width: 5; stroke-linecap: round; opacity: 0.85; }
 
   /* ---- The spell playing ON TOP of the page --------------------------------
-     Not an illustration printed on the plate: the effect hovers over it, which
-     is carried by three things together — a pool of its own coloured light
-     spilling onto the paper, a glow on the art itself, and the art overhanging
-     the plate's gilt border instead of sitting inside it. */
-  .bk-pool, .bk-aura { pointer-events: none; }
-  .bk-fx { pointer-events: none; }
-  .bk-page:not(.active) .bk-fx { opacity: 0.72; }
+     Not an illustration on the page: the effect plays over the whole leaf, on a
+     wash of its own coloured light falling on the paper under it. The page the
+     book is open at plays at full strength; the facing page is held well back,
+     or two full-page effects at once would bury the writing on both. */
+  .bk-wash, .bk-fx { pointer-events: none; }
+  .bk-wash { opacity: 0.55; }
+  .bk-page:not(.active) .bk-fx { opacity: 0.62; }
+  .bk-page:not(.active) .bk-wash { opacity: 0.3; }
   .bk-fx-glyph { fill: none; stroke-width: 1.6; opacity: 0.5; stroke-linecap: round; }
 
   /* Every moving part is a CSS loop — no JS driver, nothing per frame. Each
@@ -232,40 +236,47 @@
 
   @keyframes bkPulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.11); } }
   @keyframes bkRipple { 0% { transform: scale(0.55); opacity: 0.75; } 100% { transform: scale(1.7); opacity: 0; } }
-  @keyframes bkLick   { 0% { transform: translateY(5px) scale(0.6); opacity: 0; }
+  @keyframes bkLick   { 0% { transform: translateY(14px) scale(0.6); opacity: 0; }
                         35% { opacity: 0.95; }
-                        100% { transform: translateY(-13px) scale(1.05); opacity: 0; } }
-  @keyframes bkMote   { 0% { transform: translateY(6px); opacity: 0; }
+                        100% { transform: translateY(-34px) scale(1.05); opacity: 0; } }
+  @keyframes bkMote   { 0% { transform: translateY(16px); opacity: 0; }
                         30% { opacity: 0.9; }
-                        100% { transform: translateY(-26px); opacity: 0; } }
+                        100% { transform: translateY(-68px); opacity: 0; } }
   @keyframes bkFlash  { 0%, 12% { opacity: 0.35; } 26%, 100% { opacity: 0.08; } }
-  @keyframes bkBolt   { 0% { opacity: 1; } 20%, 100% { opacity: 0; } }
+  @keyframes bkBolt   { 0% { opacity: 1; } 34%, 100% { opacity: 0; } }
   @keyframes bkSweep  { 0% { opacity: 0; } 45% { opacity: 0.3; } 100% { opacity: 0; } }
-  @keyframes bkDrift  { 0% { transform: translateX(-14px) scale(0.5); opacity: 0; }
+  @keyframes bkDrift  { 0% { transform: translateX(-40px) scale(0.5); opacity: 0; }
                         30% { opacity: 1; }
-                        100% { transform: translateX(20px) scale(1.1); opacity: 0; } }
+                        100% { transform: translateX(58px) scale(1.1); opacity: 0; } }
   @keyframes bkSpin   { to { transform: rotate(360deg); } }
-  @keyframes bkFall   { 0% { transform: translate(-13px, -44px); opacity: 0; }
+  @keyframes bkFall   { 0% { transform: translate(-30px, -122px); opacity: 0; }
                         16%, 84% { opacity: 1; }
-                        100% { transform: translate(0, 22px); opacity: 0; } }
+                        100% { transform: translate(0, 46px); opacity: 0; } }
   @keyframes bkBurst  { 0%, 84% { transform: scaleX(0.3); opacity: 0; }
                         90% { transform: scaleX(1.2); opacity: 0.9; }
                         100% { transform: scaleX(1.6); opacity: 0; } }
   @keyframes bkWard   { 0% { transform: scale(0.82); opacity: 0.55; }
                         100% { transform: scale(1.16); opacity: 0; } }
-  @keyframes bkFloat  { 0%, 100% { transform: translateY(2px); } 50% { transform: translateY(-3px); } }
+  @keyframes bkFloat  { 0%, 100% { transform: translateY(5px); } 50% { transform: translateY(-8px); } }
 
   /* A cast lights its own page for a beat. The class is toggled on the book by
      patchCombatContinuous while a freshly queued effect is still running, so it
      costs one classList call per frame rather than a rebuild. */
   .bk-fx-cast { transform-box: fill-box; transform-origin: 50% 50%; transition: transform 120ms ease-out; }
-  .spellbook.casting .bk-page.active .bk-fx-cast { transform: scale(1.16); }
-  .spellbook.casting .bk-page.active .bk-pool { opacity: 1.7; }
+  .spellbook.casting .bk-page.active .bk-fx-cast { transform: scale(1.1); }
+  .spellbook.casting .bk-page.active .bk-wash { opacity: 0.95; }
 
   /* Every leaf takes the pointer — a tap selects the spell, a drag across the
      book turns the page (see attachSpellbookDrag). Locked leaves are draggable
      too: you can leaf past a sealed page, you just can't cast from it. */
-  .bk-page { pointer-events: auto; }
+  /* Paper turning away from the light. Driven straight off the drag by setTurn,
+     so it tracks the finger; a transition here would lag the page it shades. */
+  .bk-shade { fill: #0d0917; pointer-events: none; }
+  /* An under-leaf is scenery for the length of a page turn — never a tap
+     target, and never in front of the leaf that is actually open. */
+  .bk-page.under { pointer-events: none; }
+
+  .bk-page:not(.under) { pointer-events: auto; }
   .bk-page[data-act] { cursor: pointer; }
   .bk-page[data-act]:active .bk-leaf { stroke: #fff3c4; stroke-width: 2; }
   /* The turning page springs back if the drag falls short of the threshold;
