@@ -127,9 +127,21 @@ function updateEnemies(now, dt) {
       // being teleported down the hall the instant the shape was drawn. The
       // starting tile is read here rather than at cast time: the cast has a
       // wind-up, and the skeleton is still walking through it.
+      //
+      // A shove piles up against the rank behind it — `shoveLimit` is the far
+      // end of the run, the mirror of the `limit` that stops the queue walking
+      // forward through this body. It has to be re-read every frame rather than
+      // resolved once when the shove is booked: the cone sweeps outward, so a
+      // body starts sliding while the ones behind it are still walking in or
+      // haven't been hit yet, and where they will be standing isn't knowable
+      // then. Checked live, the limit simply reopens as each rank is shoved back
+      // in its turn, so a whole lane slides as one and none of them ends up
+      // standing inside another.
+      const shoveLimit = behind ? behind.pos - laneSpacing(e, behind) : Infinity;
       if (e.pushUntil) {
         if (now >= e.pushUntil) {
-          if (e.pushFrom != null) e.pos = e.pushTo;   // land exactly on the mark
+          // Land on the mark, or as close to it as the rank behind allows.
+          if (e.pushFrom != null) e.pos = Math.max(e.pos, Math.min(e.pushTo, shoveLimit));
           e.pushUntil = 0; e.pushFrom = null;
         } else if (now >= e.pushAt) {
           if (e.pushFrom == null) {
@@ -139,7 +151,10 @@ function updateEnemies(now, dt) {
             e.pushTo = Math.min(e.pos + e.pushBy, trackEdgeTiles(e.scale || 1));
           }
           const q = (now - e.pushAt) / Math.max(1, e.pushUntil - e.pushAt);
-          e.pos = e.pushFrom + (e.pushTo - e.pushFrom) * (1 - (1 - q) * (1 - q));
+          const slid = e.pushFrom + (e.pushTo - e.pushFrom) * (1 - (1 - q) * (1 - q));
+          // Never dragged FORWARD by the limit either: a body that has run out
+          // of room stops where it is and waits for the room to open.
+          e.pos = Math.max(e.pos, Math.min(slid, shoveLimit));
           e.phase = "frozen";                 // it's iced the moment it's hit
           limit = e.pos + laneSpacing(e, behind);
           chainSettled = false;
