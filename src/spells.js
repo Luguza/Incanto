@@ -280,6 +280,7 @@ const SPELL_RESOLVERS = {
       e.pushUntil = land + cfg.pushMs;
       e.pushBy = cfg.pushTiles;
       e.pushFrom = null;
+      e.shunted = 0;      // ground the ranks in front give it before its own turn
       e.frozenUntil = land + freeze;
       // Its swing timer resumes from the thaw, so freezing genuinely costs it a
       // hit rather than merely postponing one it had already wound up.
