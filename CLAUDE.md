@@ -49,7 +49,7 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 | `src/spells.js` | **the spell book's rules**: `SPELLS` (registry, in page order), unlock/selection, `spellPower`, and the per-spell resolvers a cast dispatches into |
 | `src/render-assets.js` | sprite sheet + baked canvas assets (`ASSETS`, `buildAssets`) |
 | `src/render-scene.js` | the combat canvas scene (`scene`, `renderScene`, staff/rune draw) |
-| `src/render-spells.js` | what a cast looks like: draws the effect descriptors `state.spellFx` queued by a resolver (bolts, arcs, meteors, cones, auras) |
+| `src/render-spells.js` | what a cast looks like: draws the effect descriptors `state.spellFx` queued by a resolver (blasts, arcs, meteors, cones, auras) |
 | `src/rune-circle.js` | rune-circle population + procedural SVG glyphs |
 | `src/spellbook.js` | the open book along the bottom of combat: page geometry (the V the circle nests in), the page's own `(u,v)` frame everything written rides on, the runic body script, `SPELL_ART` (the animated page effects, staged in 3D on the page — CSS keyframes live in `combat.css`), flipping |
 | `src/combat.js` | rune matching + cast dispatch (`handleRuneClick`, `hitEnemy`) |

@@ -22,8 +22,8 @@
 const SPELLS = [
   {
     id: "fireball", name: "Feuerball", theme: "fireball", sector: "fir", kind: "damage",
-    dmgKey: "dmgFireball", paramKey: "tgtFireball", unlock: null,
-    blurb: "Eine Kugel aus Flammen für jedes der nächsten Ziele — volle Wucht auf jedes, ohne Abschwächung.",
+    dmgKey: "dmgFireball", paramKey: "aoeFireball", unlock: null,
+    blurb: "Eine Kugel aus Flammen, die beim Einschlag zerbirst — alles im Umkreis nimmt die volle Wucht, ohne Abschwächung.",
   },
   {
     id: "lightning", name: "Blitzschlag", theme: "lightning", sector: "lig", kind: "damage",
@@ -188,25 +188,39 @@ function enemyPoint(e) {
 //   power    — this spell's damage before crits
 // ---------------------------------------------------------------------------
 const SPELL_RESOLVERS = {
-  // Feuerball: one bolt per target, each carrying FULL power. Extra targets are
-  // the upgrade; there is no falloff — that's Blitzschlag's trade, not this one.
+  // Feuerball: one ball of flame thrown at the nearest body, which BURSTS where
+  // it lands. Everything inside the blast takes FULL power — the rim hits as hard
+  // as the epicentre, because falloff is Blitzschlag's trade, not this one. The
+  // radius is the upgrade.
   fireball(ctx) {
     const cfg = CONFIG.spells.fireball;
-    const count = Math.min(cfg.maxTargets, cfg.targets + (state.mods.spellParam.tgtFireball || 0));
-    const targets = ctx.pickTargets(count);
+    // Glutkern nodes widen the burst. Its spread ACROSS the lanes grows at half
+    // that rate — the same rule the meteor's crater follows, and for the same
+    // reason: a blast that swallowed every lane at once would erase the lanes.
+    const aoe = state.mods.spellParam.aoeFireball || 0;
+    const radius = Math.min(cfg.maxRadiusTiles, cfg.radiusTiles * (1 + aoe));
+    const laneRadius = cfg.laneRadius * (1 + aoe * 0.5);
+    // The ball is aimed at the nearest skeleton; on a primed cast pickTargets
+    // hands back every frozen body as well, and those are shattered wherever
+    // they stand — that reach is what the Frostkegel combo buys.
+    const aimed = ctx.pickTargets(1);
+    const focus = aimed[0];
+    if (!focus) return 0;                     // nothing to throw it at — no cast, no burst
+    const caught = spellTargets().filter((e) =>
+      Math.abs(e.pos - focus.pos) <= radius && Math.abs(e.lane - focus.lane) <= laneRadius);
+    for (const e of aimed) if (!caught.includes(e)) caught.push(e);
+
+    const land = ctx.castAt + cfg.flightMs;
     let dealt = 0;
-    targets.forEach((target, i) => {
-      // Bolts leave together but land in sequence, so a wide fireball reads as a
-      // volley rather than one silent multi-hit.
-      const land = ctx.castAt + CONFIG.fireballFlightMs + i * cfg.boltStaggerMs;
-      dealt += applySpellHit(target, ctx.power, land, { shatter: ctx.shatter });
-      pushFx({
-        kind: "bolt", spell: "fireball", born: ctx.castAt + i * cfg.boltStaggerMs,
-        landAt: land, until: land + CONFIG.fireballImpactMs,
-        targetId: target.id, to: enemyPoint(target),
-      });
+    for (const e of caught) dealt += applySpellHit(e, ctx.power, land, { shatter: ctx.shatter });
+    state.castTargetId = focus.id;
+    // The drawn blast reads its size off the same two figures the catch above
+    // used, so the fire on screen covers exactly what burned.
+    pushFx({
+      kind: "blast", spell: "fireball", born: ctx.castAt, landAt: land,
+      until: land + cfg.blastMs, targetId: focus.id, to: enemyPoint(focus),
+      radius, laneRadius,
     });
-    if (targets.length) state.castTargetId = targets[0].id;
     return dealt;
   },
 
