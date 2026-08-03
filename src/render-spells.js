@@ -30,6 +30,15 @@ function fxPoint(stored, targetId) {
   return stored;
 }
 
+// A blast's epicentre. The resolver aims at a free point on the floor — usually
+// between bodies, since that is where a disc catches the most of them — and hands
+// it over as an offset from the body the effect rides on, so the fire follows the
+// marching pack rather than sitting where the pack used to be.
+function blastPoint(f) {
+  const at = fxPoint(f.to, f.targetId);
+  return { x: at.x + f.off.x, y: at.y + f.off.y };
+}
+
 // Where a spell leaves the hero: the lit apex of the rune shield he casts
 // through, so every spell launches from the same place the fireball always did.
 function castOrigin() {
@@ -74,16 +83,17 @@ const SPELL_FX = {
   // shockwave ring, and embers flung out along the floor.
   //
   // The fire is drawn at exactly the size the resolver burned: `radius` is in
-  // march tiles and `laneRadius` in lanes, so the ring the player watches expand
-  // IS the catch area, and a Glutkern node is visible as a wider fire rather than
-  // only as a bigger number.
+  // march tiles and covers both axes of the floor, so the ring the player watches
+  // expand IS the catch area — a body lapped by the flames is a body that took
+  // the hit — and a Glutkern node shows up as wider fire, not just a bigger
+  // number.
   blast(ctx, f, now) {
     if (!scene) return;
     const c = CONFIG.colors.spell[f.spell] || CONFIG.colors.spell.fireball;
     if (now < f.landAt) {
-      // In flight: the ball tracks the body it was thrown at, so a marching
-      // skeleton doesn't walk out from under its own fireball.
-      const to = fxPoint(f.to, f.targetId);
+      // In flight: the ball tracks the pack it was thrown at, so a marching
+      // camp doesn't walk out from under its own fireball.
+      const to = blastPoint(f);
       const flight = f.landAt - f.born;
       const q = flight > 0 ? (now - f.born) / flight : 1;
       const from = castOrigin();
@@ -98,19 +108,19 @@ const SPELL_FX = {
     }
     // Where it went off. Pinned on the first frame of the burst: the fire stays
     // where it detonated while the bodies keep walking through it.
-    if (!f.burst) f.burst = fxPoint(f.to, f.targetId);
+    if (!f.burst) f.burst = blastPoint(f);
     const { x, y } = f.burst;
-    const lanes = scene.laneY;
-    const laneStep = lanes.length > 1 ? Math.abs(lanes[1] - lanes[0]) : TILE;
     const q = Math.min(1, (now - f.landAt) / Math.max(1, f.until - f.landAt));
     // Out fast, then hangs: the fire is at its full width by the first third and
     // burns there. A blast that slides evenly outward reads as a bubble growing.
     const grow = 1 - Math.pow(1 - q, 2.6);
     const fade = q < 0.3 ? 1 : 1 - (q - 0.3) / 0.7;
-    // Half a tile of headroom on the lane axis: the catch is measured between
-    // lane centres, so a body on the rim is still standing in the fire.
+    // A circle, because the burn is one: the resolver measures both axes of the
+    // floor in tiles (see withinBlast), and a tile is a tile in either direction
+    // on screen. So the fire is drawn at its true reach on both — every body the
+    // flames touch is a body that took the hit.
     const rx = Math.max(4, f.radius * TILE * grow);
-    const ry = Math.max(3, (f.laneRadius * laneStep + laneStep * 0.5) * grow);
+    const ry = rx;
     const glow = ASSETS.glowFireball;
 
     ctx.save();

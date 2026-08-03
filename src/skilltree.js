@@ -451,12 +451,15 @@ const ARMS = [
     [A.dmgFlat, A.dmgPct, A.critChance, A.dmgFlat],
     { title: "Wirkung",
       arch: [
-        { stat: "aoeFireball", theme: "fireball", base: 0.05, cost: 30, maxRank: 2, growth: 1.6,
+        // Worth half a rank of the frost cone's Weiter Atem, and deliberately: the
+        // radius grows in every direction at once here, so a point of it buys far
+        // more burnt floor than a point of cone reach does (see caps.aoeFireball).
+        { stat: "aoeFireball", theme: "fireball", base: 0.035, cost: 30, maxRank: 2, growth: 1.6,
           title: "Glutkern", blurb: "Der Feuerball zerbirst weiter — die Flammen greifen über den Getroffenen hinaus." },
         sigil("fireball"),
         A.haste,
       ],
-      tip: uq("fireball", "Flammenmeer", KEYSTONE_COST, { aoeFireball: 0.30 },
+      tip: uq("fireball", "Flammenmeer", KEYSTONE_COST, { aoeFireball: 0.20 },
         "Keine Kugel mehr, sondern eine Woge, die über die Reihen schlägt — und jede trifft sie voll.") }),
 
   // ---- Fortune: gold and pace. Belongs to no page — it funds all of them.

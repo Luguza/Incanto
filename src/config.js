@@ -164,6 +164,14 @@ const CONFIG = {
   // up flush against the right border, half-under the 16px edge vignette.
   enemyMaxEmptyMs: 1500,     // longest the screen may sit empty before a filler skeleton walks in
   enemyLanes: 4,             // parallel depth rows the mob streams in on
+  // One lane of depth, measured in march tiles. The lanes are a SQUEEZED axis —
+  // they sit ~8px apart on the floor where a march tile is 16px wide — so the two
+  // axes of the arena are not the same length, and an area spell that wants to
+  // burn a round hole in the mob has to convert between them (see laneDepthTiles
+  // in spells.js, which reads the live figure off the scene and falls back to
+  // this). Measured in lanes instead, a blast drawn as a circle would burn a body
+  // two tiles down the hall while sparing the one standing eight pixels above it.
+  enemyLaneDepthTiles: 0.52,
   // March + melee. A skeleton's `pos` is measured in TILES to the right of the
   // hero's front edge (0 = touching the hero). One pos-unit maps to exactly one
   // 16px floor tile on screen, and the queue keeps > 1 tile between neighbours,
@@ -205,19 +213,20 @@ const CONFIG = {
     // Feuerball — the starting spell. One ball of flame flies into the thickest
     // part of the mob and BURSTS: everything caught in the blast takes FULL
     // damage, and it takes it whether it stood at the epicentre or at the rim (no
-    // falloff — that's Blitzschlag's trade). The radius is the upgrade; the aim
-    // picks the body whose burst catches the most, front and centre on a tie
-    // (see pickBlastFocus in spells.js).
+    // falloff — that's Blitzschlag's trade). The radius is the upgrade; where it
+    // is aimed is pickBlastFocus in spells.js.
     //
-    // `radiusTiles` is measured along the march track, where the queue keeps
-    // ~1.15 tiles between bodies, so the opening blast is the body it hit plus
-    // whoever is pressed up behind it. `laneRadius` is the same blast measured
-    // ACROSS the lanes and starts under 1: a fresh Feuerball burns one lane, and
-    // reaching into the neighbouring ones is what the Glutkern branch sells.
+    // ONE radius, in march tiles, and it governs BOTH axes of the floor — the
+    // lane axis through enemyLaneDepthTiles above. So the burn is a circle on
+    // screen and the rule is the one the player's eye already reads: what the
+    // fire covers, the fire burns. Because the lanes are squeezed, that circle
+    // reaches further in lanes than in tiles — the opening 0.65-tile ball is only
+    // 21px across and still laps the bodies standing directly above and below the
+    // one it hit, which is the point of throwing an explosion instead of a bolt.
     // `maxRadiusTiles` is where the growth stops — it matches caps.aoeFireball,
     // so the cap is the single place that bounds the spell.
-    fireball: { dmgMult: 1.0, radiusTiles: 1.3, maxRadiusTiles: 3.25,
-                laneRadius: 0.85, flightMs: 450, blastMs: 560 },
+    fireball: { dmgMult: 1.0, radiusTiles: 0.65, maxRadiusTiles: 1.4,
+                flightMs: 450, blastMs: 560 },
     // Blitzschlag — arcs from body to body, each hop weaker than the last. Far
     // more reach than Feuerball, paid for in falloff.
     lightning: { dmgMult: 0.95, chain: 3, maxChain: 14, falloff: 0.72, hopMs: 85, holdMs: 260 },
@@ -325,13 +334,15 @@ const CONFIG = {
     // has +148% of Kegelweite in it, and a node tooltip promising a reach past
     // the ceiling would be a lie told at 30 gold a rank.
     coneFrost: 1.0,        // frost cone reach, as a fraction of coneTiles
-    // Feuerball's blast, as a fraction of radiusTiles. The Glutkern branch holds
-    // ~229% of it, so the cap lands about two thirds of the way out — the same
-    // shape as Kegelweite above: the branch is worth walking, and its far end
-    // sells crit and sigils rather than yet more radius. Capped, the burst covers
-    // three lanes and ~6.5 tiles of track: wide, but still a blast around one
-    // body rather than the meteor's rain over the whole hall.
-    aoeFireball: 1.5,
+    // Feuerball's blast, as a fraction of radiusTiles. That radius governs both
+    // axes, so a rank of it widens the fire in every direction at once and buys
+    // far more burnt floor than a rank of cone reach does — hence a node worth
+    // half of Weiter Atem, and a ceiling that means something. From 0.65 tiles to
+    // 1.4 is four and a half times the burnt AREA: against a camp packed four
+    // lanes wide the opening ball takes the body it hit plus the two standing
+    // over and under it, and the capped one takes eight. Wide, but still a blast
+    // around one body rather than the meteor's rain over the whole hall.
+    aoeFireball: 1.15,
     aoeMeteor: 1.0,        // meteor crater size, as a fraction of radiusTiles
     falloffLightning: 0.2, // added to lightning's per-hop falloff (0.72 → at most 0.92)
   },

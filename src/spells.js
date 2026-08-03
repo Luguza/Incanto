@@ -187,37 +187,120 @@ function enemyPoint(e) {
 //   castAt   — when the rune finishes charging and the spell actually leaves
 //   power    — this spell's damage before crits
 // ---------------------------------------------------------------------------
-// Where to throw the Feuerball. A blast centred on the body nearest the hero
-// spends half its radius on the empty hall in front of that body, so the ball is
-// aimed instead at whichever skeleton's burst catches the MOST of the mob.
-//
-// Ties — and in a queue that has bunched up at the standoff line there are many —
-// go to the FRONT of the hall first and then to the CENTRE of the lanes: of two
-// equally fat shots, the nearer one buys time against the rank that is actually
-// swinging, and the middle lane is the one with neighbours on both sides. The
-// candidates are the bodies themselves rather than a free point on the floor:
-// the fire has to visibly land on something, and with the lane spread measured
-// between lane centres, an epicentre floated between two lanes catches no more
-// than one planted on either of them.
-//
-// `bodies` arrives sorted nearest-first (see spellTargets), so the front-most of
-// an equal-scoring set is simply the first one found.
-function pickBlastFocus(bodies, radius, laneRadius) {
-  const mid = (Math.max(1, CONFIG.enemyLanes) - 1) / 2;
-  let best = null, bestCount = 0;
-  for (const c of bodies) {
-    let count = 0;
-    for (const e of bodies) {
-      if (Math.abs(e.pos - c.pos) <= radius && Math.abs(e.lane - c.lane) <= laneRadius) count++;
-    }
-    if (!best || count > bestCount) { best = c; bestCount = count; continue; }
-    if (count < bestCount) continue;
-    // Same haul: take the one nearer the hero, then the one nearer mid-hall.
-    const ahead = c.pos - best.pos;
-    if (ahead < -1e-6 ||
-      (Math.abs(ahead) <= 1e-6 && Math.abs(c.lane - mid) < Math.abs(best.lane - mid))) best = c;
+// One lane of depth, in march tiles. The lanes are a squeezed axis — ~8px apart
+// on the floor where a march tile is 16px — so "two lanes away" and "two tiles
+// away" are nothing like the same distance, and an area spell has to convert
+// before it can be round. Read off the live scene (that spacing is fixed art
+// geometry: it comes from the floor's tile rows, never from the screen width),
+// with the authored figure as the fallback for a headless cast.
+// Averaged across the whole floor rather than taken off the first pair: the feet
+// lines are rounded to whole pixels, so consecutive steps differ by one and the
+// first pair alone would bias every blast a pixel wide or narrow.
+function laneDepthTiles() {
+  const lanes = scene && scene.laneY;
+  if (lanes && lanes.length > 1) {
+    return Math.abs(lanes[lanes.length - 1] - lanes[0]) / (lanes.length - 1) / TILE;
   }
-  return best;
+  return CONFIG.enemyLaneDepthTiles;
+}
+
+// Is `e` inside a blast of `radius` tiles centred on `at`? Both axes are measured
+// in tiles, so this is a genuine circle on the floor rather than a box of "some
+// tiles by some lanes" — which is what lets the drawn fire and the burnt bodies
+// be the same shape (see the blast painter in render-spells.js).
+function withinBlast(e, at, radius, laneDepth) {
+  // The slack is for the candidates below, which are built to rest exactly on two
+  // bodies: without it, floating point drops the very pair a candidate was cut to
+  // catch. A thousandth of a tile is a sixtieth of a pixel.
+  return Math.hypot(e.pos - at.pos, (e.lane - at.lane) * laneDepth) <= radius + 1e-3;
+}
+
+// A point on the march floor, pulled back inside it. Seats are worked out in a
+// flat (tiles, tiles) space with the lane axis multiplied out by laneDepth, so
+// the geometry above is ordinary plane geometry that never has to know what a
+// lane is; this is where it lands back on the board.
+function blastSeat(x, y, laneDepth) {
+  const lastLane = Math.max(1, CONFIG.enemyLanes) - 1;
+  return { pos: Math.max(0, x), lane: Math.min(lastLane, Math.max(0, y / laneDepth)) };
+}
+
+// Every epicentre worth considering for a blast of `radius`. A disc that catches
+// the most bodies can always be slid until its rim rests on TWO of them — or, with
+// nothing left to slide against, sat straight on one — so this is the complete set
+// of placements rather than a sampling of the floor: each body, plus, for every
+// pair close enough to share one disc, the two centres of a disc of exactly
+// `radius` through both. n is at most CONFIG.enemyMaxCount, so the pair sweep is
+// a few thousand distance checks once per cast.
+function blastCandidates(bodies, radius, laneDepth) {
+  const pts = bodies.map((e) => ({ x: e.pos, y: e.lane * laneDepth }));
+  const out = pts.map((p) => blastSeat(p.x, p.y, laneDepth));
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      const dx = pts[j].x - pts[i].x, dy = pts[j].y - pts[i].y;
+      const d = Math.hypot(dx, dy);
+      if (d < 1e-6 || d > radius * 2) continue;      // same spot, or too far apart to share a disc
+      const h = Math.sqrt(Math.max(0, radius * radius - (d / 2) * (d / 2)));
+      const mx = (pts[i].x + pts[j].x) / 2, my = (pts[i].y + pts[j].y) / 2;
+      const ux = -dy / d, uy = dx / d;               // perpendicular to the pair
+      out.push(blastSeat(mx + ux * h, my + uy * h, laneDepth),
+        blastSeat(mx - ux * h, my - uy * h, laneDepth));
+    }
+  }
+  return out;
+}
+
+// Where to throw the Feuerball: wherever its burst catches the MOST of the mob.
+// A blast centred on the body nearest the hero spends half its radius on the
+// empty hall in front of that body, and one centred on any single body wastes
+// whatever sticks out past the pack — so the epicentre is a free point on the
+// floor, taken from the candidates above.
+//
+// Those candidates rest their rim on two bodies, which means they sit off to one
+// side of the group they caught. Every one of them therefore also offers the
+// MIDDLE of its own catch as a seat: same bodies, but the fire bursts in the
+// crowd instead of beside it, and a body that drifts during the ball's flight has
+// somewhere to drift to. It is offered rather than imposed — if the middle drops
+// a body, it loses on count like any other seat.
+//
+// Ranking, in order: most bodies caught; then the snuggest fit (least spread
+// between the fire and what it burns); then the FRONT of the hall, since of two
+// equal shots the nearer one buys time against the rank that is actually
+// swinging; then the CENTRE lane, the one with neighbours on both sides.
+function pickBlastFocus(bodies, radius, laneDepth) {
+  const mid = (Math.max(1, CONFIG.enemyLanes) - 1) / 2;
+  const score = (at) => {
+    let count = 0, spread = 0;
+    for (const e of bodies) {
+      if (!withinBlast(e, at, radius, laneDepth)) continue;
+      count++;
+      spread += (e.pos - at.pos) ** 2 + ((e.lane - at.lane) * laneDepth) ** 2;
+    }
+    return { at, count, spread };
+  };
+  const caughtBy = (at) => bodies.filter((e) => withinBlast(e, at, radius, laneDepth));
+
+  let best = null;
+  for (const at of blastCandidates(bodies, radius, laneDepth)) {
+    const caught = caughtBy(at);
+    // Empty only when the clamp above slid a seat off its own pair, which leaves
+    // nothing to take the middle of.
+    const seats = [score(at)];
+    if (caught.length) {
+      seats.push(score(blastSeat(
+        caught.reduce((s, e) => s + e.pos, 0) / caught.length,
+        caught.reduce((s, e) => s + e.lane * laneDepth, 0) / caught.length, laneDepth)));
+    }
+    for (const seat of seats) {
+      if (!best || seat.count > best.count) { best = seat; continue; }
+      if (seat.count < best.count) continue;
+      if (seat.spread < best.spread - 1e-6) { best = seat; continue; }
+      if (seat.spread > best.spread + 1e-6) continue;
+      const ahead = seat.at.pos - best.at.pos;
+      if (ahead < -1e-6 || (Math.abs(ahead) <= 1e-6 &&
+        Math.abs(seat.at.lane - mid) < Math.abs(best.at.lane - mid))) best = seat;
+    }
+  }
+  return best.at;
 }
 
 const SPELL_RESOLVERS = {
@@ -227,17 +310,15 @@ const SPELL_RESOLVERS = {
   // one. The radius is the upgrade; where it's aimed is pickBlastFocus above.
   fireball(ctx) {
     const cfg = CONFIG.spells.fireball;
-    // Glutkern nodes widen the burst. Its spread ACROSS the lanes grows at half
-    // that rate — the same rule the meteor's crater follows, and for the same
-    // reason: a blast that swallowed every lane at once would erase the lanes.
+    // Glutkern nodes widen the burst — one radius, both axes, so the fire grows
+    // as a circle and never as a stripe down one lane.
     const aoe = state.mods.spellParam.aoeFireball || 0;
     const radius = Math.min(cfg.maxRadiusTiles, cfg.radiusTiles * (1 + aoe));
-    const laneRadius = cfg.laneRadius * (1 + aoe * 0.5);
+    const laneDepth = laneDepthTiles();
     const ordered = spellTargets();
     if (!ordered.length) return 0;             // nothing to throw it at — no cast, no burst
-    const focus = pickBlastFocus(ordered, radius, laneRadius);
-    const caught = ordered.filter((e) =>
-      Math.abs(e.pos - focus.pos) <= radius && Math.abs(e.lane - focus.lane) <= laneRadius);
+    const focus = pickBlastFocus(ordered, radius, laneDepth);
+    const caught = ordered.filter((e) => withinBlast(e, focus, radius, laneDepth));
     // A primed cast shatters every frozen body wherever it stands, inside the
     // blast or not — pickTargets(0) hands back exactly those, and that reach is
     // what the Frostkegel combo buys.
@@ -246,13 +327,23 @@ const SPELL_RESOLVERS = {
     const land = ctx.castAt + cfg.flightMs;
     let dealt = 0;
     for (const e of caught) dealt += applySpellHit(e, ctx.power, land, { shatter: ctx.shatter });
-    state.castTargetId = focus.id;
-    // The drawn blast reads its size off the same two figures the catch above
-    // used, so the fire on screen covers exactly what burned.
+
+    // The epicentre is a point on the floor, not a body, so the effect rides on
+    // the front-most body it caught plus an offset: the whole pack marches at one
+    // pace, so carrying the fire on one of them keeps it over the bodies it burned
+    // through the ball's flight instead of landing behind them.
+    const anchor = caught[0];
+    state.castTargetId = anchor.id;
+    // The drawn blast reads its size off the same radius the catch above used, so
+    // the fire on screen covers exactly what burned — nothing standing in it
+    // walks away, and nothing outside it takes a hit it never saw coming.
     pushFx({
       kind: "blast", spell: "fireball", born: ctx.castAt, landAt: land,
-      until: land + cfg.blastMs, targetId: focus.id, to: enemyPoint(focus),
-      radius, laneRadius,
+      until: land + cfg.blastMs, targetId: anchor.id, to: enemyPoint(anchor), radius,
+      off: {
+        x: (focus.pos - anchor.pos) * TILE,
+        y: (focus.lane - anchor.lane) * laneDepth * TILE,
+      },
     });
     return dealt;
   },
