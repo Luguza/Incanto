@@ -188,6 +188,14 @@ const CONFIG = {
   //
   // Only Feuerball is known at the start; the other five are unique unlock
   // nodes buried a few tiers out in their own sector of the tree.
+  // THE BOOK ITSELF — how the open spread behaves, as opposed to what a spell
+  // does. Geometry and page art live in spellbook.js; this is only the timing.
+  book: {
+    // How long the open page's miniature stays flared after a cast. Matched to
+    // the shortest spell effect on the canvas, so the page settles at about the
+    // moment the spell it answered finishes.
+    castFlashMs: 420,
+  },
   spells: {
     // A Frostkegel leaves the hero's next spell "primed": it shatters frozen
     // bodies for primeMult damage and reaches every frozen skeleton, not just
