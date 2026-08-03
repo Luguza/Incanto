@@ -291,6 +291,83 @@ try {
   const inert = await page.evaluate(() => state.quizIndex);
   check(inert === 0, "keys do not drive the game — a stray Enter/Space changes nothing (index " + inert + ")");
 
+  // 8. Binding the book (see book-order.js): the forge's book button opens the
+  //    whole spell book as three open volumes, and a page dragged onto another
+  //    trades places with it. Driven the way a thumb drives it — press, move,
+  //    release — because that is the only input this game has.
+  await page.evaluate(() => {
+    for (const s of Incanto.spells.SPELLS) state.mods.spellsUnlocked[s.id] = true;
+    state.screen = "upgrade";
+    state._structuralDirty = true;
+    render(performance.now());
+  });
+  await page.click('[data-act="openBookOrder"]');
+  await page.waitForTimeout(200);
+  const bound = await page.evaluate(() => ({
+    screen: state.screen,
+    books: document.querySelectorAll(".bo-book").length,
+    pages: document.querySelectorAll(".bk-page[data-slot]").length,
+    order: Incanto.spells.bookOrder(),
+    phase: (document.querySelector("#bottom-nav .nav-btn.active") || {}).dataset.phase,
+  }));
+  check(bound.screen === "bookorder" && bound.books === 3 && bound.pages === 6,
+    "the forge's book button opens three open books (" + bound.books + " books, " + bound.pages + " pages)");
+  check(bound.phase === "upgrade", "binding the book sits inside the upgrade phase (nav=" + bound.phase + ")");
+
+  const drag = async (fromSlot, toPoint) => {
+    const r = await page.locator(`.bk-page[data-slot="${fromSlot}"] .bk-leaf`).boundingBox();
+    const from = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 8, from.y + 16, { steps: 4 });
+    await page.mouse.move(toPoint.x, toPoint.y, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+  };
+  const lastLeaf = await page.locator('.bk-page[data-slot="5"] .bk-leaf').boundingBox();
+  await drag(0, { x: lastLeaf.x + lastLeaf.width / 2, y: lastLeaf.y + lastLeaf.height / 2 });
+  const swapped = await page.evaluate(() => ({
+    order: Incanto.spells.bookOrder(),
+    saved: (JSON.parse(localStorage.getItem("incanto.save.v1") || "{}").spellOrder || []).join(","),
+    carried: document.querySelectorAll("#bo-carry .bk-page").length,
+  }));
+  check(swapped.order[0] === bound.order[5] && swapped.order[5] === bound.order[0] &&
+    swapped.order.slice(1, 5).join(",") === bound.order.slice(1, 5).join(","),
+    "dragging a page onto another trades exactly those two places (" + swapped.order.join(" · ") + ")");
+  check(swapped.saved === swapped.order.join(","), "the new binding is persisted");
+  check(swapped.carried === 0, "the carried page is put down again");
+
+  //    A drag that lands on no page changes nothing — the leaf falls back into
+  //    the slot it came from rather than being lost or dropped somewhere else.
+  const stage = await page.locator(".bo-canvas").boundingBox();
+  await drag(1, { x: stage.x + stage.width / 2, y: stage.y + 4 });
+  const missed = await page.evaluate(() => ({
+    order: Incanto.spells.bookOrder(),
+    pages: document.querySelectorAll(".bk-page[data-slot]").length,
+    carried: document.querySelectorAll("#bo-carry .bk-page").length,
+  }));
+  check(missed.order.join(",") === swapped.order.join(",") && missed.pages === 6 && missed.carried === 0,
+    "a page dropped on nothing settles back into its own slot");
+
+  //    …and the book the hero actually fights out of is bound that way too.
+  await page.click('[data-act="closeBookOrder"]');
+  await page.waitForTimeout(150);
+  const closed = await page.evaluate(() => state.screen);
+  await page.evaluate(() => {
+    state.screen = "combat";
+    state._structuralDirty = true;
+    render(performance.now());
+  });
+  await page.waitForTimeout(200);
+  const inCombat = await page.evaluate(() => ({
+    names: [...document.querySelectorAll("#spellbook .bk-page:not(.under) .bk-name")].map((n) => n.textContent),
+    want: Incanto.spells.bookSpells()
+      .slice(state.bookSpread * 2, state.bookSpread * 2 + 2).map((s) => s.name),
+  }));
+  check(closed === "upgrade", "leaving the book returns to the tree (screen=" + closed + ")");
+  check(inCombat.names.join(",") === inCombat.want.join(",") && inCombat.names.length === 2,
+    "the combat book opens on the newly bound order (" + inCombat.names.join(" | ") + ")");
+
   check(errors.length === 0, "no console/page errors");
 
   console.log("\nSMOKE TEST PASSED");

@@ -1180,6 +1180,14 @@ function renderUpgradeFull() {
     <div class="screen tree-screen">
       <div class="tree-topbar">
         <div class="tree-title">Runenbaum</div>
+        <!-- The tree opens pages; this is where they're bound into an order
+             (see book-order.js). -->
+        <button class="bo-open" data-act="openBookOrder">
+          <svg class="bo-open-icon" viewBox="0 0 24 16" aria-hidden="true">
+            <path d="M12 3.4C9.6 1.6 6.6 1.2 3 1.9v11.4c3.6-.7 6.6-.3 9 1.5 2.4-1.8 5.4-2.2 9-1.5V1.9c-3.6-.7-6.6-.3-9 1.5Z"/>
+            <path class="bo-open-spine" d="M12 3.4v11.4"/>
+          </svg>Buch
+        </button>
         <div class="tree-gold"><span class="coin">◈</span> ${state.gold}</div>
       </div>
       <svg class="tree-canvas" id="tree-canvas" viewBox="0 0 900 900" preserveAspectRatio="xMidYMid meet">
