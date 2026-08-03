@@ -56,7 +56,15 @@ const CONFIG = {
   quizOptionCount: 4,
   quizMatchPairs: 5,     // tap-to-match exercise: pairs per board
   goldPerCorrect: 12,
-  quizKillBonus: 5, // bonus gold per question, scaled by skeletons slain last run
+  // Fighting doesn't pay out gold — it charges the multiplier the quiz pays out
+  // AT. Every skeleton slain lifts it, and the charge BANKS across runs
+  // (state.rewardKills): dying doesn't burn it, starting a fresh run doesn't
+  // reset it. It is only spent by finishing a whole quiz session (see
+  // advanceQuiz), so a run that ended at two kills still added its two to the
+  // pile. The cap is the nudge — once the bank is full, further fighting is
+  // wasted until the player goes and studies.
+  rewardPerKill: 0.1,   // +10% quiz gold per banked skeleton
+  rewardMultMax: 5,     // ceiling on the banked multiplier (×5)
   quizFeedbackMs: 650,   // how long a wrong match flashes red before clearing
   // Learning history (see vocab-history.js): every word the player meets — in a
   // quiz question or in the rune circle — is tallied, and the words they have

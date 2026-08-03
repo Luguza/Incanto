@@ -108,7 +108,7 @@ const NAV_PHASE_FOR_SCREEN = { quiz: "study", history: "study", upgrade: "upgrad
 
 let lastNavPhase = null;
 function updateNav() {
-  const phase = NAV_PHASE_FOR_SCREEN[state.screen] || null; // "defeat" highlights nothing
+  const phase = NAV_PHASE_FOR_SCREEN[state.screen] || null; // "reward" highlights nothing
   if (phase === lastNavPhase) return;
   lastNavPhase = phase;
   document.querySelectorAll("#bottom-nav .nav-btn").forEach((btn) => {

@@ -43,7 +43,7 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 | `src/content.js` | vocab + sentences: `WORD_POOL`, `SENTENCE_POOL`, … |
 | `src/encounters.js` | **where enemy packs are designed**: `PACKS` (formations), `ENCOUNTER_PLAN` (which pack at which metre mark), `LATE_CYCLE` (endless tail). Deterministic — no randomness |
 | `src/vocab-history.js` | the learning record: per-word tallies (seen / correct / wrong, split quiz vs. rune circle) in `state.vocab` + its own save key, the per-day buckets behind "struggled with lately", the `struggleDrawPool` weighting `drawLoadout` deals review words from, and `renderHistoryFull` (the Lernverlauf screen) |
-| `src/state.js` | `state`, `freshState`, save/load/clear (persistence) |
+| `src/state.js` | `state`, `freshState`, save/load/clear (persistence), and the **reward bank**: `creditKill` / `rewardMult` — kills charge a gold multiplier that banks across runs (persisted) and is only spent by finishing a whole quiz |
 | `src/progression.js` | pack spawning (`spawnPack`), frame-edge geometry, run start, circle layout |
 | `src/skilltree.js` | the upgrade phase: an **authored** PoE-style rune tree (~1050 nodes) plus purchase/reveal logic, the derived stat model (`recomputeMods`) and the pan/zoom SVG screen (`renderUpgradeFull`). **Where you add or move nodes:** the `ARMS` table. Twelve arms leave the seed, alternating spell / generic; each runs `prelude` (rings 1–4, cheap generic nodes) → its **key** at ring 5 (a spell's unlock node, or a generic arm's notable — always visible via `beacon`) → `branches` (five aspect branches on a spell arm, three on a generic one) that fork in two around ring 13 and end in unique keystones out near ring 19, with dead-end offshoots hanging off them. Branch content is written as a short list of `A.*` archetypes it cycles outward. Rings are bookkeeping (cost + value); positions come from `radialSlices` + `relaxTree` (angular slices by subtree size, then springs/repulsion for even spacing), so don't read geometry off the ring |
 | `src/spells.js` | **the spell book's rules**: `SPELLS` (registry, in page order), unlock/selection, `spellPower`, and the per-spell resolvers a cast dispatches into |
@@ -53,7 +53,7 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 | `src/rune-circle.js` | rune-circle population + procedural SVG glyphs |
 | `src/spellbook.js` | the open book along the bottom of combat: page geometry (the V the circle nests in), the page's own `(u,v)` frame everything written rides on, the runic body script, `SPELL_ART` (the animated page effects, staged in 3D on the page — CSS keyframes live in `combat.css`), flipping |
 | `src/combat.js` | rune matching + cast dispatch (`handleRuneClick`, `hitEnemy`) |
-| `src/quiz.js` | vocab-quiz logic + exercise handlers (`quizChoose`, `buildQuiz`, …) |
+| `src/quiz.js` | vocab-quiz logic + exercise handlers (`quizChoose`, `buildQuiz`, …); `quizReward` applies the banked multiplier, `advanceQuiz` cashes it in on the last question |
 | `src/screens.js` | full-screen DOM renderers (innerHTML into `#app`) |
 | `src/nav.js` | bottom phase-switcher nav (`navTo`, pixel-art icons) — renders into `<nav id="bottom-nav">` |
 | `src/input.js` | pointer/drag handling for the rune circle |

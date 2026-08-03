@@ -11,7 +11,7 @@ let state = null;
 
 function freshState() {
   return {
-    screen: "combat",       // combat | quiz | upgrade | defeat
+    screen: "combat",       // combat | quiz | upgrade | reward
     runActive: false,       // a combat run is live (used by the bottom nav to resume vs. restart)
     runes: [],               // {id, pairId, lang, word, x, y, matchState}
     selectedRuneId: null,
@@ -46,7 +46,11 @@ function freshState() {
     // right of the hero (0 = at him); `phase` is walk | idle | attack | struck |
     // dying. `struck` = fatally hit, standing until the bolt lands, then it
     // collapses.
-    kills: 0,                 // skeletons slain this run (score + quiz gold bonus)
+    kills: 0,                 // skeletons slain this run (the end-screen score)
+    // The reward bank: skeletons slain and not yet cashed in. Unlike `kills` it
+    // survives a death and a fresh run (see creditKill) and is persisted — it
+    // empties only when a whole quiz session is finished.
+    rewardKills: 0,
     enemies: [],
     nextEnemyId: 1,
     packIndex: 0,             // how far through the encounter plan this run has walked (see encounters.js)
@@ -116,6 +120,28 @@ function newGame() {
   applySavedProgress();
 }
 
+// A slain skeleton counts twice: once toward this run's score, and once into the
+// reward bank that multiplies the next quiz's payout. The bank is deliberately
+// NOT cleared by starting a new run (see startRun) and not by dying either — it
+// only empties when a full quiz session is finished (see advanceQuiz), so every
+// fight the player wins is eventually worth gold. Persisted on the spot so a
+// reload mid-run can't swallow the pile.
+function creditKill() {
+  state.kills++;
+  state.rewardKills++;
+  saveProgress();
+}
+
+// The multiplier the banked kills are currently worth, capped. Reads as "×2.4"
+// on the reward screen and in the quiz header.
+function rewardMult() {
+  const banked = Math.max(0, state.rewardKills || 0);
+  return Math.min(1 + banked * CONFIG.rewardPerKill, CONFIG.rewardMultMax);
+}
+function rewardMultCapped() {
+  return rewardMult() >= CONFIG.rewardMultMax;
+}
+
 // ---------------------------------------------------------------------------
 // Persistence — meta-progression (gold + upgrade levels) survives reloads via
 // localStorage. Only the source-of-truth numbers are stored; hero DMG and max
@@ -128,6 +154,7 @@ function saveProgress() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       gold: state.gold,
+      rewardKills: state.rewardKills,
       nodeRanks: state.nodeRanks,
       activeSpell: state.activeSpell,
     }));
@@ -169,6 +196,7 @@ function applySavedProgress() {
   let orphanedRanks = 0;
   if (data) {
     state.gold = asCount(data.gold);
+    state.rewardKills = asCount(data.rewardKills);
     if (data.nodeRanks && typeof data.nodeRanks === "object") {
       const ranks = {};
       const nodes = (typeof TREE_NODES !== "undefined") ? TREE_NODES : {};
@@ -212,4 +240,7 @@ function applySavedProgress() {
   state.heroHP = state.heroMaxHP;
 }
 
-window.Incanto.state = { freshState, newGame, saveProgress, loadProgress, clearProgress, applySavedProgress };
+window.Incanto.state = {
+  freshState, newGame, saveProgress, loadProgress, clearProgress, applySavedProgress,
+  creditKill, rewardMult, rewardMultCapped,
+};
