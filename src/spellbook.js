@@ -937,7 +937,12 @@ function attachSpellbookDrag() {
   // inside the same frame's render, before anything is painted, so the page is
   // never briefly seen already open.
   if (pendingOpenSide) {
-    const incoming = svg.querySelector(`.bk-page[data-side="${pendingOpenSide}"]`);
+    // `:not(.under)` again, and it is the whole second half of the turn: the
+    // under-leaf is the FIRST match for its side, so without it the swing was
+    // applied to the page HIDDEN BENEATH the one that just came over. The
+    // animation ran perfectly and was invisible, and a turn stopped dead with
+    // the leaf stood upright against the spine.
+    const incoming = svg.querySelector(`.bk-page:not(.under)[data-side="${pendingOpenSide}"]`);
     pendingOpenSide = 0;
     if (incoming) {
       svg.classList.add("dragging");
