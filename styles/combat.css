@@ -311,6 +311,9 @@
   .bk-page.under { pointer-events: none; }
 
   .bk-page:not(.under) { pointer-events: auto; }
+  /* The leaf being carried over mid-turn is in flight, not in the spread: it is
+     only in the SVG for the length of the drag, so it must never take a tap. */
+  .bk-turn { pointer-events: none; }
   .bk-page[data-act] { cursor: pointer; }
   .bk-page[data-act]:active .bk-leaf { stroke: #fff3c4; stroke-width: 2; }
   /* The turning page springs back if the drag falls short of the threshold;

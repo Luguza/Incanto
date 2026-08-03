@@ -66,9 +66,6 @@ const PAGE_L = [
 // edge lifts through its middle, and the outer edge bellies out toward the
 // screen edge. The two clipped lower edges stay straight — nobody sees them.
 const TOP_BOW = 7, OUT_BOW = 5;
-// How far a page must be dragged, as a fraction of the book's width, before
-// letting go turns the leaf instead of springing it back.
-const FLIP_THRESHOLD = 0.12;
 
 const mirror = (p) => ({ x: 2 * SPINE_X - p.x, y: p.y });
 const pageCorners = (side) => (side < 0 ? PAGE_L : PAGE_L.map(mirror));
@@ -569,9 +566,27 @@ const SPELL_ART = {
 // carries a ribbon and a lit border. `under` marks an under-leaf: the page a
 // turn would bring up, drawn beneath the open one and only ever glimpsed for a
 // fifth of a second mid-turn, so it gets no effect, no ribbon and no tap target.
-function spellPage(spell, side, under) {
+// The wash of light an effect lays on the paper around it. Tinted with that
+// page's own spell, so it is built per leaf rather than declared once — a
+// locked page gets none.
+function poolGradient(id, spell) {
+  const c = spell && spellUnlocked(spell.id) ? CONFIG.colors.spell[spell.id] : null;
+  if (!c) return `<radialGradient id="${id}"><stop offset="0" stop-color="#000" stop-opacity="0"/></radialGradient>`;
+  return `<radialGradient id="${id}">
+      <stop offset="0" stop-color="${c.core}" stop-opacity="0.5"/>
+      <stop offset="0.45" stop-color="${c.mid}" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="${c.mid}" stop-opacity="0"/>
+    </radialGradient>`;
+}
+
+// `poolId` overrides which light-pool gradient the page's effect lights the
+// vellum with. The two leaves of the open spread use their side's own
+// (`bkPoolL` / `bkPoolR`), but a leaf built outside the spread — the one a turn
+// carries over, see `turnLeaf` — is not either side's page and brings its own.
+function spellPage(spell, side, under, poolId) {
   const d = leafPath(side);
   const key = side < 0 ? "L" : "R";
+  const poolRef = poolId || "bkPool" + key;
   const P = pageProject(side);
   // The paper itself: a gradient-filled leaf, a fibre wash and a little foxing
   // to break the flat fill, a shadow welling out of the gutter, a sheen along
@@ -607,7 +622,7 @@ function spellPage(spell, side, under) {
   const base = CONFIG.colors.spell[spell.id];
   // `pool` is the page's own light gradient — an effect's parts light the paper
   // they stand on, so each of them needs to be able to reach it.
-  const c = { ...base, deep: inkShade(base.mid, 0.55), pool: "bkPool" + key };
+  const c = { ...base, deep: inkShade(base.mid, 0.55), pool: poolRef };
   const unlocked = spellUnlocked(spell.id);
   const active = unlocked && spell.id === activeSpellId();
   const idx = SPELLS.indexOf(spell);
@@ -642,7 +657,7 @@ function spellPage(spell, side, under) {
   // level is the ambient wash of the spell's colour on the vellum.
   const fx = under || !unlocked ? "" :
     `<g transform="${P.frameAt(PAGE_W / 2, FX_V)}">` +
-      `<ellipse class="bk-wash" rx="118" ry="96" fill="url(#bkPool${key})"/></g>` +
+      `<ellipse class="bk-wash" rx="118" ry="96" fill="url(#${poolRef})"/></g>` +
     `<g class="bk-fx"><g class="bk-fx-cast">${SPELL_ART[spell.id](c, D, P)}</g></g>`;
 
   // Sealed: a blob of wax pressed over the page's own rune, its sigil unread.
@@ -788,19 +803,6 @@ function renderSpellbook() {
     return spellPage(SPELLS[to * 2 + (side < 0 ? 0 : 1)], side, true);
   };
 
-  // The wash of light the effect lays on the paper around it.
-  // Tinted with that page's own spell, so it has to be built per spread rather
-  // than declared once — an unlocked page gets none.
-  const pool = (key, spell) => {
-    const c = spell && spellUnlocked(spell.id) ? CONFIG.colors.spell[spell.id] : null;
-    if (!c) return `<radialGradient id="bkPool${key}"><stop offset="0" stop-color="#000" stop-opacity="0"/></radialGradient>`;
-    return `<radialGradient id="bkPool${key}">
-        <stop offset="0" stop-color="${c.core}" stop-opacity="0.5"/>
-        <stop offset="0.45" stop-color="${c.mid}" stop-opacity="0.22"/>
-        <stop offset="1" stop-color="${c.mid}" stop-opacity="0"/>
-      </radialGradient>`;
-  };
-
   // Paper is lit from the outer edge and falls into shadow toward the gutter,
   // which is most of what stops a flat fill reading as cardboard. One gradient
   // per side because the light runs the opposite way on each leaf; the gutter
@@ -839,8 +841,8 @@ function renderSpellbook() {
         <stop offset="0.5" stop-color="#fffdf2" stop-opacity="0.12"/>
         <stop offset="1" stop-color="#fffdf2" stop-opacity="0"/>
       </linearGradient>
-      ${pool("L", left)}
-      ${pool("R", right)}
+      ${poolGradient("bkPoolL", left)}
+      ${poolGradient("bkPoolR", right)}
       <clipPath id="bkClipL"><path d="${leafPath(-1)}"/></clipPath>
       <clipPath id="bkClipR"><path d="${leafPath(1)}"/></clipPath>
       <clipPath id="bkCoverClipL"><path d="${coverPath(-1)}"/></clipPath>
@@ -901,31 +903,50 @@ function spellbookFlip(dir) {
 // ---------------------------------------------------------------------------
 let bookDragUntil = 0;
 
-// A released flip is finished for the player: the grabbed leaf swings the rest
-// of the way over to the spine, the spread changes under it, and the leaf now
-// facing up swings back OPEN on the other side. Letting go halfway through and
-// snapping the new spread in would show only the first half of a page turn.
-const FLIP_CLOSE_MS = 190;             // the grabbed leaf finishing its swing
-const FLIP_OPEN_MS = 230;              // the leaf beneath opening out
-// Which side's leaf should swing open once the book is rebuilt at its new
-// spread. Survives the re-render (the SVG is replaced wholesale), which is why
-// it lives out here rather than inside attachSpellbookDrag.
-let pendingOpenSide = 0;
+// A page turn is ONE motion, and the finger drives all of it: the grabbed leaf
+// stands up to the spine over the first half of the drag, and the leaf it
+// carries over lays itself down on the other side over the second half. Both
+// halves are on the same 0 → 1 progress, so `t = 0.5` is the leaf upright at the
+// spine and `t = 1` is the turn finished with the finger still down.
+//
+// It used to be only the first half that tracked: the second half could not run
+// until the book was re-rendered at its new spread, because the leaf it lays
+// down is not part of the CURRENT spread and simply wasn't in the SVG. So a
+// drag could only ever squeeze the page to the gutter and stop, and the rest of
+// the turn played by itself on release. `turnLeaf` below is what fixes it — the
+// incoming leaf is built and slipped into the book when the drag STARTS, so
+// there is something to lay down while the finger is still moving.
+const TURN_SPAN = 0.6;                 // a whole turn, as a fraction of the book's width
+const FLIP_COMMIT = 0.24;              // past this much of a turn, letting go finishes it
+const FLIP_FINISH_MS = 300;            // a full turn's worth of finishing it off after a flick
 
-// Drive `setTurn` from one closed-fraction to another over `ms`, easing out.
-// Bails if the leaf is torn out from under it — a structural re-render mid-turn
-// replaces the whole book, and the fresh one is already in the right shape.
-function animateTurn(setTurn, leaf, from, to, ms, done) {
+// The leaf a turn in `dir` carries over, ready to drop into the book: the verso
+// of the page being turned, which lands on the other side of the spine. Turning
+// the right leaf over (dir +1) brings the next spread's left page over; turning
+// the left one back brings the previous spread's right page. It carries its own
+// light-pool gradient because it belongs to neither side of the open spread.
+function turnLeaf(dir) {
+  const leaves = Math.ceil(SPELLS.length / 2);
+  const to = (state.bookSpread || 0) + dir;
+  if (to < 0 || to >= leaves) return "";
+  const spell = SPELLS[to * 2 + (dir > 0 ? 0 : 1)];
+  return `<g class="bk-turn"><defs>${poolGradient("bkPoolT", spell)}</defs>` +
+    spellPage(spell, dir > 0 ? -1 : 1, false, "bkPoolT") + `</g>`;
+}
+
+// Ease a value from → to over `ms`, handing each frame to `step`. `step` returns
+// false to bail — a structural re-render mid-turn replaces the whole book, and
+// the fresh one is already in the right shape.
+function animateValue(from, to, ms, step, done) {
   const t0 = performance.now();
-  const step = (now) => {
-    if (!leaf.isConnected) return;
+  const frame = (now) => {
     const p = Math.min(1, (now - t0) / Math.max(1, ms));
     const eased = p * (2 - p);
-    setTurn(leaf, from + (to - from) * eased);
-    if (p < 1) { requestAnimationFrame(step); return; }
+    if (step(from + (to - from) * eased) === false) return;
+    if (p < 1) { requestAnimationFrame(frame); return; }
     if (done) done();
   };
-  requestAnimationFrame(step);
+  requestAnimationFrame(frame);
 }
 
 // Bound to the freshly rendered book after every structural combat render (the
@@ -934,15 +955,20 @@ function attachSpellbookDrag() {
   const svg = document.getElementById("spellbook");
   if (!svg) return;
   const leaves = Math.ceil(SPELLS.length / 2);
-  let startX = 0, dx = 0, down = false, turning = null;
+  // `held` is the leaf under the finger, `carried` the one it brings over to the
+  // other side, and `t` how far through the turn the two of them are.
+  let startX = 0, dx = 0, down = false, held = null, carried = null, turnBox = null, t = 0;
 
-  // Which leaf a drag in this direction turns, and how far it has closed toward
-  // the spine (0 = flat open, 1 = shut). Dragging left turns the right-hand
-  // page over; dragging right turns the left-hand one back.
+  // Which leaf a drag in this direction turns, and which way the book goes.
+  // Dragging left turns the right-hand page over; dragging right turns the
+  // left-hand one back.
   const leafSide = (d) => (d < 0 ? 1 : -1);
-  // `:not(.under)` matters: the under-leaf is the FIRST match for its side, and
-  // grabbing it would turn the page that is meant to be revealed.
-  const leafFor = (d) => svg.querySelector(`.bk-page:not(.under)[data-side="${leafSide(d)}"]`);
+  const dirFor = (d) => (d < 0 ? 1 : -1);
+  // `:scope >` and `:not(.under)` both matter. The under-leaf is the FIRST match
+  // for its side and grabbing it would turn the page that is meant to be
+  // revealed; the carried leaf is nested inside `.bk-turn` rather than being a
+  // child of the SVG, which is what keeps it out of this.
+  const leafFor = (d) => svg.querySelector(`:scope > .bk-page:not(.under)[data-side="${leafSide(d)}"]`);
   const canTurn = (d) => (d < 0 ? (state.bookSpread || 0) < leaves - 1 : (state.bookSpread || 0) > 0);
 
   const setTurn = (leaf, closed) => {
@@ -963,53 +989,85 @@ function attachSpellbookDrag() {
     const sh = leaf.querySelector(".bk-shade");
     if (sh) sh.setAttribute("opacity", "0");
   };
+
+  // Take hold of a turn: the leaf under the finger, plus the leaf it is about to
+  // carry over, slipped in just under the spine line so it lies over whatever is
+  // already open on the side it lands on. Built here, at the START of the drag,
+  // because the second half of the turn has to have something to lay down while
+  // the finger is still moving.
+  const grab = (d) => {
+    held = leafFor(d);
+    const markup = turnLeaf(dirFor(d));
+    if (markup) {
+      const spine = svg.querySelector(".bk-spine");
+      spine.insertAdjacentHTML("beforebegin", markup);
+      turnBox = spine.previousElementSibling;
+      carried = turnBox.querySelector(".bk-page");
+    }
+    svg.classList.add("dragging");
+  };
+
+  // One progress for the whole turn: the held leaf stands up over the first
+  // half, the carried one lies down over the second.
+  const applyTurn = (v) => {
+    t = v;
+    setTurn(held, Math.min(1, v * 2));
+    setTurn(carried, Math.max(0, 2 - v * 2));
+  };
+
+  // Let go of a turn that didn't happen. The held leaf springs back on the CSS
+  // transition (which `dragging` was holding off), and the leaf that would have
+  // come over is thrown away — below the commit point it is still standing at
+  // the spine, so nothing is seen to vanish.
   const release = () => {
-    clearTurn(turning);
+    clearTurn(held);
+    if (turnBox) turnBox.remove();
     svg.classList.remove("dragging");
-    turning = null;
+    held = null; carried = null; turnBox = null; t = 0;
   };
 
   svg.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     try { svg.setPointerCapture(e.pointerId); } catch (_) {}
-    down = true; startX = e.clientX; dx = 0; turning = null;
+    down = true; startX = e.clientX; dx = 0;
   });
 
   svg.addEventListener("pointermove", (e) => {
     if (!down) return;
     dx = e.clientX - startX;
     const w = svg.getBoundingClientRect().width || 1;
+    // Under the dead zone the gesture is still a tap, and a drag back through it
+    // is a change of mind — both drop the turn, so the other direction can be
+    // grabbed cleanly on the way out.
     if (Math.abs(dx) < 4 || !canTurn(dx)) { release(); return; }
-    if (!turning) { turning = leafFor(dx); svg.classList.add("dragging"); }
-    setTurn(turning, Math.min(1, Math.abs(dx) / (w * 0.5)));
+    if (!held && !turnBox) grab(dx);
+    applyTurn(Math.min(1, Math.abs(dx) / (w * TURN_SPAN)));
   });
 
   const onUp = (e) => {
     if (!down) return;
     down = false;
-    const w = svg.getBoundingClientRect().width || 1;
-    const flipped = Math.abs(dx) > w * FLIP_THRESHOLD && canTurn(dx);
-    if (flipped) {
+    if ((held || carried) && t >= FLIP_COMMIT && canTurn(dx)) {
       // Swallow the click this same gesture is about to fire, so turning a page
       // never also re-arms the spell it let go over. Kept short — the click
       // arrives right behind pointerup, and a longer window would start eating
       // genuine taps made straight after a flip.
       bookDragUntil = performance.now() + 250;
-      const dir = dx < 0 ? 1 : -1;
-      const leaf = turning || leafFor(dx);
-      turning = null;
-      const closed = Math.min(1, Math.abs(dx) / (w * 0.5));
-      if (!leaf) { svg.classList.remove("dragging"); spellbookFlip(dir); return; }
-      // Keep `dragging` on so the CSS transition stays out of the way while the
-      // rAF drives the rest of the swing frame by frame.
-      svg.classList.add("dragging");
-      animateTurn(setTurn, leaf, closed, 1, FLIP_CLOSE_MS * (1 - closed) + 40, () => {
-        // The leaf that just turned lands on the OTHER side of the spine, so
-        // that is the side the swing continues on. Armed here rather than up
-        // front so a turn interrupted by a re-render leaves nothing pending.
-        pendingOpenSide = -leafSide(dx);
-        spellbookFlip(dir);   // marks the screen structurally dirty → book rebuilt
-      });
+      const dir = dirFor(dx);
+      const leaf = held, over = carried, from = t;
+      held = null; carried = null; turnBox = null; t = 0;
+      // The book is already showing the finished turn if the finger took it all
+      // the way; otherwise carry the rest of it on from exactly where the finger
+      // left off, in the same direction, so a flick reads as a page let go of
+      // mid-swing rather than as a second animation. `dragging` stays on so the
+      // CSS transition keeps out of the rAF's way.
+      const commit = () => spellbookFlip(dir);   // structurally dirty → book rebuilt
+      if (from >= 0.999) { commit(); return; }
+      animateValue(from, 1, FLIP_FINISH_MS * (1 - from) + 40, (v) => {
+        if ((leaf && !leaf.isConnected) || (over && !over.isConnected)) return false;
+        setTurn(leaf, Math.min(1, v * 2));
+        setTurn(over, Math.max(0, 2 - v * 2));
+      }, commit);
       return;
     }
     release();
@@ -1025,29 +1083,9 @@ function attachSpellbookDrag() {
   };
   svg.addEventListener("pointerup", onUp);
   svg.addEventListener("pointercancel", onUp);
-
-  // Second half of a turn that was committed on the previous book: this render
-  // IS the new spread, so the leaf that came over the spine starts shut against
-  // it and swings out flat. Applied synchronously — attachSpellbookDrag runs
-  // inside the same frame's render, before anything is painted, so the page is
-  // never briefly seen already open.
-  if (pendingOpenSide) {
-    // `:not(.under)` again, and it is the whole second half of the turn: the
-    // under-leaf is the FIRST match for its side, so without it the swing was
-    // applied to the page HIDDEN BENEATH the one that just came over. The
-    // animation ran perfectly and was invisible, and a turn stopped dead with
-    // the leaf stood upright against the spine.
-    const incoming = svg.querySelector(`.bk-page:not(.under)[data-side="${pendingOpenSide}"]`);
-    pendingOpenSide = 0;
-    if (incoming) {
-      svg.classList.add("dragging");
-      setTurn(incoming, 1);
-      animateTurn(setTurn, incoming, 1, 0, FLIP_OPEN_MS, () => {
-        clearTurn(incoming);
-        svg.classList.remove("dragging");
-      });
-    }
-  }
+  // Nothing to run on a fresh book: the turn finishes BEFORE the spread changes,
+  // so this render already is the shape the last frame of the turn was in — the
+  // carried leaf lying flat where the rebuild draws it for real.
 }
 
 window.Incanto.spellbook = { SPELL_ART, renderSpellbook, spellbookFlip, attachSpellbookDrag };
