@@ -202,10 +202,12 @@ const CONFIG = {
     // the ones the spell would normally touch. This window is how long that
     // charge keeps — long enough to solve one more loadout, not two.
     primeWindowMs: 7000,
-    // Feuerball — the starting spell. One ball of flame flies at the nearest
-    // skeleton and BURSTS: everything caught in the blast takes FULL damage, and
-    // it takes it whether it stood at the epicentre or at the rim (no falloff —
-    // that's Blitzschlag's trade). The radius is the upgrade.
+    // Feuerball — the starting spell. One ball of flame flies into the thickest
+    // part of the mob and BURSTS: everything caught in the blast takes FULL
+    // damage, and it takes it whether it stood at the epicentre or at the rim (no
+    // falloff — that's Blitzschlag's trade). The radius is the upgrade; the aim
+    // picks the body whose burst catches the most, front and centre on a tie
+    // (see pickBlastFocus in spells.js).
     //
     // `radiusTiles` is measured along the march track, where the queue keeps
     // ~1.15 tiles between bodies, so the opening blast is the body it hit plus

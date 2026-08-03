@@ -23,7 +23,7 @@ const SPELLS = [
   {
     id: "fireball", name: "Feuerball", theme: "fireball", sector: "fir", kind: "damage",
     dmgKey: "dmgFireball", paramKey: "aoeFireball", unlock: null,
-    blurb: "Eine Kugel aus Flammen, die beim Einschlag zerbirst — alles im Umkreis nimmt die volle Wucht, ohne Abschwächung.",
+    blurb: "Eine Kugel aus Flammen, die dort zerbirst, wo die Horde am dichtesten steht — alles im Umkreis nimmt die volle Wucht, ohne Abschwächung.",
   },
   {
     id: "lightning", name: "Blitzschlag", theme: "lightning", sector: "lig", kind: "damage",
@@ -187,11 +187,44 @@ function enemyPoint(e) {
 //   castAt   — when the rune finishes charging and the spell actually leaves
 //   power    — this spell's damage before crits
 // ---------------------------------------------------------------------------
+// Where to throw the Feuerball. A blast centred on the body nearest the hero
+// spends half its radius on the empty hall in front of that body, so the ball is
+// aimed instead at whichever skeleton's burst catches the MOST of the mob.
+//
+// Ties — and in a queue that has bunched up at the standoff line there are many —
+// go to the FRONT of the hall first and then to the CENTRE of the lanes: of two
+// equally fat shots, the nearer one buys time against the rank that is actually
+// swinging, and the middle lane is the one with neighbours on both sides. The
+// candidates are the bodies themselves rather than a free point on the floor:
+// the fire has to visibly land on something, and with the lane spread measured
+// between lane centres, an epicentre floated between two lanes catches no more
+// than one planted on either of them.
+//
+// `bodies` arrives sorted nearest-first (see spellTargets), so the front-most of
+// an equal-scoring set is simply the first one found.
+function pickBlastFocus(bodies, radius, laneRadius) {
+  const mid = (Math.max(1, CONFIG.enemyLanes) - 1) / 2;
+  let best = null, bestCount = 0;
+  for (const c of bodies) {
+    let count = 0;
+    for (const e of bodies) {
+      if (Math.abs(e.pos - c.pos) <= radius && Math.abs(e.lane - c.lane) <= laneRadius) count++;
+    }
+    if (!best || count > bestCount) { best = c; bestCount = count; continue; }
+    if (count < bestCount) continue;
+    // Same haul: take the one nearer the hero, then the one nearer mid-hall.
+    const ahead = c.pos - best.pos;
+    if (ahead < -1e-6 ||
+      (Math.abs(ahead) <= 1e-6 && Math.abs(c.lane - mid) < Math.abs(best.lane - mid))) best = c;
+  }
+  return best;
+}
+
 const SPELL_RESOLVERS = {
-  // Feuerball: one ball of flame thrown at the nearest body, which BURSTS where
-  // it lands. Everything inside the blast takes FULL power — the rim hits as hard
-  // as the epicentre, because falloff is Blitzschlag's trade, not this one. The
-  // radius is the upgrade.
+  // Feuerball: one ball of flame thrown into the thick of the mob, which BURSTS
+  // where it lands. Everything inside the blast takes FULL power — the rim hits
+  // as hard as the epicentre, because falloff is Blitzschlag's trade, not this
+  // one. The radius is the upgrade; where it's aimed is pickBlastFocus above.
   fireball(ctx) {
     const cfg = CONFIG.spells.fireball;
     // Glutkern nodes widen the burst. Its spread ACROSS the lanes grows at half
@@ -200,15 +233,15 @@ const SPELL_RESOLVERS = {
     const aoe = state.mods.spellParam.aoeFireball || 0;
     const radius = Math.min(cfg.maxRadiusTiles, cfg.radiusTiles * (1 + aoe));
     const laneRadius = cfg.laneRadius * (1 + aoe * 0.5);
-    // The ball is aimed at the nearest skeleton; on a primed cast pickTargets
-    // hands back every frozen body as well, and those are shattered wherever
-    // they stand — that reach is what the Frostkegel combo buys.
-    const aimed = ctx.pickTargets(1);
-    const focus = aimed[0];
-    if (!focus) return 0;                     // nothing to throw it at — no cast, no burst
-    const caught = spellTargets().filter((e) =>
+    const ordered = spellTargets();
+    if (!ordered.length) return 0;             // nothing to throw it at — no cast, no burst
+    const focus = pickBlastFocus(ordered, radius, laneRadius);
+    const caught = ordered.filter((e) =>
       Math.abs(e.pos - focus.pos) <= radius && Math.abs(e.lane - focus.lane) <= laneRadius);
-    for (const e of aimed) if (!caught.includes(e)) caught.push(e);
+    // A primed cast shatters every frozen body wherever it stands, inside the
+    // blast or not — pickTargets(0) hands back exactly those, and that reach is
+    // what the Frostkegel combo buys.
+    for (const e of ctx.pickTargets(0)) if (!caught.includes(e)) caught.push(e);
 
     const land = ctx.castAt + cfg.flightMs;
     let dealt = 0;
