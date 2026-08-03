@@ -146,10 +146,10 @@ const KEYSTONE_COST = 90;      // base cost of a branch-tip keystone (ring 20 �
 const THORN_COST = 70;         // base cost of a Dornenkrone cache
 const THORN_VALUE = 0.10;      // reflected fraction each cache grants (five exist → 50% total)
 
-// Stats counted in whole bodies (an extra fireball target, an extra lightning
-// hop, an extra meteor). They grant exactly 1 wherever they're planted — half a
-// skeleton is not a thing — so a deep one simply costs more.
-const COUNT_STATS = { tgtFireball: 1, chainLightning: 1, countMeteor: 1 };
+// Stats counted in whole bodies (an extra lightning hop, an extra meteor). They
+// grant exactly 1 wherever they're planted — half a skeleton is not a thing —
+// so a deep one simply costs more.
+const COUNT_STATS = { chainLightning: 1, countMeteor: 1 };
 
 // ---------------------------------------------------------------------------
 // Archetypes — the reusable node types. A branch is written as a short list of
@@ -212,7 +212,7 @@ function sigil(id) {
     title: `${L.adj}zeichen`, blurb: `Verstärkt ${L.akk}.` };
 }
 // A "one more body" node: one rank, no scaling, and dear enough that each extra
-// target/hop/rock is a real decision rather than a rounding error.
+// hop/rock is a real decision rather than a rounding error.
 function bodyNode(stat, theme, title, blurb) {
   return { stat, theme, base: 1, cost: 55, maxRank: 1, growth: 1, title, blurb };
 }
@@ -263,7 +263,7 @@ function bDrain(L) {
 //   · every % damage pool, every crit pool, every HP pool soft-caps on its own
 //     (CONFIG.caps), so the outward push is rewarded with BREADTH — more pages,
 //     more bodies hit, more keystones — rather than with a bigger single number;
-//   · the whole-body nodes (an extra target, hop, rock) and the keystones sit
+//   · the whole-body nodes (an extra hop, an extra rock) and the keystones sit
 //     from ring 13 outward, which is where the run-away power would be if the
 //     caps didn't bound it.
 // ---------------------------------------------------------------------------
@@ -446,17 +446,18 @@ const ARMS = [
     ] },
 
   // ---- Feuerball: the page you start with, so its key is a keystone, not a
-  // seal. Its shape branch buys extra targets — the spell's whole upgrade path.
+  // seal. Its shape branch buys blast radius — the spell's whole upgrade path.
   damageSpellArm("fir", "fireball",
     [A.dmgFlat, A.dmgPct, A.critChance, A.dmgFlat],
     { title: "Wirkung",
       arch: [
-        bodyNode("tgtFireball", "fireball", "Splitterzauber", "Der Feuerball trifft ein zusätzliches Ziel — mit voller Wucht."),
+        { stat: "aoeFireball", theme: "fireball", base: 0.05, cost: 30, maxRank: 2, growth: 1.6,
+          title: "Glutkern", blurb: "Der Feuerball zerbirst weiter — die Flammen greifen über den Getroffenen hinaus." },
         sigil("fireball"),
         A.haste,
       ],
-      tip: uq("fireball", "Zwillingsflamme", KEYSTONE_COST, { tgtFireball: 2 },
-        "Aus einer Kugel werden drei, und keine davon ist die schwächere.") }),
+      tip: uq("fireball", "Flammenmeer", KEYSTONE_COST, { aoeFireball: 0.30 },
+        "Keine Kugel mehr, sondern eine Woge, die über die Reihen schlägt — und jede trifft sie voll.") }),
 
   // ---- Fortune: gold and pace. Belongs to no page — it funds all of them.
   { key: "for", kind: "generic", theme: "fortune", title: "Fortuna",
@@ -849,11 +850,11 @@ const SPELL_DMG_STATS = {
   meteor: "dmgMeteor", shield: "dmgShield", heal: "dmgHeal",
 };
 // Whole-body counts are bounded by their spell's own maximum (CONFIG.spells),
-// so they pass through uncapped; the shape parameters (cone reach, crater size,
-// chain falloff) are bounded here — see CONFIG.caps.
+// so they pass through uncapped; the shape parameters (cone reach, blast and
+// crater size, chain falloff) are bounded here — see CONFIG.caps.
 const SPELL_PARAM_STATS = [
-  "tgtFireball", "chainLightning", "countMeteor",
-  "freezeFrost", "coneFrost", "aoeMeteor", "falloffLightning",
+  "chainLightning", "countMeteor",
+  "freezeFrost", "coneFrost", "aoeFireball", "aoeMeteor", "falloffLightning",
 ];
 
 function recomputeMods() {
@@ -970,7 +971,7 @@ const STAT_FMT = {
   dmgMeteor:    (v) => `+${Math.round(v * 100)}% Meteoriten-Schaden`,
   dmgShield:    (v) => `+${Math.round(v * 100)}% Bannschild-Kraft`,
   dmgHeal:      (v) => `+${Math.round(v * 100)}% Heilwort-Kraft`,
-  tgtFireball:  (v) => `+${Math.round(v)} Feuerball-Ziel`,
+  aoeFireball:  (v) => `+${Math.round(v * 100)}% Feuerball-Radius`,
   chainLightning: (v) => `+${Math.round(v)} Blitz-Sprung`,
   countMeteor:  (v) => `+${Math.round(v)} Meteorit`,
   freezeFrost:  (v) => `+${(v / 1000).toFixed(1)}s Frostdauer`,

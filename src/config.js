@@ -202,10 +202,22 @@ const CONFIG = {
     // the ones the spell would normally touch. This window is how long that
     // charge keeps — long enough to solve one more loadout, not two.
     primeWindowMs: 7000,
-    // Feuerball — the starting spell. Hits the N nearest skeletons for FULL
-    // damage each (no falloff — that's Blitzschlag's trade). Target count is the
-    // upgrade; `maxTargets` caps it so a stacked build can't wipe a whole camp.
-    fireball: { dmgMult: 1.0, targets: 1, maxTargets: 8, boltStaggerMs: 90 },
+    // Feuerball — the starting spell. One ball of flame flies into the thickest
+    // part of the mob and BURSTS: everything caught in the blast takes FULL
+    // damage, and it takes it whether it stood at the epicentre or at the rim (no
+    // falloff — that's Blitzschlag's trade). The radius is the upgrade; the aim
+    // picks the body whose burst catches the most, front and centre on a tie
+    // (see pickBlastFocus in spells.js).
+    //
+    // `radiusTiles` is measured along the march track, where the queue keeps
+    // ~1.15 tiles between bodies, so the opening blast is the body it hit plus
+    // whoever is pressed up behind it. `laneRadius` is the same blast measured
+    // ACROSS the lanes and starts under 1: a fresh Feuerball burns one lane, and
+    // reaching into the neighbouring ones is what the Glutkern branch sells.
+    // `maxRadiusTiles` is where the growth stops — it matches caps.aoeFireball,
+    // so the cap is the single place that bounds the spell.
+    fireball: { dmgMult: 1.0, radiusTiles: 1.3, maxRadiusTiles: 3.25,
+                laneRadius: 0.85, flightMs: 450, blastMs: 560 },
     // Blitzschlag — arcs from body to body, each hop weaker than the last. Far
     // more reach than Feuerball, paid for in falloff.
     lightning: { dmgMult: 0.95, chain: 3, maxChain: 14, falloff: 0.72, hopMs: 85, holdMs: 260 },
@@ -250,8 +262,6 @@ const CONFIG = {
   heroBlastBreakFrac: 0.30,  // first this fraction is the rune shattering; the rest is the explosion
   heroKnockback: 13,         // px the hero is shoved back (toward the wall) when the blast hits
   shapeFlashDurationMs: 500,
-  fireballFlightMs: 450,
-  fireballImpactMs: 280,
   castChargeMs: 420,
   runePuffMs: 260,
   // Floating damage numbers that pop over a fighter on each hit, then rise + fade
@@ -306,15 +316,22 @@ const CONFIG = {
     coinMult: 1.5,      // soft-cap on summed bonus gold (approaches +150%)
     walkMult: 1.0,      // soft-cap on summed bonus walking pace (heroWalkMaxPxPerMs still applies)
     // A spell's SHAPE parameters, bounded so a fully-invested branch broadens the
-    // spell without erasing its trade-off. The whole-body counts (an extra target,
-    // hop, rock) are absent on purpose: each spell's own maximum in CONFIG.spells
-    // already bounds those.
+    // spell without erasing its trade-off. The whole-body counts (an extra hop,
+    // an extra rock) are absent on purpose: each spell's own maximum in
+    // CONFIG.spells already bounds those.
     // Cone reach doubles and stops — the spell's own `maxConeTiles` is what
     // actually binds it (in tiles, where the design rule lives). This cap is
     // here so the STAT can't advertise growth the spell won't deliver: the tree
     // has +148% of Kegelweite in it, and a node tooltip promising a reach past
     // the ceiling would be a lie told at 30 gold a rank.
     coneFrost: 1.0,        // frost cone reach, as a fraction of coneTiles
+    // Feuerball's blast, as a fraction of radiusTiles. The Glutkern branch holds
+    // ~229% of it, so the cap lands about two thirds of the way out — the same
+    // shape as Kegelweite above: the branch is worth walking, and its far end
+    // sells crit and sigils rather than yet more radius. Capped, the burst covers
+    // three lanes and ~6.5 tiles of track: wide, but still a blast around one
+    // body rather than the meteor's rain over the whole hall.
+    aoeFireball: 1.5,
     aoeMeteor: 1.0,        // meteor crater size, as a fraction of radiusTiles
     falloffLightning: 0.2, // added to lightning's per-hop falloff (0.72 → at most 0.92)
   },

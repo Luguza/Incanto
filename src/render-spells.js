@@ -13,9 +13,9 @@
 // which is the same instant the damage number pops.
 // ==============================================================================
 
-// A queued effect's live anchor: bolts and arcs track the body they were aimed
-// at so they follow it as it marches, and fall back to the point captured when
-// the spell went off once that body is gone.
+// A queued effect's live anchor: a fireball in flight and a chain's arcs track
+// the body they were aimed at so they follow it as it marches, and fall back to
+// the point captured when the spell went off once that body is gone.
 function fxPoint(stored, targetId) {
   if (targetId != null && scene) {
     const e = state.enemies.find((en) => en.id === targetId);
@@ -69,13 +69,22 @@ function drawBoltPath(ctx, pts, core, glowRGB) {
 // frame time, and `p`, its own 0→1 progress across born→until.
 // ---------------------------------------------------------------------------
 const SPELL_FX = {
-  // Feuerball: the existing bolt — a glowing mote flying from the shield to a
-  // skeleton's chest on a shallow arc, then a four-spoke crack on impact.
-  bolt(ctx, f, now) {
+  // Feuerball: a glowing mote thrown from the shield to a skeleton's chest on a
+  // shallow arc, and then the burst — a hot core that swells and dims, a
+  // shockwave ring, and embers flung out along the floor.
+  //
+  // The fire is drawn at exactly the size the resolver burned: `radius` is in
+  // march tiles and `laneRadius` in lanes, so the ring the player watches expand
+  // IS the catch area, and a Glutkern node is visible as a wider fire rather than
+  // only as a bigger number.
+  blast(ctx, f, now) {
+    if (!scene) return;
     const c = CONFIG.colors.spell[f.spell] || CONFIG.colors.spell.fireball;
-    const to = fxPoint(f.to, f.targetId);
-    const flight = f.landAt - f.born;
     if (now < f.landAt) {
+      // In flight: the ball tracks the body it was thrown at, so a marching
+      // skeleton doesn't walk out from under its own fireball.
+      const to = fxPoint(f.to, f.targetId);
+      const flight = f.landAt - f.born;
       const q = flight > 0 ? (now - f.born) / flight : 1;
       const from = castOrigin();
       const x = Math.round(from.x + (to.x - from.x) * q);
@@ -87,18 +96,73 @@ const SPELL_FX = {
       ctx.drawImage(ASSETS.fireball, x - 5, y - 3);
       return;
     }
+    // Where it went off. Pinned on the first frame of the burst: the fire stays
+    // where it detonated while the bodies keep walking through it.
+    if (!f.burst) f.burst = fxPoint(f.to, f.targetId);
+    const { x, y } = f.burst;
+    const lanes = scene.laneY;
+    const laneStep = lanes.length > 1 ? Math.abs(lanes[1] - lanes[0]) : TILE;
     const q = Math.min(1, (now - f.landAt) / Math.max(1, f.until - f.landAt));
-    const r = Math.round(2 + q * 10);
-    ctx.fillStyle = c.mid;
-    ctx.fillRect(to.x - r, to.y, 2, 1);
-    ctx.fillRect(to.x + r, to.y, 2, 1);
-    ctx.fillRect(to.x, to.y - r, 1, 2);
-    ctx.fillRect(to.x, to.y + r, 1, 2);
-    ctx.fillStyle = c.core;
-    ctx.fillRect(to.x - r + 1, to.y - r + 1, 1, 1);
-    ctx.fillRect(to.x + r - 1, to.y - r + 1, 1, 1);
-    ctx.fillRect(to.x - r + 1, to.y + r - 1, 1, 1);
-    ctx.fillRect(to.x + r - 1, to.y + r - 1, 1, 1);
+    // Out fast, then hangs: the fire is at its full width by the first third and
+    // burns there. A blast that slides evenly outward reads as a bubble growing.
+    const grow = 1 - Math.pow(1 - q, 2.6);
+    const fade = q < 0.3 ? 1 : 1 - (q - 0.3) / 0.7;
+    // Half a tile of headroom on the lane axis: the catch is measured between
+    // lane centres, so a body on the rim is still standing in the fire.
+    const rx = Math.max(4, f.radius * TILE * grow);
+    const ry = Math.max(3, (f.laneRadius * laneStep + laneStep * 0.5) * grow);
+    const glow = ASSETS.glowFireball;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    // The body of the fireball: overlapping puffs riding out toward the rim on
+    // fixed bearings. Overlapping soft glows are what make it billow — one smooth
+    // disc would read as a bubble rather than as fire. Every figure below is a
+    // fraction of rx/ry, so the cloud fills the burn and never overruns it.
+    const puff = Math.max(rx, ry) * 0.34;
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + (tileHash(i, 23) % 100) / 260;
+      const d = 0.26 + (tileHash(i, 7) % 34) / 100;
+      const px = x + Math.cos(a) * rx * d;
+      const py = y + Math.sin(a) * ry * d - grow * 3;      // the cloud lifts as it burns
+      const pr = puff * (0.75 + (tileHash(i, 3) % 50) / 100) * (0.6 + 0.4 * (1 - q));
+      ctx.globalAlpha = fade * 0.5;
+      ctx.drawImage(glow, Math.round(px - pr), Math.round(py - pr), pr * 2, pr * 2);
+      ctx.globalAlpha = fade * 0.3;
+      ctx.fillStyle = c.mid;
+      ctx.beginPath();
+      ctx.arc(Math.round(px), Math.round(py), pr * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // The heart of it — white-hot at the instant of impact, burnt out well before
+    // the cloud is.
+    if (q < 0.55) {
+      const k = 1 - q / 0.55;
+      ctx.globalAlpha = k * 0.85;
+      ctx.fillStyle = c.core;
+      ctx.beginPath();
+      ctx.ellipse(x, y, (TILE * 0.3 + rx * 0.22) * k, (TILE * 0.2 + ry * 0.22) * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // Shockwave: the rim of what actually burned, running out ahead of the fire.
+    ctx.strokeStyle = `rgba(${c.rgb}, ${(fade * 0.8).toFixed(2)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Embers thrown clear of the blast, each on its own fixed bearing so they
+    // fly straight out rather than swirling.
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + (tileHash(i, 41) % 100) / 320;
+      const d = grow * (0.85 + (tileHash(i, 13) % 60) / 100);
+      const ex = Math.round(x + Math.cos(a) * rx * d);
+      const ey = Math.round(y + Math.sin(a) * ry * d - grow * 5);
+      const s = i % 3 === 0 ? 3 : 2;
+      ctx.fillStyle = `rgba(${c.rgb}, ${(fade * 0.9).toFixed(2)})`;
+      ctx.fillRect(ex, ey, s, s);
+    }
+    ctx.restore();
   },
 
   // Blitzschlag: an arc drawn hop by hop as the chain travels, then the whole
