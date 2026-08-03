@@ -13,7 +13,11 @@
 // head, an illuminated initial, the page's own great rune sunk into the middle
 // of it, and runic script over every line from the head to off the bottom of the
 // screen. The spell's effect plays over the whole leaf — no frame, no plate, no
-// window cut into the paper.
+// window cut into the paper — and it plays there in THREE DIMENSIONS: some of it
+// lying in the page (frost forming on the paper, a shadow, a ring of runes
+// turning flat on the table), some of it standing up off the page (flames,
+// falling rocks, a dome). What sells the height is never the raised thing on its
+// own; it is the raised thing paired with what it leaves on the paper below it.
 //
 // Four things are worth knowing before changing any of it:
 //   * Content is laid out in the page's own paper coordinates and mapped on by a
@@ -24,7 +28,8 @@
 //     the book is rebuilt wholesale on every structural render.
 //   * The effects animate from CSS keyframes (combat.css), never from JS. Each
 //     class has one duration, and spellbook hands it a negative animation-delay
-//     so a rebuild doesn't restart the motion.
+//     so a rebuild doesn't restart the motion. Never animate an element filled
+//     with a soft gradient — see the note in combat.css.
 //   * Each side of the spread carries an UNDER-LEAF, the page a turn would bring
 //     up. It is what a page turn uncovers; without it a turn reveals the board.
 //
@@ -178,15 +183,36 @@ function pageProject(side) {
     at,
     // A paper point as path data.
     p: (u, v) => { const q = at(u, v); return q.x.toFixed(1) + " " + q.y.toFixed(1); },
-    // The projection's local affine frame at a point, for the children that
-    // can't be warped vertex by vertex.
+    // The projection's local affine frame at a point: things LYING IN the page
+    // plane — a ring of frost, a shadow on the paper, a rune ring turning flat
+    // on the page — which can't be warped vertex by vertex.
     frameAt: (u, v) => {
       const o = at(u, v), k = 4;
       const eu = at(u + k, v), ev = at(u, v + k);
       const m = [(eu.x - o.x) / k, (eu.y - o.y) / k, (ev.x - o.x) / k, (ev.y - o.y) / k, o.x, o.y];
       return `matrix(${m.map((n) => n.toFixed(4)).join(" ")})`;
     },
+    // How big one paper unit is on screen at a point. The head of a page is
+    // further from the player than its foot, so this shrinks toward the top —
+    // which is what keeps a thing standing on the page the right size for where
+    // it is standing.
+    scaleAt: (u, v) => scaleAt(u, v),
+    // Something STANDING ON the page rather than lying in it: a flame, a falling
+    // rock, a dome. Drawn upright on screen — a flame does not lie flat on the
+    // paper, it points at the ceiling — scaled for its depth, and raised `h`
+    // above the paper. Its origin is still the page point it stands on, which is
+    // where its shadow and its pool of light go, and THAT pairing is what makes
+    // the height read. A lifted thing with nothing on the paper under it is just
+    // a thing drawn slightly higher up.
+    standAt: (u, v, h = 0) => {
+      const o = at(u, v), k = scaleAt(u, v);
+      return `translate(${o.x.toFixed(1)} ${(o.y - h * k).toFixed(1)}) scale(${k.toFixed(3)})`;
+    },
   };
+  function scaleAt(u, v) {
+    const o = at(u, v), e = at(u + 1, v);
+    return Math.hypot(e.x - o.x, e.y - o.y);
+  }
 }
 
 // --- Manuscript layout (all in paper units) ----------------------------------
@@ -206,9 +232,12 @@ const INITIAL = { w: 18, h: 19 };      // the illuminated capital opening the bo
 // twice. It is the page's GROUND, not a picture set into a hole in it, so the
 // script runs straight over the top of it.
 const SIGIL = { u: PAGE_W / 2, v: 94, h: 88, r: 63 };
-// Where the spell's effect is anchored. It plays over the whole leaf rather than
-// inside a frame, so this is only the origin of its local page frame.
-const FX = { u: PAGE_W / 2, v: 92, scale: 1.12 };
+// The middle of what is actually VISIBLE of a leaf, which is nowhere near the
+// middle of the leaf: the gutter corner sits at y = 340 in a 240-tall viewBox,
+// so the page's own centre is centred off the bottom of the screen. Solving the
+// projection for y = BOOK_H at mid-width puts the foot of the visible page
+// around v = 182. Effects lay themselves out over roughly v = 50..180.
+const FX_V = 92;
 
 // One glyph as an absolute subpath, every vertex taken through the projection.
 // The whole body of a page is emitted into a SINGLE <path> this way: ~700 glyphs
@@ -340,129 +369,193 @@ function inkShade(hex, k) {
 // its siblings and starts the loop at the phase the game clock is already at, so
 // a structural re-render doesn't visibly restart the motion.
 const SPELL_ART = {
-  // A burning heart to the page, throwing licks of flame the height of it and
-  // embers drifting up off the paper everywhere.
-  fireball: (c, D) => {
-    let motes = "";
-    for (let i = 0; i < 11; i++) {
-      const x = -88 + ((tileHash(i, 5) % 180));
-      const y = 18 + ((tileHash(i, 9) % 70));
-      motes += `<circle class="bk-fx-mote" cx="${x}" cy="${y}" ` +
-        `r="${(1.8 + (tileHash(i, 13) % 22) / 10).toFixed(1)}" style="${D(2400, i * 218)}"/>`;
+  // Small flames dancing on the paper. Each one STANDS on the page — upright on
+  // screen, sized for how far up the page it is — and lights the vellum it
+  // stands on. Every pool is laid before any tongue, so no flame is dimmed by
+  // its neighbour's light.
+  fireball: (c, D, P) => {
+    const flames = [
+      [70, 76, 1.15, 0], [148, 58, 0.75, 320], [200, 92, 0.95, 660],
+      [104, 130, 1.3, 180], [178, 150, 0.9, 500], [44, 118, 0.7, 760],
+      [232, 136, 0.65, 260], [136, 168, 1.05, 420],
+    ];
+    let pools = "", tongues = "", embers = "";
+    for (const [u, v, k, ph] of flames) {
+      // Static, and it has to be: see the note in combat.css — animating a
+      // gradient-filled element rasterises its falloff to a hard rectangle.
+      pools += `<g transform="${P.frameAt(u, v)}"><ellipse class="bk-fx-pool" ` +
+        `rx="${(26 * k).toFixed(1)}" ry="${(13 * k).toFixed(1)}" fill="url(#${c.pool})"/></g>`;
+      // A flame is round and heavy at the foot and drawn to a point at the tip —
+      // pointed at both ends is a leaf, not a fire.
+      tongues += `<g transform="${P.standAt(u, v, 0)}"><g transform="scale(${k})">` +
+        `<path class="bk-fx-flame" style="${D(900, ph)}" fill="${c.mid}" fill-opacity="0.85" ` +
+          `stroke="${c.deep}" stroke-width="1.5" ` +
+          `d="M0 -30 C-7 -20 -9.5 -12 -9.5 -7 C-9.5 -2 -5 1 0 1 C5 1 9.5 -2 9.5 -7 ` +
+            `C9.5 -12 7 -20 0 -30 Z"/>` +
+        `<path class="bk-fx-flame" style="${D(900, ph + 150)}" fill="${c.core}" ` +
+          `d="M0 -20 C-4 -13 -5.5 -8 -5.5 -5 C-5.5 -1.5 -2.7 0.5 0 0.5 ` +
+            `C2.7 0.5 5.5 -1.5 5.5 -5 C5.5 -8 4 -13 0 -20 Z"/>` +
+        `</g></g>`;
+      embers += `<g transform="${P.standAt(u + 5, v - 2, 0)}">` +
+        `<circle class="bk-fx-ember" r="${(1.7 * k).toFixed(1)}" fill="${c.core}" ` +
+        `stroke="${c.deep}" stroke-width="0.7" style="${D(2600, ph * 2)}"/></g>`;
     }
-    return `
-    <circle class="bk-fx-pulse" cx="0" cy="4" r="66" fill="${c.mid}" opacity="0.1" style="${D(2600, 0)}"/>
-    <circle class="bk-fx-ripple" cx="0" cy="4" r="42" fill="none" stroke="${c.deep}"
-      stroke-width="2.8" style="${D(3000, 0)}"/>
-    <circle class="bk-fx-ripple" cx="0" cy="4" r="42" fill="none" stroke="${c.deep}"
-      stroke-width="1.8" style="${D(3000, 1500)}"/>
-    <circle class="bk-fx-pulse" cx="0" cy="4" r="34" fill="${c.mid}" opacity="0.45" stroke="${c.deep}"
-      stroke-width="2" style="${D(2600, 420)}"/>
-    <circle class="bk-fx-pulse" cx="0" cy="4" r="15" fill="${c.core}" stroke="${c.deep}"
-      stroke-width="1.6" style="${D(2600, 900)}"/>
-    <g fill="none" stroke="${c.deep}" stroke-width="4.2" stroke-linecap="round">
-      <path class="bk-fx-lick" d="M-26 -24 Q-20 -54 -6 -80" style="${D(1800, 0)}"/>
-      <path class="bk-fx-lick" d="M12 -28 Q24 -56 34 -78" style="${D(1800, 600)}"/>
-      <path class="bk-fx-lick" d="M-50 -12 Q-60 -42 -48 -68" style="${D(1800, 1200)}"/>
-      <path class="bk-fx-lick" d="M40 -6 Q56 -32 50 -60" style="${D(1800, 900)}"/>
-    </g>
-    <g fill="${c.core}" stroke="${c.deep}" stroke-width="1.2">${motes}</g>`;
+    return pools + embers + tongues;
   },
 
-  // A bolt down the whole height of the page: three forks take it in turn, each
-  // lit for a fifth of the cycle, over a flash that fires with them.
-  lightning: (c, D) => `
-    <ellipse class="bk-fx-flash" cx="0" cy="0" rx="88" ry="82" fill="${c.mid}"
-      opacity="0.15" style="${D(1500, 0)}"/>
-    <g fill="${c.mid}" stroke="${c.deep}" stroke-width="2.6" stroke-linejoin="round">
-      <path class="bk-fx-bolt" d="M18 -92 L-22 -6 L8 -2 L-16 92 L44 -14 L14 -18 Z" style="${D(1500, 0)}"/>
-      <path class="bk-fx-bolt" d="M6 -92 L-34 -8 L-2 -4 L-26 92 L32 -12 L2 -16 Z" style="${D(1500, 500)}"/>
-      <path class="bk-fx-bolt" d="M32 -92 L-8 -4 L22 0 L-2 92 L58 -12 L28 -16 Z" style="${D(1500, 1000)}"/>
-    </g>
-    <g fill="none" stroke="${c.deep}" stroke-width="3" stroke-linecap="round">
-      <path class="bk-fx-bolt" d="M-30 -44 L-74 -14 L-52 -8" style="${D(1500, 250)}"/>
-      <path class="bk-fx-bolt" d="M34 26 L82 56 L58 62" style="${D(1500, 750)}"/>
-      <path class="bk-fx-bolt" d="M-26 34 L-70 62 L-48 68" style="${D(1500, 1250)}"/>
-    </g>`,
-
-  // A cone opening clear across the page, with crystals tumbling down it.
-  frost: (c, D) => {
-    const shard = (x, y, s, phase) =>
-      `<g transform="translate(${x},${y}) scale(${s})"><g class="bk-fx-drift" style="${D(2800, phase)}">` +
-      `<g class="bk-fx-spin" style="${D(4200, phase)}">` +
-      `<path d="M-14 0 L14 0 M0 -14 L0 14 M-10 -10 L10 10 M10 -10 L-10 10"/></g></g></g>`;
-    return `
-    <path d="M-96 2 L86 -76 L86 80 Z" fill="${c.mid}" opacity="0.1"/>
-    <path class="bk-fx-sweep" d="M-96 2 L86 -76 L86 80 Z" fill="${c.core}"
-      opacity="0.14" style="${D(2600, 0)}"/>
-    <path d="M-96 2 L86 -76 M-96 2 L86 80" fill="none" stroke="${c.deep}" stroke-width="3.4"
-      stroke-linecap="round"/>
-    <path d="M86 -76 L86 80" stroke="${c.deep}" stroke-width="2.2" opacity="0.5"/>
-    <g stroke="${c.deep}" stroke-width="2.6" stroke-linecap="round" fill="none">
-      ${shard(-34, -22, 1, 0)}${shard(0, 24, 0.8, 700)}${shard(18, -14, 1.2, 1400)}${shard(-14, 50, 0.7, 2100)}
-    </g>`;
+  // Arcs jumping from rune to rune across the written page. The endpoints are
+  // points on the script's own grid — the same lines and pen advances the body
+  // text is set on — so the lightning is genuinely running between the words,
+  // and each arc lights the two runes it lands on.
+  lightning: (c, D, P) => {
+    // Struck slightly ABOVE the paper: an arc drawn flat on the page reads as a
+    // crack in the vellum rather than as something in the air over it.
+    const arc = (a, b, seed, phase) => {
+      const A = P.at(a[0], a[1]), B = P.at(b[0], b[1]);
+      const k = P.scaleAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+      const ax = A.x, ay = A.y - 6 * k, bx = B.x, by = B.y - 6 * k;
+      const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      let d = `M${ax.toFixed(1)} ${ay.toFixed(1)}`;
+      for (let i = 1; i < 7; i++) {
+        const t = i / 7, taper = Math.sin(t * Math.PI);
+        const j = ((tileHash(seed, i) % 200) / 100 - 1) * 9 * taper * k;
+        d += `L${(ax + dx * t + nx * j).toFixed(1)} ${(ay + dy * t + ny * j).toFixed(1)}`;
+      }
+      d += `L${bx.toFixed(1)} ${by.toFixed(1)}`;
+      // The rune at each end lights up with the strike. Two circles, not one: a
+      // dark ring with a hot centre reads as a rune catching a spark, where a
+      // single pale disc on cream paper reads as nothing at all.
+      const node = (p) =>
+        `<circle class="bk-fx-node" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" ` +
+          `r="${(7 * k).toFixed(1)}" fill="none" stroke="${c.deep}" stroke-width="${(2 * k).toFixed(1)}" ` +
+          `style="${D(2400, phase)}"/>` +
+        `<circle class="bk-fx-node" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" ` +
+          `r="${(3 * k).toFixed(1)}" fill="${c.mid}" style="${D(2400, phase)}"/>`;
+      return node(A) + node(B) +
+        `<path class="bk-fx-arc" d="${d}" fill="none" stroke="${c.deep}" stroke-linecap="round" ` +
+          `stroke-width="${(5.4 * k).toFixed(1)}" style="${D(2400, phase)}"/>` +
+        `<path class="bk-fx-arc" d="${d}" fill="none" stroke="${c.mid}" stroke-linecap="round" ` +
+          `stroke-width="${(2.2 * k).toFixed(1)}" style="${D(2400, phase)}"/>`;
+    };
+    // Points on the script grid: line `n` of the body, `g` glyphs along it.
+    const at = (n, g) => [MARGIN + 6 + g * GLYPH_ADV, BODY_TOP + n * LINE_H];
+    const pairs = [
+      [at(1, 8), at(4, 3), 3, 0], [at(3, 26), at(6, 20), 7, 240],
+      [at(6, 6), at(9, 12), 11, 480], [at(2, 38), at(5, 33), 5, 720],
+      [at(8, 30), at(11, 24), 13, 960], [at(5, 14), at(8, 18), 17, 1200],
+      [at(9, 40), at(12, 35), 19, 1440], [at(11, 4), at(13, 10), 23, 1680],
+      [at(4, 44), at(7, 40), 29, 1920], [at(10, 16), at(12, 22), 31, 2160],
+    ];
+    return pairs.map(([a, b, seed, ph]) => arc(a, b, seed, ph)).join("");
   },
 
-  // Rocks falling the height of the page onto a cracked ground line near the
-  // foot, each landing in a flash of its own — the burst is on the same period
-  // as its rock, timed to the end of the fall.
-  meteor: (c, D) => {
-    const rock = (x, r, phase) =>
-      `<g transform="translate(${x},0)"><g class="bk-fx-fall" style="${D(1900, phase)}">` +
-      `<path d="M${(-r * 2.6).toFixed(1)} ${(-r * 3.6).toFixed(1)} L0 0" stroke="${c.deep}"
-        stroke-width="3.4" stroke-linecap="round" opacity="0.9"/>` +
-      `<circle r="${r}" fill="${c.core}" stroke="${c.deep}" stroke-width="1.6"/></g>` +
-      `<ellipse class="bk-fx-burst" cy="50" rx="${(r * 2.8).toFixed(1)}" ry="${(r * 0.9).toFixed(1)}"
-        fill="${c.core}" style="${D(1900, phase)}"/></g>`;
-    // The ground line has to sit well above the foot of the art box: the lower
-    // third of a leaf runs off the bottom of the screen, so anything landing at
-    // the box's own floor lands where nobody can see it.
-    return `
-    <path d="M-94 50 L94 50" stroke="${c.deep}" stroke-width="3.4" stroke-linecap="round"/>
-    <path d="M-64 50 L-74 70 M-24 50 L-32 72 M18 50 L12 70 M60 50 L70 68" stroke="${c.deep}"
-      stroke-width="2.4" stroke-linecap="round" opacity="0.7"/>
-    ${rock(-66, 9, 0)}${rock(-30, 7, 500)}${rock(6, 8, 980)}${rock(44, 6, 1440)}${rock(74, 5, 260)}`;
+  // Ice forming on the page and melting off it again. The crystals LIE IN the
+  // paper — every arm is taken through the projection, so they foreshorten with
+  // the page like frost on a window seen at an angle — and each one grows out of
+  // nothing, holds, and thaws on its own clock.
+  frost: (c, D, P) => {
+    const star = (u, v, r, seed, phase) => {
+      let d = "";
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2 + (tileHash(seed, 3) % 60) / 100;
+        const co = Math.cos(ang), si = Math.sin(ang);
+        d += `M${P.p(u, v)}L${P.p(u + co * r, v + si * r)}`;
+        // The barbs down each arm — the thing that makes a crystal read as ice
+        // rather than as a star.
+        for (const f of [0.45, 0.72]) {
+          const bx = u + co * r * f, by = v + si * r * f, b = r * 0.26;
+          d += `M${P.p(bx, by)}L${P.p(bx + Math.cos(ang - 1) * b, by + Math.sin(ang - 1) * b)}`;
+          d += `M${P.p(bx, by)}L${P.p(bx + Math.cos(ang + 1) * b, by + Math.sin(ang + 1) * b)}`;
+        }
+      }
+      return `<path class="bk-fx-form" d="${d}" fill="none" stroke="${c.deep}" ` +
+        `stroke-width="2.2" stroke-linecap="round" style="${D(4200, phase)}"/>`;
+    };
+    const seeds = [
+      [64, 70, 20, 3, 0], [140, 54, 14, 7, 520], [206, 84, 18, 11, 1040],
+      [96, 118, 24, 13, 1560], [186, 132, 16, 17, 2080], [48, 156, 19, 19, 2600],
+      [140, 170, 22, 23, 3120], [232, 158, 13, 29, 3640], [116, 92, 12, 31, 260],
+    ];
+    // A breath of rime over the whole page, under the crystals.
+    return `<g transform="${P.frameAt(PAGE_W / 2, 108)}">` +
+        `<ellipse class="bk-fx-rime" rx="120" ry="78" fill="url(#${c.pool})"/></g>` +
+      seeds.map((a) => star(...a)).join("");
   },
 
-  // A ward standing over the whole page: a rune ring turning around a kite
-  // shield, and a barrier pulsing out past the margins.
-  shield: (c, D) => {
+  // Rocks falling onto the page. Each one has a shadow ON the paper that tightens
+  // and darkens as the rock comes down on it, and that pairing — not the fall
+  // itself — is what gives the drop its height. It lands in a scorch ring that
+  // spreads flat across the vellum.
+  meteor: (c, D, P) => {
+    const strike = (u, v, r, ph) =>
+      `<g transform="${P.frameAt(u, v)}">` +
+        `<ellipse class="bk-fx-drop" rx="${(r * 1.9).toFixed(1)}" ry="${(r * 0.8).toFixed(1)}" ` +
+          `fill="${c.deep}" style="${D(2000, ph)}"/>` +
+        `<ellipse class="bk-fx-scorch" rx="${(r * 3.6).toFixed(1)}" ry="${(r * 1.6).toFixed(1)}" ` +
+          `fill="none" stroke="${c.deep}" stroke-width="2.6" style="${D(2000, ph)}"/></g>` +
+      `<g transform="${P.standAt(u, v, 0)}"><g class="bk-fx-drop-in" style="${D(2000, ph)}">` +
+        `<path d="M${(-r * 2.4).toFixed(1)} ${(-r * 4.2).toFixed(1)} L0 ${-r}" stroke="${c.mid}" ` +
+          `stroke-width="${(r * 0.9).toFixed(1)}" stroke-linecap="round" opacity="0.75"/>` +
+        `<circle cy="${-r}" r="${r}" fill="${c.mid}" stroke="${c.deep}" stroke-width="2"/>` +
+        `<circle cx="${(-r * 0.3).toFixed(1)}" cy="${(-r * 1.3).toFixed(1)}" ` +
+          `r="${(r * 0.42).toFixed(1)}" fill="${c.core}"/>` +
+      `</g></g>`;
+    // Bigger and fewer: four rocks the eye can follow beat six it cannot.
+    return [[62, 74, 10, 0], [156, 60, 8, 480], [104, 142, 12, 960],
+      [214, 118, 9, 1440]].map((a) => strike(...a)).join("");
+  },
+
+  // A ward standing over the page: a ring of runes turning FLAT on the paper —
+  // it rotates inside the page's own frame, so it reads as spinning on the table
+  // rather than on the screen — with a dome standing up out of it.
+  shield: (c, D, P) => {
     let ring = "";
-    for (let i = 0; i < 16; i++) ring += glyphAt(0, 0, 74, i * 22.5, 15, 91 + i, "bk-fx-glyph");
-    return `
-    <ellipse class="bk-fx-ward" rx="90" ry="86" fill="none" stroke="${c.deep}"
-      stroke-width="2.6" style="${D(3000, 0)}"/>
-    <g class="bk-fx-turn" stroke="${c.deep}" style="${D(24000, 0)}">${ring}</g>
-    <g class="bk-fx-float" style="${D(3200, 0)}">
-      <path d="M0 -62 L46 -38 L46 10 Q46 50 0 70 Q-46 50 -46 10 L-46 -38 Z"
-        fill="${c.mid}" fill-opacity="0.4" stroke="${c.deep}" stroke-width="4" stroke-linejoin="round"/>
-      <path d="M0 -38 L0 42 M-26 -6 L26 -6" stroke="${c.deep}" stroke-width="4.4" stroke-linecap="round"/>
-      <path d="M-14 -24 L0 -38 L14 -24" fill="none" stroke="${c.deep}" stroke-width="3.4"
-        stroke-linecap="round" stroke-linejoin="round"/>
-    </g>`;
+    for (let i = 0; i < 14; i++) ring += glyphAt(0, 0, 78, i * 360 / 14, 13, 91 + i, "bk-fx-glyph");
+    const cu = PAGE_W / 2, cv = 116;
+    return `<g transform="${P.frameAt(cu, cv)}">` +
+        `<ellipse class="bk-fx-ward" rx="92" ry="76" fill="none" stroke="${c.deep}" ` +
+          `stroke-width="2.4" style="${D(3000, 0)}"/>` +
+        `<ellipse rx="78" ry="64" fill="${c.mid}" fill-opacity="0.1" stroke="${c.deep}" ` +
+          `stroke-width="1.6" opacity="0.5"/>` +
+        `<g class="bk-fx-turn" stroke="${c.deep}" style="${D(24000, 0)}">${ring}</g></g>` +
+      `<g transform="${P.standAt(cu, cv, 0)}"><g class="bk-fx-float" style="${D(3200, 0)}">` +
+        `<path d="M-74 0 A74 74 0 0 1 74 0" fill="${c.mid}" fill-opacity="0.14" ` +
+          `stroke="${c.deep}" stroke-width="3.4"/>` +
+        `<path d="M0 -74 Q-40 -40 -46 0 M0 -74 Q40 -40 46 0" fill="none" stroke="${c.deep}" ` +
+          `stroke-width="1.6" opacity="0.55"/>` +
+        `<path d="M0 -58 L26 -46 L26 -20 Q26 -2 0 8 Q-26 -2 -26 -20 L-26 -46 Z" ` +
+          `fill="${c.mid}" fill-opacity="0.45" stroke="${c.deep}" stroke-width="3" stroke-linejoin="round"/>` +
+        `<path d="M0 -46 L0 -4 M-14 -28 L14 -28" stroke="${c.deep}" stroke-width="3" stroke-linecap="round"/>` +
+      `</g></g>`;
   },
 
-  // A living sprig over a pulse running the width of the page — growth rather
-  // than a medical cross — shedding motes that drift up off the paper.
-  heal: (c, D) => {
-    let motes = "";
-    for (let i = 0; i < 9; i++) {
-      const x = -86 + ((tileHash(i, 21) % 176));
-      const y = 10 + ((tileHash(i, 27) % 66));
-      motes += `<circle class="bk-fx-mote" cx="${x}" cy="${y}" ` +
-        `r="${(1.7 + (tileHash(i, 31) % 20) / 10).toFixed(1)}" style="${D(2400, i * 267)}"/>`;
+  // Motes lifting off the paper. Each rises from a spot on the page that keeps
+  // its own small pool of light, so you can see where it left — a mote drifting
+  // up from nowhere is just a dot moving.
+  heal: (c, D, P) => {
+    let pools = "", motes = "";
+    const spots = [
+      [64, 82, 1, 0], [148, 62, 0.8, 380], [204, 96, 0.9, 760],
+      [96, 132, 1.1, 1140], [182, 148, 0.85, 1520], [46, 150, 0.75, 1900],
+      [236, 134, 0.7, 2280], [130, 176, 1, 640],
+    ];
+    for (const [u, v, k, ph] of spots) {
+      pools += `<g transform="${P.frameAt(u, v)}"><ellipse class="bk-fx-pool" ` +
+        `rx="${(22 * k).toFixed(1)}" ry="${(11 * k).toFixed(1)}" fill="url(#${c.pool})"/></g>`;
+      motes += `<g transform="${P.standAt(u, v, 0)}">` +
+        `<circle class="bk-fx-rise" r="${(4 * k).toFixed(1)}" fill="${c.core}" ` +
+          `stroke="${c.deep}" stroke-width="1.4" style="${D(2800, ph)}"/></g>`;
     }
-    return `
-    <ellipse class="bk-fx-ward" rx="86" ry="82" fill="none" stroke="${c.deep}"
-      stroke-width="2.2" style="${D(3000, 0)}"/>
-    <g class="bk-fx-float" style="${D(3200, 0)}">
-      <path d="M0 -66 Q38 -16 38 12 Q38 50 0 50 Q-38 50 -38 12 Q-38 -16 0 -66 Z"
-        fill="${c.mid}" fill-opacity="0.45" stroke="${c.deep}" stroke-width="4" stroke-linejoin="round"/>
-      <path d="M0 -36 L0 30 M-21 -5 L21 -5" stroke="${c.deep}" stroke-width="4.6" stroke-linecap="round"/>
-    </g>
-    <path d="M-94 70 L-54 70 L-38 46 L-18 88 L-2 60 L14 70 L94 70" fill="none" stroke="${c.deep}"
-      stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.8"/>
-    <g fill="${c.core}" stroke="${c.deep}" stroke-width="1.2">${motes}</g>`;
+    const cu = PAGE_W / 2, cv = 118;
+    return pools +
+      `<g transform="${P.frameAt(cu, cv)}"><ellipse class="bk-fx-ward" rx="86" ry="70" ` +
+        `fill="none" stroke="${c.deep}" stroke-width="2.2" style="${D(3000, 0)}"/></g>` +
+      `<g transform="${P.standAt(cu, cv, 0)}"><g class="bk-fx-float" style="${D(3200, 0)}">` +
+        `<path d="M0 -78 Q42 -30 42 -6 Q42 26 0 26 Q-42 26 -42 -6 Q-42 -30 0 -78 Z" ` +
+          `fill="${c.mid}" fill-opacity="0.4" stroke="${c.deep}" stroke-width="3.4" stroke-linejoin="round"/>` +
+        `<path d="M0 -52 L0 12 M-22 -22 L22 -22" stroke="${c.deep}" stroke-width="3.6" stroke-linecap="round"/>` +
+      `</g></g>` + motes;
   },
 };
 
@@ -512,7 +605,9 @@ function spellPage(spell, side, under) {
   }
 
   const base = CONFIG.colors.spell[spell.id];
-  const c = { ...base, deep: inkShade(base.mid, 0.55) };
+  // `pool` is the page's own light gradient — an effect's parts light the paper
+  // they stand on, so each of them needs to be able to reach it.
+  const c = { ...base, deep: inkShade(base.mid, 0.55), pool: "bkPool" + key };
   const unlocked = spellUnlocked(spell.id);
   const active = unlocked && spell.id === activeSpellId();
   const idx = SPELLS.indexOf(spell);
@@ -540,15 +635,15 @@ function spellPage(spell, side, under) {
     `<path class="bk-rule thin" stroke="${ink}" ` +
       `d="M${P.p(MARGIN + 7, RULE_V + 3.5)} L${P.p(PAGE_W - MARGIN - 7, RULE_V + 3.5)}"/>`;
 
-  // The spell playing over the leaf. Not framed and not printed: it hovers over
-  // the whole page, on a wash of its own coloured light that falls on the paper
-  // under it. Placed on the projection's local frame so it lies at the page's
-  // tilt without its circles being pulled into eggs by the perspective.
+  // The spell playing over the leaf. Not framed and not printed: it happens ON
+  // the page, in three dimensions — some of it lying in the paper, some standing
+  // up off it — so the art places itself across the leaf through the projection
+  // rather than hanging off one anchor here. All that is left to do at this
+  // level is the ambient wash of the spell's colour on the vellum.
   const fx = under || !unlocked ? "" :
-    `<g transform="${P.frameAt(FX.u, FX.v)}">` +
-      `<ellipse class="bk-wash" rx="112" ry="100" fill="url(#bkPool${key})"/>` +
-      `<g class="bk-fx" transform="scale(${FX.scale})">` +
-        `<g class="bk-fx-cast">${SPELL_ART[spell.id](c, D)}</g></g></g>`;
+    `<g transform="${P.frameAt(PAGE_W / 2, FX_V)}">` +
+      `<ellipse class="bk-wash" rx="118" ry="96" fill="url(#bkPool${key})"/></g>` +
+    `<g class="bk-fx"><g class="bk-fx-cast">${SPELL_ART[spell.id](c, D, P)}</g></g>`;
 
   // Sealed: a blob of wax pressed over the page's own rune, its sigil unread.
   // The name is withheld too — the tree node that opens the page is where you

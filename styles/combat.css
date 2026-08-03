@@ -200,7 +200,15 @@
      wash of its own coloured light falling on the paper under it. The page the
      book is open at plays at full strength; the facing page is held well back,
      or two full-page effects at once would bury the writing on both. */
-  .bk-wash, .bk-fx { pointer-events: none; }
+  /* NEVER put a CSS animation on an element filled with a soft gradient, or on
+     a group holding one. Animating it promotes the element to its own
+     composited layer, and the radial falloff is rasterised to that layer's
+     BOUNDING BOX — every pool of light on the page comes out as a hard-edged
+     rectangle. The pools and the rime are therefore static; their motion comes
+     from the flames and crystals standing in them, which have flat fills and
+     animate freely. */
+  .bk-fx-pool, .bk-fx-rime, .bk-wash, .bk-fx { pointer-events: none; }
+  .bk-fx-rime { opacity: 0.45; }
   .bk-wash { opacity: 0.55; }
   .bk-page:not(.active) .bk-fx { opacity: 0.62; }
   .bk-page:not(.active) .bk-wash { opacity: 0.3; }
@@ -211,53 +219,79 @@
      spellbook.js, which hands back a negative animation-delay that both staggers
      an element against its siblings and picks the loop up at the phase the game
      clock has already reached, so rebuilding the book doesn't restart the motion.
-     Anything scaled or spun needs fill-box, or SVG rotates it about the
-     viewBox's origin instead of its own centre. */
-  .bk-fx-pulse, .bk-fx-ripple, .bk-fx-lick, .bk-fx-mote, .bk-fx-flash, .bk-fx-bolt,
-  .bk-fx-sweep, .bk-fx-drift, .bk-fx-spin, .bk-fx-fall, .bk-fx-burst, .bk-fx-ward,
-  .bk-fx-turn, .bk-fx-float {
+     Anything scaled or spun needs fill-box, or SVG works about the viewBox's
+     origin instead of the element's own centre.
+
+     Note the two ORIGINS below. A flame is hinged where it meets the paper, so
+     it flickers about its base; everything else works about its middle. Getting
+     that wrong makes a flame slide around instead of dancing on the spot. */
+  .bk-fx-flame, .bk-fx-ember, .bk-fx-arc, .bk-fx-node, .bk-fx-form,
+  .bk-fx-drop, .bk-fx-drop-in, .bk-fx-scorch, .bk-fx-ward,
+  .bk-fx-turn, .bk-fx-float, .bk-fx-rise {
     transform-box: fill-box; transform-origin: 50% 50%;
     animation-iteration-count: infinite; animation-timing-function: ease-in-out;
   }
-  .bk-fx-pulse  { animation-name: bkPulse;  animation-duration: 2600ms; }
-  .bk-fx-ripple { animation-name: bkRipple; animation-duration: 3000ms; animation-timing-function: ease-out; }
-  .bk-fx-lick   { animation-name: bkLick;   animation-duration: 1800ms; animation-timing-function: ease-out; }
-  .bk-fx-mote   { animation-name: bkMote;   animation-duration: 2400ms; animation-timing-function: linear; }
-  .bk-fx-flash  { animation-name: bkFlash;  animation-duration: 1500ms; }
-  .bk-fx-bolt   { animation-name: bkBolt;   animation-duration: 1500ms; animation-timing-function: steps(1, end); }
-  .bk-fx-sweep  { animation-name: bkSweep;  animation-duration: 2600ms; }
-  .bk-fx-drift  { animation-name: bkDrift;  animation-duration: 2800ms; animation-timing-function: linear; }
-  .bk-fx-spin   { animation-name: bkSpin;   animation-duration: 4200ms; animation-timing-function: linear; }
-  .bk-fx-fall   { animation-name: bkFall;   animation-duration: 1900ms; animation-timing-function: ease-in; }
-  .bk-fx-burst  { animation-name: bkBurst;  animation-duration: 1900ms; animation-timing-function: ease-out; }
-  .bk-fx-ward   { animation-name: bkWard;   animation-duration: 3000ms; animation-timing-function: ease-out; }
-  .bk-fx-turn   { animation-name: bkSpin;   animation-duration: 24000ms; animation-timing-function: linear; }
-  .bk-fx-float  { animation-name: bkFloat;  animation-duration: 3200ms; }
+  .bk-fx-flame, .bk-fx-ember, .bk-fx-rise { transform-origin: 50% 100%; }
 
-  @keyframes bkPulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.11); } }
-  @keyframes bkRipple { 0% { transform: scale(0.55); opacity: 0.75; } 100% { transform: scale(1.7); opacity: 0; } }
-  @keyframes bkLick   { 0% { transform: translateY(14px) scale(0.6); opacity: 0; }
-                        35% { opacity: 0.95; }
-                        100% { transform: translateY(-34px) scale(1.05); opacity: 0; } }
-  @keyframes bkMote   { 0% { transform: translateY(16px); opacity: 0; }
-                        30% { opacity: 0.9; }
-                        100% { transform: translateY(-68px); opacity: 0; } }
-  @keyframes bkFlash  { 0%, 12% { opacity: 0.35; } 26%, 100% { opacity: 0.08; } }
-  @keyframes bkBolt   { 0% { opacity: 1; } 34%, 100% { opacity: 0; } }
-  @keyframes bkSweep  { 0% { opacity: 0; } 45% { opacity: 0.3; } 100% { opacity: 0; } }
-  @keyframes bkDrift  { 0% { transform: translateX(-40px) scale(0.5); opacity: 0; }
-                        30% { opacity: 1; }
-                        100% { transform: translateX(58px) scale(1.1); opacity: 0; } }
-  @keyframes bkSpin   { to { transform: rotate(360deg); } }
-  @keyframes bkFall   { 0% { transform: translate(-30px, -122px); opacity: 0; }
-                        16%, 84% { opacity: 1; }
-                        100% { transform: translate(0, 46px); opacity: 0; } }
-  @keyframes bkBurst  { 0%, 84% { transform: scaleX(0.3); opacity: 0; }
-                        90% { transform: scaleX(1.2); opacity: 0.9; }
-                        100% { transform: scaleX(1.6); opacity: 0; } }
-  @keyframes bkWard   { 0% { transform: scale(0.82); opacity: 0.55; }
-                        100% { transform: scale(1.16); opacity: 0; } }
-  @keyframes bkFloat  { 0%, 100% { transform: translateY(5px); } 50% { transform: translateY(-8px); } }
+  .bk-fx-flame { animation-name: bkFlame; animation-duration: 900ms; }
+  .bk-fx-ember { animation-name: bkEmber; animation-duration: 2600ms; animation-timing-function: linear; }
+  .bk-fx-arc   { animation-name: bkArc;   animation-duration: 2400ms; animation-timing-function: steps(1, end); }
+  .bk-fx-node  { animation-name: bkNode;  animation-duration: 2400ms; }
+  .bk-fx-form  { animation-name: bkForm;  animation-duration: 4200ms; }
+  .bk-fx-drop     { animation-name: bkDrop;    animation-duration: 2000ms; animation-timing-function: ease-in; }
+  .bk-fx-drop-in  { animation-name: bkDropIn;  animation-duration: 2000ms; animation-timing-function: ease-in; }
+  .bk-fx-scorch   { animation-name: bkScorch;  animation-duration: 2000ms; animation-timing-function: ease-out; }
+  .bk-fx-ward  { animation-name: bkWard;  animation-duration: 3000ms; animation-timing-function: ease-out; }
+  .bk-fx-turn  { animation-name: bkSpin;  animation-duration: 24000ms; animation-timing-function: linear; }
+  .bk-fx-float { animation-name: bkFloat; animation-duration: 3200ms; }
+  .bk-fx-rise  { animation-name: bkRise;  animation-duration: 2800ms; animation-timing-function: linear; }
+
+  /* A tongue of flame: it leans and stretches, it does not simply throb. The
+     four steps are deliberately uneven so no two flames on a page ever look
+     like they are keeping time with each other. */
+  @keyframes bkFlame {
+    0%, 100% { transform: scale(1, 1) skewX(0deg); }
+    22% { transform: scale(0.9, 1.16) skewX(-5deg); }
+    46% { transform: scale(1.08, 0.9) skewX(3deg); }
+    71% { transform: scale(0.95, 1.09) skewX(-2deg); }
+  }
+  @keyframes bkEmber { 0% { transform: translateY(-30px) scale(0.9); opacity: 0; }
+                       18% { opacity: 0.95; }
+                       100% { transform: translateY(-96px) scale(0.3); opacity: 0; } }
+  /* An arc is struck, not faded in: on for a beat, gone for the rest. */
+  @keyframes bkArc  { 0% { opacity: 1; } 10% { opacity: 0.55; } 14%, 100% { opacity: 0; } }
+  @keyframes bkNode { 0% { transform: scale(1.5); opacity: 0.9; }
+                      14% { transform: scale(1); opacity: 0.25; }
+                      30%, 100% { opacity: 0; } }
+  /* Ice: grows out of nothing, holds, then thaws away. The hold is most of the
+     cycle — crystals that never stop moving read as sparkle, not as frost. */
+  @keyframes bkForm { 0% { transform: scale(0.15) rotate(-25deg); opacity: 0; }
+                      18% { transform: scale(1) rotate(0deg); opacity: 1; }
+                      66% { transform: scale(1) rotate(0deg); opacity: 1; }
+                      100% { transform: scale(0.9) rotate(6deg); opacity: 0; } }
+  /* The shadow a falling rock throws on the paper: wide and faint while it is
+     high up, tight and dark as it lands. This is the whole height cue — the
+     rock's own fall says nothing about how far away it started. */
+  @keyframes bkDrop { 0% { transform: scale(2.4); opacity: 0; }
+                      14% { opacity: 0.1; }
+                      82% { transform: scale(1); opacity: 0.42; }
+                      88%, 100% { transform: scale(1); opacity: 0; } }
+  @keyframes bkDropIn { 0% { transform: translateY(-150px); opacity: 0; }
+                        14% { opacity: 1; }
+                        82% { transform: translateY(0); opacity: 1; }
+                        86%, 100% { transform: translateY(0); opacity: 0; } }
+  @keyframes bkScorch { 0%, 82% { transform: scale(0.2); opacity: 0; }
+                        88% { transform: scale(1); opacity: 0.9; }
+                        100% { transform: scale(1.6); opacity: 0; } }
+  @keyframes bkSpin  { to { transform: rotate(360deg); } }
+  @keyframes bkWard  { 0% { transform: scale(0.82); opacity: 0.5; }
+                       100% { transform: scale(1.14); opacity: 0; } }
+  @keyframes bkFloat { 0%, 100% { transform: translateY(4px); } 50% { transform: translateY(-6px); } }
+  /* A mote leaving the paper: it lifts off the spot it came from and thins out
+     as it goes, rather than fading on the spot. */
+  @keyframes bkRise { 0% { transform: translateY(0) scale(0.5); opacity: 0; }
+                      20% { opacity: 1; }
+                      100% { transform: translateY(-84px) scale(1.1); opacity: 0; } }
 
   /* A cast lights its own page for a beat. The class is toggled on the book by
      patchCombatContinuous while a freshly queued effect is still running, so it
