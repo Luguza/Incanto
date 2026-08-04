@@ -35,6 +35,19 @@ function renderQuizSteps() {
     aria-valuemin="0" aria-valuemax="${state.quizList.length}" aria-valuenow="${state.quizIndex}">${cells}</div>`;
 }
 
+// The banked reward multiplier, shown where the learner can see what each
+// correct answer is currently worth (and that the fighting they did is what
+// bought it). Hidden at ×1 so an unearned chip never clutters the header.
+function renderQuizMult() {
+  const mult = rewardMult();
+  if (mult <= 1) return "";
+  const capped = rewardMultCapped();
+  const title = capped
+    ? `Belohnungs-Multiplikator am Anschlag — dieses Quiz löst ihn ein`
+    : `Belohnungs-Multiplikator aus ${state.rewardKills} erlegten Skeletten`;
+  return `<span class="quiz-mult${capped ? " capped" : ""}" title="${title}">${fmtMult(mult)}</span>`;
+}
+
 // The screen is a fixed three-part column: a header that never moves, a stage
 // that holds whatever the exercise needs, and a footer pinned to the bottom
 // edge. Anchoring the action bar is the point — the primary button sits in the
@@ -59,6 +72,7 @@ function renderQuizFull() {
           ${renderQuizSteps()}
           <div class="quiz-meta">
             <span class="quiz-count">Frage <b>${state.quizIndex + 1}</b> / ${state.quizList.length}</span>
+            ${renderQuizMult()}
             <span class="quiz-purse" title="in dieser Runde verdient"><span class="coin">◈</span> ${state.quizGoldEarned}</span>
             <button class="ghost-btn quiz-history-btn" data-act="openHistory">Lernverlauf</button>
           </div>
@@ -220,8 +234,15 @@ function renderQuizFoot(q) {
       banner = `<div class="quiz-feedback ${shown ? "reveal" : "bad"}"><span class="fb-mark">${shown ? "◈" : "✕"}</span>
         <span class="fb-text">${shown ? "Lösung" : "Richtig wäre"}: <strong>${answer}</strong></span></div>`;
     }
+    // On the closing question, say plainly what "Fertig" spends: the banked
+    // multiplier is cashed in by finishing the session, not by any one answer.
+    // It rides in the button's own label rather than a line above it — the foot
+    // bar keeps a fixed row count so the primary button never shifts.
+    const label = last
+      ? (rewardMult() > 1 ? `Fertig &middot; ${fmtMult(rewardMult())} einlösen` : "Fertig")
+      : "Weiter";
     return `<footer class="quiz-foot">${banner}
-      <button class="btn-primary quiz-continue" data-act="advanceQuiz">${last ? "Fertig" : "Weiter"} →</button>
+      <button class="btn-primary quiz-continue" data-act="advanceQuiz">${label} →</button>
     </footer>`;
   }
   // Not yet checked. Every type offers "I don't know" to reveal the solution
@@ -488,15 +509,43 @@ function patchCombatContinuous(now) {
   });
 }
 
+// "×2.4", but "×3" rather than "×3.0" — a round multiplier shouldn't wear a
+// pointless decimal.
+function fmtMult(m) {
+  return `×${(Math.round(m * 10) / 10).toString().replace(".", ",")}`;
+}
+
+// The end of a run is NOT a loss screen. Falling costs the player nothing they
+// had banked: every skeleton they slew is still sitting in the reward bank,
+// multiplying the gold the next quiz pays out, and it keeps growing across runs
+// until a full session cashes it in. So the screen leads with the number they
+// won — the multiplier — and points at the one door that spends it: studying.
+// Deliberately near-wordless: the number, a bar filling toward the cap, what an
+// answer is worth, and the button. Nothing here needs a paragraph to explain.
 function renderEndFull() {
   const elapsed = ((performance.now() - state.runStartMs) / 1000).toFixed(0);
+  const mult = rewardMult();
+  const capped = rewardMultCapped();
+  const banked = Math.max(0, state.rewardKills || 0);
+  // How full the bank is, as a share of the cap — the bar is the nudge: a nearly
+  // full one says "go study before the next kills are wasted".
+  const fill = Math.max(0, Math.min(1, (mult - 1) / (CONFIG.rewardMultMax - 1)));
+
   app.innerHTML = `
-    <div class="screen end-screen">
-      <h1 class="defeat">Niederlage</h1>
-      <p>Die Horde hat dich <strong>überwältigt</strong></p>
-      <p class="dim">${Math.floor(state.distance)} m weit &middot; ${state.kills} Skelette erlegt &middot; ${elapsed}s überlebt &middot; ${state.wrongMatchCount} Fehler</p>
-      <p class="end-flavor">Lerne deine Vokabeln, um für den nächsten Lauf stärker zu werden.</p>
-      <button class="fight-btn study-btn" data-act="goToQuiz">Lernen &amp; Gold verdienen →</button>
+    <div class="screen end-screen reward-screen">
+      <h1 class="reward">Bonus gesichert</h1>
+      <div class="reward-mult${capped ? " capped" : ""}">
+        <span class="reward-mult-num">${fmtMult(mult)}</span>
+        <span class="reward-mult-label">Gold im nächsten Quiz</span>
+      </div>
+      <div class="reward-bar" role="img" aria-label="Bonus ${fmtMult(mult)} von ${fmtMult(CONFIG.rewardMultMax)}">
+        <span class="reward-bar-fill${capped ? " capped" : ""}" style="width:${(fill * 100).toFixed(1)}%"></span>
+      </div>
+      <p class="reward-bank"><strong>${banked}</strong> Skelette &middot;
+        <span class="coin">◈</span> <strong>${quizReward()}</strong> pro Antwort</p>
+      ${capped ? `<p class="reward-carry">Am Anschlag &mdash; jetzt lernen</p>` : ""}
+      <button class="fight-btn study-btn" data-act="goToQuiz">Lernen &amp; ${fmtMult(mult)} kassieren →</button>
+      <p class="dim">${Math.floor(state.distance)} m &middot; ${state.kills} erlegt &middot; ${elapsed}s</p>
     </div>`;
 }
-window.Incanto.screens = { renderQuizFull, renderCombatFull, patchCombatContinuous, renderEndFull };
+window.Incanto.screens = { renderQuizFull, renderCombatFull, patchCombatContinuous, renderEndFull, fmtMult };

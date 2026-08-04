@@ -179,7 +179,9 @@ function advanceInboundPack() {
 // are NOT reset here. Every run starts at metre 0 on plan index 0, so two runs
 // walk into exactly the same encounters in the same order.
 function startRun() {
-  state.kills = 0;
+  state.kills = 0;            // this run's score only — state.rewardKills (the
+                              // banked quiz multiplier) deliberately carries over
+
   state.heroHP = state.heroMaxHP;
   state.wrongMatchCount = 0;
   state.runStartMs = performance.now();

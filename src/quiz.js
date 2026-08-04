@@ -160,10 +160,12 @@ function goToQuiz() {
   state._structuralDirty = true;
 }
 
+// Gold for one correct answer: the base payout lifted by the banked reward
+// multiplier the player fought for (see creditKill), then by Fortune's coin
+// nodes. The bank is NOT drained here — a correct answer spends nothing, so the
+// whole session pays out at the same rate; finishing it is what cashes it in.
 function quizReward() {
-  // Fortune's coin nodes multiply the payout for a correct answer.
-  const base = CONFIG.goldPerCorrect + CONFIG.quizKillBonus * state.kills;
-  return Math.round(base * (state.mods ? state.mods.coinMult : 1));
+  return Math.round(CONFIG.goldPerCorrect * rewardMult() * (state.mods ? state.mods.coinMult : 1));
 }
 
 // Mark the current question checked and, if correct, pay out gold. Shared by
@@ -321,6 +323,11 @@ function advanceQuiz() {
   resetQuizInput();
   state.quizIndex++;
   if (state.quizIndex >= state.quizList.length) {
+    // A FULL session is what cashes the reward bank in. Walking away halfway
+    // leaves it standing, so the multiplier is never lost by getting
+    // interrupted — only by seeing the round through, which is the point.
+    state.rewardKills = 0;
+    saveProgress();
     state.screen = "upgrade";
   }
   state._structuralDirty = true;

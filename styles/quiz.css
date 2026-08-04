@@ -55,6 +55,17 @@
     background: var(--gold-1); border: 1px solid var(--gold-2);
     border-radius: var(--r-pill); padding: 3px 10px;
   }
+  /* Banked reward multiplier — what the run's fighting bought. Sits next to the
+     purse it multiplies, and glows once it has hit its ceiling. */
+  .quiz-mult {
+    font-size: 12.5px; font-weight: 700; color: var(--gold-lt); letter-spacing: 0.5px;
+    background: var(--gold-1); border: 1px solid var(--gold-3);
+    border-radius: var(--r-pill); padding: 3px 9px;
+  }
+  .quiz-mult.capped {
+    color: #1a1526; background: var(--gold); border-color: var(--gold-lt);
+    box-shadow: 0 0 12px rgba(242, 193, 78, 0.4);
+  }
   .quiz-history-btn { margin-left: auto; }
 
   /* --- Stage: the exercise itself, in whatever room is left ---
