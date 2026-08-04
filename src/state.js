@@ -60,7 +60,10 @@ function freshState() {
     // The spell book (see spells.js / spellbook.js). `activeSpell` is the page
     // it's open at — the spell a completed shape casts — and `bookSpread` is
     // which leaf is showing, which is pure UI and deliberately not persisted.
+    // `spellOrder` is how the pages are BOUND: a permutation of the spell ids
+    // the player rearranges on the order screen (book-order.js), persisted.
     activeSpell: STARTER_SPELL,
+    spellOrder: SPELLS.map((s) => s.id),
     bookSpread: 0,
     spellFx: [],              // queued scene effects for render-spells (bolts, arcs, meteors, auras)
     castSpell: STARTER_SPELL, // which spell the in-progress cast animation belongs to
@@ -130,6 +133,7 @@ function saveProgress() {
       gold: state.gold,
       nodeRanks: state.nodeRanks,
       activeSpell: state.activeSpell,
+      spellOrder: state.spellOrder,
     }));
   } catch (e) { /* storage unavailable (private mode/quota) — play without saving */ }
 }
@@ -201,9 +205,16 @@ function applySavedProgress() {
   if (data && data.activeSpell && typeof spellUnlocked === "function" && spellUnlocked(data.activeSpell)) {
     state.activeSpell = data.activeSpell;
   }
-  // Open the book at the spread the active page sits on.
-  if (typeof SPELLS !== "undefined") {
-    const idx = SPELLS.findIndex((s) => s.id === state.activeSpell);
+  // How the pages were bound last time. Run through normalizeSpellOrder so a
+  // save written before a spell existed (or one that lost an id) still comes
+  // back as a complete book.
+  if (typeof normalizeSpellOrder === "function") {
+    state.spellOrder = normalizeSpellOrder(data && data.spellOrder);
+  }
+  // Open the book at the spread the active page sits on — in the order the
+  // player bound it, not the authored one.
+  if (typeof bookSlot === "function") {
+    const idx = bookSlot(state.activeSpell);
     if (idx >= 0) state.bookSpread = Math.floor(idx / 2);
   }
   // Write the pruned tree straight back, so the refund above can never be

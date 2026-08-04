@@ -566,27 +566,19 @@ const SPELL_ART = {
 // carries a ribbon and a lit border. `under` marks an under-leaf: the page a
 // turn would bring up, drawn beneath the open one and only ever glimpsed for a
 // fifth of a second mid-turn, so it gets no effect, no ribbon and no tap target.
-// The wash of light an effect lays on the paper around it. Tinted with that
-// page's own spell, so it is built per leaf rather than declared once — a
-// locked page gets none.
-function poolGradient(id, spell) {
-  const c = spell && spellUnlocked(spell.id) ? CONFIG.colors.spell[spell.id] : null;
-  if (!c) return `<radialGradient id="${id}"><stop offset="0" stop-color="#000" stop-opacity="0"/></radialGradient>`;
-  return `<radialGradient id="${id}">
-      <stop offset="0" stop-color="${c.core}" stop-opacity="0.5"/>
-      <stop offset="0.45" stop-color="${c.mid}" stop-opacity="0.22"/>
-      <stop offset="1" stop-color="${c.mid}" stop-opacity="0"/>
-    </radialGradient>`;
-}
-
-// `poolId` overrides which light-pool gradient the page's effect lights the
-// vellum with. The two leaves of the open spread use their side's own
-// (`bkPoolL` / `bkPoolR`), but a leaf built outside the spread — the one a turn
-// carries over, see `turnLeaf` — is not either side's page and brings its own.
-function spellPage(spell, side, under, poolId) {
+//
+// `opts` is what the ORDER SCREEN needs and the combat book doesn't (see
+// book-order.js): `ns` suffixes the page's own light-pool id so several books
+// drawn into one SVG don't all borrow the first one's tint, `act` turns the
+// tap-to-cast target off, and `extra` hangs attributes on the group (the order
+// screen tags each page with the slot it can be dropped on).
+function spellPage(spell, side, under, opts = {}) {
+  const { ns = "", act: tappable = true, extra = "" } = opts;
   const d = leafPath(side);
+  // The clip/gutter/fore-edge ids are pure geometry and identical in every book,
+  // so they stay unsuffixed and are declared once; only the pool carries `ns`.
   const key = side < 0 ? "L" : "R";
-  const poolRef = poolId || "bkPool" + key;
+  const poolId = "bkPool" + key + ns;
   const P = pageProject(side);
   // The paper itself: a gradient-filled leaf, a fibre wash and a little foxing
   // to break the flat fill, a shadow welling out of the gutter, a sheen along
@@ -616,13 +608,13 @@ function spellPage(spell, side, under, poolId) {
   if (!spell) {
     // An odd-numbered book would leave one blank leaf; draw it as empty vellum
     // rather than skipping it, so the spread keeps its shape.
-    return `<g class="bk-page blank${under ? " under" : ""}" data-side="${side}">${paper}${shade}</g>`;
+    return `<g class="bk-page blank${under ? " under" : ""}" data-side="${side}"${extra}>${paper}${shade}</g>`;
   }
 
   const base = CONFIG.colors.spell[spell.id];
   // `pool` is the page's own light gradient — an effect's parts light the paper
   // they stand on, so each of them needs to be able to reach it.
-  const c = { ...base, deep: inkShade(base.mid, 0.55), pool: poolRef };
+  const c = { ...base, deep: inkShade(base.mid, 0.55), pool: poolId };
   const unlocked = spellUnlocked(spell.id);
   const active = unlocked && spell.id === activeSpellId();
   const idx = SPELLS.indexOf(spell);
@@ -657,7 +649,7 @@ function spellPage(spell, side, under, poolId) {
   // level is the ambient wash of the spell's colour on the vellum.
   const fx = under || !unlocked ? "" :
     `<g transform="${P.frameAt(PAGE_W / 2, FX_V)}">` +
-      `<ellipse class="bk-wash" rx="118" ry="96" fill="url(#${poolRef})"/></g>` +
+      `<ellipse class="bk-wash" rx="118" ry="96" fill="url(#${poolId})"/></g>` +
     `<g class="bk-fx"><g class="bk-fx-cast">${SPELL_ART[spell.id](c, D, P)}</g></g>`;
 
   // Sealed: a blob of wax pressed over the page's own rune, its sigil unread.
@@ -695,9 +687,9 @@ function spellPage(spell, side, under, poolId) {
 
   // `data-side` lets the drag handler find the leaf it should turn without
   // re-deriving which spell is on it.
-  const act = unlocked && !under ? ` data-act="spellSelect" data-args='["${spell.id}"]'` : "";
+  const act = tappable && unlocked && !under ? ` data-act="spellSelect" data-args='["${spell.id}"]'` : "";
   return `<g class="bk-page${active ? " active" : ""}${unlocked ? "" : " locked"}` +
-    `${under ? " under" : ""}" data-side="${side}"${act}>
+    `${under ? " under" : ""}" data-side="${side}"${act}${extra}>
       ${paper}
       ${unlocked ? "" : `<path class="bk-sealed" d="${d}"/>`}
       ${written}
@@ -748,66 +740,67 @@ function pageStack(side, count) {
   return s;
 }
 
-// The whole book: covers, spine, the two facing pages of the current spread and
-// the thumb tabs that turn it. Returned as markup for the combat screen to drop
-// in (see screens.js) — flipping and selecting mark the screen structurally
-// dirty, so the book is rebuilt with the rest of the combat DOM.
-function renderSpellbook() {
-  const leaves = Math.ceil(SPELLS.length / 2);
-  const spread = Math.max(0, Math.min(leaves - 1, state.bookSpread || 0));
-  const left = SPELLS[spread * 2];
-  const right = SPELLS[spread * 2 + 1];
+// --- The book as parts -------------------------------------------------------
+// Covers, defs and the open spread are separate pieces because a book gets drawn
+// more than once: the combat screen shows one, live and turnable, and the order
+// screen (book-order.js) stacks three of them into a SINGLE svg so a page can be
+// dragged from one book to another without leaving its own viewport.
 
-  // Covers: the leaf outline pushed out, far enough to sit outside the widest
-  // page sliver (STACK_SHADE.length * STACK_STEP) so the block never pokes out
-  // past its own boards. The small lift at the head is deliberate and is the
-  // one thing that should overhang there — a hardcover's boards are cut proud
-  // of the text block on all three outer edges. The rim bows with the page it
-  // backs rather than cutting a straight line behind a curved edge.
-  // `out` is how far past the text block the board is cut; passing a smaller one
-  // traces the blind-tooled fillet lines inset on the leather, which are just
-  // the board's own outline drawn again a few units in.
-  const coverPath = (side, out = 0) => {
-    const p = pageCorners(side);
-    const A = { x: p[0].x + side * (22 - out), y: p[0].y - 7 + out };
-    const B = { x: p[1].x, y: p[1].y - 1 + out };
-    const D = { x: p[3].x + side * (26 - out), y: p[3].y };
-    const t = bowCtrl(A, B, TOP_BOW, side);
-    const o = bowCtrl(D, A, OUT_BOW, side);
-    const f = (q) => `${q.x.toFixed(1)} ${q.y.toFixed(1)}`;
-    return `M${f(A)} Q${f(t)} ${f(B)} L${f(p[2])} L${f(D)} Q${f(o)} ${f(A)} Z`;
-  };
+// Covers: the leaf outline pushed out, far enough to sit outside the widest
+// page sliver (STACK_SHADE.length * STACK_STEP) so the block never pokes out
+// past its own boards. The small lift at the head is deliberate and is the
+// one thing that should overhang there — a hardcover's boards are cut proud
+// of the text block on all three outer edges. The rim bows with the page it
+// backs rather than cutting a straight line behind a curved edge.
+// `out` is how far past the text block the board is cut; passing a smaller one
+// traces the blind-tooled fillet lines inset on the leather, which are just
+// the board's own outline drawn again a few units in.
+function coverPath(side, out = 0) {
+  const p = pageCorners(side);
+  const A = { x: p[0].x + side * (22 - out), y: p[0].y - 7 + out };
+  const B = { x: p[1].x, y: p[1].y - 1 + out };
+  const D = { x: p[3].x + side * (26 - out), y: p[3].y };
+  const t = bowCtrl(A, B, TOP_BOW, side);
+  const o = bowCtrl(D, A, OUT_BOW, side);
+  const f = (q) => `${q.x.toFixed(1)} ${q.y.toFixed(1)}`;
+  return `M${f(A)} Q${f(t)} ${f(B)} L${f(p[2])} L${f(D)} Q${f(o)} ${f(A)} Z`;
+}
 
-  // A board is leather over wood: grain, a bevel catching the light along its
-  // cut head edge, and two blind-tooled fillets running round inside the edge.
-  const cover = (side) =>
-    `<path class="bk-cover" d="${coverPath(side)}"/>` +
+// A board is leather over wood: grain, a bevel catching the light along its
+// cut head edge, and two blind-tooled fillets running round inside the edge.
+function cover(side) {
+  return `<path class="bk-cover" d="${coverPath(side)}"/>` +
     `<g clip-path="url(#bkCoverClip${side < 0 ? "L" : "R"})">` +
       `<rect class="bk-grain" x="0" y="0" width="${BOOK_W}" height="${BOOK_H}"/></g>` +
     `<path class="bk-cover-bevel" d="${coverPath(side, 1.6)}"/>` +
     `<path class="bk-tool" d="${coverPath(side, 7)}"/>` +
     `<path class="bk-tool thin" d="${coverPath(side, 10)}"/>`;
+}
 
-  // The leaf lying under each side of the spread: the page a turn in that
-  // direction brings up. Completely hidden by the open leaf on top of it until
-  // that leaf is dragged off — and WITHOUT it a page turn squeezes a leaf away
-  // to reveal the board underneath, which is why a flip only ever read as its
-  // own first half.
-  //
-  // Which page it is follows the physical turn, not the array: turning the right
-  // leaf over uncovers the next leaf's recto on the right, and turning the left
-  // one back uncovers the previous leaf's verso on the left.
-  const under = (side) => {
-    const to = spread + (side < 0 ? -1 : 1);
-    if (to < 0 || to >= leaves) return "";
-    return spellPage(SPELLS[to * 2 + (side < 0 ? 0 : 1)], side, true);
-  };
+// The wash of light the effect lays on the paper around it. Tinted with that
+// page's own spell, so it has to be built per open page rather than declared
+// once — a sealed page gets none. `id` is what spellPage's `ns` resolves to, so
+// three books in one svg each light their paper with their own spell.
+function poolDef(id, spell) {
+  const c = spell && spellUnlocked(spell.id) ? CONFIG.colors.spell[spell.id] : null;
+  if (!c) return `<radialGradient id="${id}"><stop offset="0" stop-color="#000" stop-opacity="0"/></radialGradient>`;
+  return `<radialGradient id="${id}">
+      <stop offset="0" stop-color="${c.core}" stop-opacity="0.5"/>
+      <stop offset="0.45" stop-color="${c.mid}" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="${c.mid}" stop-opacity="0"/>
+    </radialGradient>`;
+}
 
+// Everything a book needs declared: the paper/gutter/fore-edge gradients, the
+// leaf and board clips, the fibre and grain filters — all pure geometry or
+// palette, identical in every book, so they are declared ONCE per svg — plus one
+// light pool per open page, which is not (`pools` is [{id, spell}, …]).
+function bookDefs(pools) {
   // Paper is lit from the outer edge and falls into shadow toward the gutter,
   // which is most of what stops a flat fill reading as cardboard. One gradient
   // per side because the light runs the opposite way on each leaf; the gutter
   // shadow is a second pass on top, clipped to the leaf.
-  const defs = `
+  return `
     <defs>
       <linearGradient id="bkPaperL" gradientUnits="userSpaceOnUse" x1="${SPINE_X}" y1="0" x2="10" y2="0">
         <stop offset="0" stop-color="#cabd95"/>
@@ -841,12 +834,18 @@ function renderSpellbook() {
         <stop offset="0.5" stop-color="#fffdf2" stop-opacity="0.12"/>
         <stop offset="1" stop-color="#fffdf2" stop-opacity="0"/>
       </linearGradient>
-      ${poolGradient("bkPoolL", left)}
-      ${poolGradient("bkPoolR", right)}
+      ${pools.map((p) => poolDef(p.id, p.spell)).join("")}
       <clipPath id="bkClipL"><path d="${leafPath(-1)}"/></clipPath>
       <clipPath id="bkClipR"><path d="${leafPath(1)}"/></clipPath>
       <clipPath id="bkCoverClipL"><path d="${coverPath(-1)}"/></clipPath>
       <clipPath id="bkCoverClipR"><path d="${coverPath(1)}"/></clipPath>
+      <!-- The book's own window. A leaf runs well below BOOK_H (the gutter
+           corner is off the bottom of the screen), which the combat svg's
+           viewBox cuts away on its own. A book that is only PART of a taller
+           svg has no such edge, so it wears one: this box keeps a book — and a
+           page lifted off it — inside its own slot instead of hanging into the
+           book below. -->
+      <clipPath id="bkBox"><rect x="0" y="0" width="${BOOK_W}" height="${BOOK_H}"/></clipPath>
       <!-- Vellum is a fibrous sheet, not a flat wash. One turbulence pass,
            stretched sideways so the noise reads as laid fibres running across
            the page, is laid over each leaf and multiplied into it. It is static
@@ -866,27 +865,73 @@ function renderSpellbook() {
         <feGaussianBlur stdDeviation="2.5"/>
       </filter>
     </defs>`;
+}
 
+// How many spreads the book has, and which one is showing.
+function bookLeaves() { return Math.ceil(bookSpells().length / 2); }
+function bookSpreadIndex() {
+  return Math.max(0, Math.min(bookLeaves() - 1, state.bookSpread || 0));
+}
+
+// One open book, drawn in its own 600x240 box: boards, the fanned page edges
+// either side, the leaf a turn would bring up, the two facing pages of `spread`,
+// and the spine. `opts` is passed through to spellPage (see there) plus:
+//   under — draw the under-leaves. They exist only so a page TURN has something
+//           to reveal; a book that can't be turned has no use for them.
+//   attrs — extra attributes per page, given the page's slot in the book.
+function bookMarkup(spread, opts = {}) {
+  const { ns = "", act = true, under = true, attrs = null } = opts;
+  const pages = bookSpells();
+  const leaves = Math.ceil(pages.length / 2);
+  const s = Math.max(0, Math.min(leaves - 1, spread));
+  const page = (slot, isUnder) => spellPage(pages[slot], slot % 2 ? 1 : -1, isUnder,
+    { ns, act, extra: attrs && !isUnder ? attrs(slot) : "" });
+
+  // The leaf lying under each side of the spread: the page a turn in that
+  // direction brings up. Completely hidden by the open leaf on top of it until
+  // that leaf is dragged off — and WITHOUT it a page turn squeezes a leaf away
+  // to reveal the board underneath, which is why a flip only ever read as its
+  // own first half.
+  //
+  // Which page it is follows the physical turn, not the array: turning the right
+  // leaf over uncovers the next leaf's recto on the right, and turning the left
+  // one back uncovers the previous leaf's verso on the left.
+  const underLeaf = (side) => {
+    const to = s + (side < 0 ? -1 : 1);
+    if (!under || to < 0 || to >= leaves) return "";
+    return page(to * 2 + (side < 0 ? 0 : 1), true);
+  };
+
+  return cover(-1) + cover(1) +
+    pageStack(-1, s * 2) +
+    pageStack(1, pages.length - s * 2 - 2) +
+    underLeaf(-1) + underLeaf(1) +
+    page(s * 2, false) + page(s * 2 + 1, false) +
+    `<path class="bk-spine" d="M${SPINE_X} ${NOTCH_Y - 2} L${SPINE_X} ${BOOK_H}"/>`;
+}
+
+// The combat book: the spread the player left it open at, live and turnable.
+// Returned as markup for the combat screen to drop in (see screens.js) —
+// flipping and selecting mark the screen structurally dirty, so the book is
+// rebuilt with the rest of the combat DOM.
+function renderSpellbook() {
+  const pages = bookSpells();
+  const spread = bookSpreadIndex();
   return `
     <svg class="spellbook" id="spellbook" viewBox="0 0 ${BOOK_W} ${BOOK_H}"
          preserveAspectRatio="xMidYMax meet" aria-label="Zauberbuch">
-      ${defs}
-      ${cover(-1)}
-      ${cover(1)}
-      ${pageStack(-1, spread * 2)}
-      ${pageStack(1, SPELLS.length - spread * 2 - 2)}
-      ${under(-1)}
-      ${under(1)}
-      ${spellPage(left, -1)}
-      ${spellPage(right, 1)}
-      <path class="bk-spine" d="M${SPINE_X} ${NOTCH_Y - 2} L${SPINE_X} ${BOOK_H}"/>
+      ${bookDefs([
+        { id: "bkPoolL", spell: pages[spread * 2] },
+        { id: "bkPoolR", spell: pages[spread * 2 + 1] },
+      ])}
+      ${bookMarkup(spread)}
     </svg>`;
 }
 
 // Turn one leaf. The spread is UI only — it doesn't change which spell is cast
 // (that's spellSelect), so leafing through the book mid-fight is free.
 function spellbookFlip(dir) {
-  const leaves = Math.ceil(SPELLS.length / 2);
+  const leaves = bookLeaves();
   const next = (state.bookSpread || 0) + dir;
   if (next < 0 || next >= leaves) return;
   state.bookSpread = next;
@@ -923,15 +968,18 @@ const FLIP_FINISH_MS = 300;            // a full turn's worth of finishing it of
 // The leaf a turn in `dir` carries over, ready to drop into the book: the verso
 // of the page being turned, which lands on the other side of the spine. Turning
 // the right leaf over (dir +1) brings the next spread's left page over; turning
-// the left one back brings the previous spread's right page. It carries its own
-// light-pool gradient because it belongs to neither side of the open spread.
+// the left one back brings the previous spread's right page. It belongs to
+// neither side of the open spread, so it is drawn in its own namespace with its
+// own light pool, and it is never a tap target — it is a page in flight.
 function turnLeaf(dir) {
-  const leaves = Math.ceil(SPELLS.length / 2);
+  const pages = bookSpells();
   const to = (state.bookSpread || 0) + dir;
-  if (to < 0 || to >= leaves) return "";
-  const spell = SPELLS[to * 2 + (dir > 0 ? 0 : 1)];
-  return `<g class="bk-turn"><defs>${poolGradient("bkPoolT", spell)}</defs>` +
-    spellPage(spell, dir > 0 ? -1 : 1, false, "bkPoolT") + `</g>`;
+  if (to < 0 || to >= bookLeaves()) return "";
+  const side = dir > 0 ? -1 : 1;
+  const spell = pages[to * 2 + (dir > 0 ? 0 : 1)];
+  return `<g class="bk-turn">` +
+    `<defs>${poolDef("bkPool" + (side < 0 ? "L" : "R") + "T", spell)}</defs>` +
+    spellPage(spell, side, false, { ns: "T", act: false }) + `</g>`;
 }
 
 // Ease a value from → to over `ms`, handing each frame to `step`. `step` returns
@@ -954,7 +1002,7 @@ function animateValue(from, to, ms, step, done) {
 function attachSpellbookDrag() {
   const svg = document.getElementById("spellbook");
   if (!svg) return;
-  const leaves = Math.ceil(SPELLS.length / 2);
+  const leaves = bookLeaves();
   // `held` is the leaf under the finger, `carried` the one it brings over to the
   // other side, and `t` how far through the turn the two of them are.
   let startX = 0, dx = 0, down = false, held = null, carried = null, turnBox = null, t = 0;
@@ -1088,4 +1136,7 @@ function attachSpellbookDrag() {
   // carried leaf lying flat where the rebuild draws it for real.
 }
 
-window.Incanto.spellbook = { SPELL_ART, renderSpellbook, spellbookFlip, attachSpellbookDrag };
+window.Incanto.spellbook = {
+  SPELL_ART, renderSpellbook, spellbookFlip, attachSpellbookDrag,
+  BOOK_W, BOOK_H, bookDefs, bookMarkup, bookLeaves, bookSpreadIndex,
+};
