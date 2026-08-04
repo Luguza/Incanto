@@ -56,6 +56,54 @@ const SPELL_BY_ID = Object.fromEntries(SPELLS.map((s) => [s.id, s]));
 const STARTER_SPELL = "fireball";
 
 // ---------------------------------------------------------------------------
+// Page order — SPELLS above is the AUTHORED order the book ships in; where each
+// spell actually sits is the player's, rebound on the order screen (see
+// book-order.js) and kept in `state.spellOrder` as a permutation of the ids.
+//
+// Everything that draws or leafs through the book reads `bookSpells()` rather
+// than SPELLS, so a page moves as a whole — its art, its seal, its ribbon. What
+// does NOT move with it is the page's script and great rune: those are seeded
+// from the spell's index in SPELLS (see spellPage), so a spell's leaf reads the
+// same wherever in the book it is bound.
+// ---------------------------------------------------------------------------
+// Repair anything a save (or a hand-edited order) can hand back: unknown ids and
+// duplicates are dropped, and any spell the list forgot is appended in its
+// authored place. The result is always a full permutation, so the book can never
+// come up a page short.
+function normalizeSpellOrder(list) {
+  const out = [];
+  if (Array.isArray(list)) {
+    for (const id of list) if (SPELL_BY_ID[id] && !out.includes(id)) out.push(id);
+  }
+  for (const s of SPELLS) if (!out.includes(s.id)) out.push(s.id);
+  return out;
+}
+
+function bookOrder() { return normalizeSpellOrder(state && state.spellOrder); }
+function bookSpells() { return bookOrder().map((id) => SPELL_BY_ID[id]); }
+
+// Which page slot a spell is bound to (0 = the first recto of the first spread).
+function bookSlot(id) { return bookOrder().indexOf(id); }
+
+// Trade two pages. The book stays open on the page it is CAST from rather than
+// on the slot the finger let go over — moving a page must never quietly change
+// which spell a completed shape fires.
+function swapBookPages(a, b) {
+  const order = bookOrder();
+  const inRange = (i) => Number.isInteger(i) && i >= 0 && i < order.length;
+  if (!inRange(a) || !inRange(b) || a === b) return false;
+  const tmp = order[a];
+  order[a] = order[b];
+  order[b] = tmp;
+  state.spellOrder = order;
+  const idx = order.indexOf(activeSpellId());
+  if (idx >= 0) state.bookSpread = Math.floor(idx / 2);
+  saveProgress();
+  state._structuralDirty = true;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Unlock + selection
 // ---------------------------------------------------------------------------
 function spellUnlocked(id) {
@@ -452,4 +500,5 @@ function castActiveSpell(now) {
 window.Incanto.spells = {
   SPELLS, SPELL_BY_ID, STARTER_SPELL, spellUnlocked, activeSpellId, activeSpell,
   spellSelect, spellPower, castActiveSpell, primeActive, castChargeMs,
+  normalizeSpellOrder, bookOrder, bookSpells, bookSlot, swapBookPages,
 };

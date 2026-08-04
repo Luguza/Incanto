@@ -65,6 +65,20 @@
     background: var(--gold-1); border: 1px solid var(--gold-2);
     border-radius: var(--r-pill); padding: 3px 10px;
   }
+  /* Opens the order screen. Sits between the title and the purse because that is
+     the other thing the forge does with the book: the tree opens pages, this
+     binds them into an order. */
+  .bo-open {
+    display: inline-flex; align-items: center; gap: 6px; margin-left: auto; margin-right: 10px;
+    font-size: 12px; letter-spacing: 1px; color: var(--arcane-pale);
+    background: rgba(24, 19, 36, 0.82); border: 1px solid var(--edge);
+    border-radius: var(--r-pill); padding: 4px 11px 4px 9px; cursor: pointer;
+    transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+  }
+  .bo-open:active { background: var(--raised-hi); border-color: var(--arcane-3); }
+  .bo-open-icon { width: 20px; height: 14px; fill: #f2ead0; stroke: #10151a; stroke-width: 1.1; }
+  .bo-open-icon .bo-open-spine { stroke: #8a7f63; fill: none; }
+
   .tree-canvas {
     flex: 1 1 auto; min-height: 0; width: 100%; display: block;
     touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;
@@ -137,6 +151,49 @@
   }
   .tree-run-btn { flex: 0 0 auto; margin: 0 auto 10px; width: min(340px, 88vw); }
 
+  /* Book order screen (upgrade phase) — the whole spell book laid out as three
+     open volumes, one per spread. A page is dragged onto another to trade
+     places; the leaves themselves are the combat book's (styles in combat.css),
+     so only the stage and the carry/drop states belong here. */
+  .bo-screen {
+    justify-content: flex-start; align-items: stretch;
+    background: radial-gradient(120% 90% at 50% 32%, #191320 0%, #110c17 60%, #0b0810 100%);
+  }
+  .bo-topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: calc(env(safe-area-inset-top) + 8px) 16px 4px; flex: 0 0 auto;
+  }
+  .bo-back {
+    font-size: 13px; letter-spacing: 0.5px; color: var(--arcane-pale);
+    background: rgba(24, 19, 36, 0.82); border: 1px solid var(--edge);
+    border-radius: var(--r-pill); padding: 5px 12px; cursor: pointer;
+  }
+  .bo-back:active { background: var(--raised-hi); }
+  .bo-hint {
+    flex: 0 0 auto; text-align: center; color: var(--ink-3);
+    font-size: 12px; letter-spacing: 0.4px; padding: 2px 16px 8px;
+  }
+  /* The stack is scaled to fit whatever height is left over (the svg meets its
+     box), so the whole book is always on screen without scrolling. */
+  .bo-stage { flex: 1 1 auto; min-height: 0; width: 100%; padding: 0 10px 10px; }
+  .bo-foot { pointer-events: none; }
+  .bo-canvas {
+    width: 100%; height: 100%; display: block;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    filter: drop-shadow(0 4px 12px rgba(6, 4, 12, 0.6));
+  }
+  .bk-page[data-slot] { cursor: grab; }
+  /* The carried page: lifted off the stack and floating over every book, so it
+     casts a shadow onto them and nothing under the finger can intercept the
+     hit-test that finds the page it will be dropped on. */
+  /* …and it must be transparent to the hit-test, including the leaf itself:
+     combat.css re-enables pointer events on every open page, so switching the
+     layer off is not enough on its own. */
+  #bo-carry, #bo-carry .bk-page { pointer-events: none; }
+  .bo-lift { filter: drop-shadow(0 8px 14px rgba(4, 2, 10, 0.75)); opacity: 0.95; }
+  /* The page it would trade with, lit along its own edge. */
+  .bo-target .bk-leaf { stroke: var(--gold); stroke-width: 3; }
+
   /* End screens */
   .end-screen { cursor: pointer; padding: 16px; text-align: center; }
   .end-screen h1 {
@@ -197,14 +254,11 @@
     max-width: 300px; margin-inline: auto;
   }
   .end-screen .reward-bank strong { color: var(--gold-lt); }
+  .end-screen .reward-bank strong:last-of-type { color: var(--gold); }
   .end-screen .reward-carry {
-    color: var(--ink-3); font-size: clamp(13px, 3.6vw, 15px);
-    max-width: 300px; margin: 2px auto 0;
+    color: var(--arcane-pale); font-size: clamp(13px, 3.6vw, 15px);
+    margin: 6px auto 0; letter-spacing: 0.3px;
   }
-  .end-screen .reward-carry strong { color: var(--ink-2); }
-  .end-screen .reward-rate { margin-top: 12px; color: var(--ink-3); font-size: clamp(14px, 4vw, 16px); }
-  .end-screen .reward-rate strong { color: var(--gold); }
   .reward-screen .coin { color: var(--gold); }
-  .reward-screen .end-flavor { max-width: 300px; margin: 16px auto 20px; }
-  .reward-screen .end-flavor strong { color: var(--arcane-lt); }
-  .reward-screen .dim { margin-top: 18px; }
+  .reward-screen .study-btn { margin-top: 22px; }
+  .reward-screen .dim { margin-top: 16px; }

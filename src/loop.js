@@ -424,6 +424,12 @@ function render(now) {
       builtScreen = "upgrade";
       state._structuralDirty = false;
     }
+  } else if (state.screen === "bookorder") {
+    if (builtScreen !== "bookorder" || state._structuralDirty) {
+      renderBookOrderFull();
+      builtScreen = "bookorder";
+      state._structuralDirty = false;
+    }
   } else {
     if (builtScreen !== state.screen) {
       renderEndFull();

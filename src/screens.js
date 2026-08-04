@@ -520,22 +520,16 @@ function fmtMult(m) {
 // multiplying the gold the next quiz pays out, and it keeps growing across runs
 // until a full session cashes it in. So the screen leads with the number they
 // won — the multiplier — and points at the one door that spends it: studying.
+// Deliberately near-wordless: the number, a bar filling toward the cap, what an
+// answer is worth, and the button. Nothing here needs a paragraph to explain.
 function renderEndFull() {
   const elapsed = ((performance.now() - state.runStartMs) / 1000).toFixed(0);
   const mult = rewardMult();
   const capped = rewardMultCapped();
   const banked = Math.max(0, state.rewardKills || 0);
-  const carried = Math.max(0, banked - state.kills);   // brought in from earlier runs
   // How full the bank is, as a share of the cap — the bar is the nudge: a nearly
   // full one says "go study before the next kills are wasted".
   const fill = Math.max(0, Math.min(1, (mult - 1) / (CONFIG.rewardMultMax - 1)));
-
-  const carryLine = carried > 0
-    ? `<p class="reward-carry"><strong>${carried}</strong> davon aus früheren Läufen &mdash; nichts geht verloren</p>`
-    : `<p class="reward-carry">Jeder Lauf legt obendrauf &mdash; nichts geht verloren</p>`;
-  const nudge = capped
-    ? `Am Anschlag: weitere Skelette zahlen nicht mehr ein. <strong>Jetzt lernen</strong> bringt am meisten.`
-    : `Ein <strong>komplettes Quiz</strong> löst den Bonus ein.`;
 
   app.innerHTML = `
     <div class="screen end-screen reward-screen">
@@ -547,14 +541,11 @@ function renderEndFull() {
       <div class="reward-bar" role="img" aria-label="Bonus ${fmtMult(mult)} von ${fmtMult(CONFIG.rewardMultMax)}">
         <span class="reward-bar-fill${capped ? " capped" : ""}" style="width:${(fill * 100).toFixed(1)}%"></span>
       </div>
-      <p class="reward-bank">${capped
-        ? `<strong>${banked}</strong> erlegte Skelette &mdash; mehr als genug für den vollen Bonus`
-        : `<strong>${banked}</strong> erlegte Skelette warten auf ihre Auszahlung`}</p>
-      ${carryLine}
-      <p class="reward-rate"><span class="coin">◈</span> <strong>${quizReward()}</strong> Gold pro richtiger Antwort</p>
-      <p class="end-flavor">${nudge}</p>
-      <button class="fight-btn study-btn" data-act="goToQuiz">Lernen &amp; ${fmtMult(mult)} Gold kassieren →</button>
-      <p class="dim">${Math.floor(state.distance)} m weit &middot; ${state.kills} in diesem Lauf erlegt &middot; ${elapsed}s gekämpft &middot; ${state.wrongMatchCount} Fehler</p>
+      <p class="reward-bank"><strong>${banked}</strong> Skelette &middot;
+        <span class="coin">◈</span> <strong>${quizReward()}</strong> pro Antwort</p>
+      ${capped ? `<p class="reward-carry">Am Anschlag &mdash; jetzt lernen</p>` : ""}
+      <button class="fight-btn study-btn" data-act="goToQuiz">Lernen &amp; ${fmtMult(mult)} kassieren →</button>
+      <p class="dim">${Math.floor(state.distance)} m &middot; ${state.kills} erlegt &middot; ${elapsed}s</p>
     </div>`;
 }
 window.Incanto.screens = { renderQuizFull, renderCombatFull, patchCombatContinuous, renderEndFull, fmtMult };
