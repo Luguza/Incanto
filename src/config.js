@@ -52,10 +52,33 @@ const CONFIG = {
   heroStridePx: 4.5,              // corridor pixels per radian of footstep bob (cadence follows ground covered)
   // Currency is earned only in the post-death vocab quiz, then spent between
   // runs on permanent build upgrades
-  quizQuestionCount: 8,  // one of each Duolingo-style exercise per session
+  quizQuestionCount: 10, // one of each Duolingo-style exercise per session, plus two conjugation drills
   quizOptionCount: 4,
   quizMatchPairs: 5,     // tap-to-match exercise: pairs per board
   goldPerCorrect: 12,
+  // CONJUGATION DRILLS (see quiz.js + content.js CONJ_POOL). A ladder rather
+  // than one exercise: each rung asks for more of the verb's paradigm and pays
+  // more gold for it, and the top rung is the whole table written out from
+  // nothing — no options, no given forms, six blank lines.
+  //
+  // Which rung the game DEALS is not a setting the player hunts for in a menu:
+  // the ladder climbs itself. Clear the top rung twice and the next one opens;
+  // slip on it twice and it steps back down (see noteConjResult), so the hardest
+  // exercise on offer is always the hardest one the player has shown they can
+  // take. `state.conjLevel` is that high-water mark and is persisted.
+  conjugation: {
+    // `kind` picks the exercise (choose = pick a form, type = write one form,
+    // table = fill a paradigm); `blanks` is how many of the six rows a table
+    // leaves empty; `gold` multiplies that question's payout.
+    levels: [
+      { kind: "choose", name: "Form wählen", gold: 1 },
+      { kind: "type", name: "Form schreiben", gold: 1.4 },
+      { kind: "table", name: "Halbe Tabelle", blanks: 3, gold: 2.2 },
+      { kind: "table", name: "Ganze Tabelle", blanks: 6, gold: 3.2 },
+    ],
+    promoteStreak: 2,  // correct answers at the top rung before the next one opens
+    demoteStreak: 2,   // misses at the top rung before it steps back down
+  },
   // Fighting doesn't pay out gold — it charges the multiplier the quiz pays out
   // AT. Every skeleton slain lifts it, and the charge BANKS across runs
   // (state.rewardKills): dying doesn't burn it, starting a fresh run doesn't

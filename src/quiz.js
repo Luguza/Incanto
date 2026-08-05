@@ -1,8 +1,10 @@
 "use strict";
 // ==============================================================================
 // quiz.js — post-death vocab quiz logic. Owns: question builders, buildQuiz,
-// answer checking/normalization, and the inline exercise handlers (quizChoose,
-// quizMatchTap, quizArrange*, quizTypeInput, quizCheck*, quizReveal, advanceQuiz).
+// answer checking/normalization, the conjugation ladder (makeConj /
+// noteConjResult), and the inline exercise handlers (quizChoose, quizMatchTap,
+// quizArrange*, quizTypeInput, quizConjInput, quizCheck*, quizReveal,
+// advanceQuiz).
 // ==============================================================================
 
 // ---------------------------------------------------------------------------
@@ -10,9 +12,11 @@
 // ---------------------------------------------------------------------------
 // The quiz is a mixed session of Duolingo-style exercises (everything but the
 // audio/speech ones): multiple-choice translation both ways, typed translation
-// both ways, tap-to-match pairs, fill-the-blank by word bank or by typing, and
-// build-the-sentence from a word bank. Each entry in quizList is a self-
-// contained question object carrying everything its renderer + checker need.
+// both ways, tap-to-match pairs, fill-the-blank by word bank or by typing,
+// build-the-sentence from a word bank, and conjugation drills that climb a
+// difficulty ladder up to writing a verb's whole present tense out from nothing.
+// Each entry in quizList is a self-contained question object carrying everything
+// its renderer + checker need.
 // ---------------------------------------------------------------------------
 
 // Draw n distinct random items from a copy of arr (optionally filtered).
@@ -117,17 +121,113 @@ function makeArrange() {
   return { type: "arrange", answer, de: s.de, bank };
 }
 
+// --- conjugation drills -----------------------------------------------------
+// One verb, six forms, and a ladder of ways to be asked for them (see
+// CONFIG.conjugation): pick a form, write a form, fill half a table, write the
+// whole paradigm out from nothing. Every rung shares the same question shape —
+// the verb, its `forms`, and which of the six persons is being asked about — so
+// the checker and the renderers only ever look at the rung's `kind`.
+function conjLevels() { return CONFIG.conjugation.levels; }
+function conjTopLevel() {
+  return Math.max(0, Math.min(state.conjLevel || 0, conjLevels().length - 1));
+}
+
+// A conjugation question drills the verb itself, so its outcome lands on the
+// same WORD_POOL entry the rune circle teaches (the -isc- block that isn't in
+// the pool simply tallies nothing — see recordQuizOutcome).
+function conjWords(verb) {
+  const idx = wordIndexByIt(verb.it);
+  return idx >= 0 ? [idx] : [];
+}
+
+// Wrong options for "pick the form". The verb's OWN other persons come first —
+// those are the confusions worth drilling — and the endings of the classes it
+// doesn't belong to fill up behind them, so a paradigm with repeated forms
+// (essere: io sono / loro sono) still has four distinct options.
+function conjDistractors(verb, answer, n) {
+  const seen = new Set([answer]);
+  const take = (words) => words.filter((w) => !seen.has(w) && seen.add(w));
+  const own = take(verb.forms);
+  const foreign = take(
+    Object.keys(CONJ_ENDINGS)
+      .filter((g) => g !== verb.group)
+      .flatMap((g) => conjugateRegular(verb.it, g))
+  );
+  return [...shuffleArray(own), ...shuffleArray(foreign)].slice(0, n);
+}
+
+function makeConj(level) {
+  const lv = conjLevels()[level];
+  const verb = sampleN(CONJ_POOL, 1)[0];
+  const q = {
+    level, goldMult: lv.gold,
+    verb: { it: verb.it, de: verb.de, group: verb.group },
+    forms: verb.forms.slice(),
+    words: conjWords(verb),
+  };
+  if (lv.kind === "table") {
+    // Which rows are left blank. The full table blanks all six; a half table
+    // leaves the rest standing as worked examples to pattern-match against.
+    const rows = CONJ_PERSONS.map((_, i) => i);
+    const blanks = Math.min(lv.blanks || rows.length, rows.length);
+    q.type = "conj-table";
+    q.blanks = sampleN(rows, blanks).sort((a, b) => a - b);
+    return q;
+  }
+  q.person = Math.floor(Math.random() * CONJ_PERSONS.length);
+  q.answer = verb.forms[q.person];
+  if (lv.kind === "choose") {
+    q.type = "conj-choose";
+    q.options = shuffleArray([q.answer, ...conjDistractors(verb, q.answer, CONFIG.quizOptionCount - 1)]);
+  } else {
+    q.type = "conj-type";
+    // The bare form is what's asked for, but writing the pronoun in front of it
+    // is the same knowledge, so it counts.
+    q.accept = [q.answer, ...CONJ_PERSONS[q.person].it.split("/").map((p) => `${p.trim()} ${q.answer}`)];
+  }
+  return q;
+}
+
+// The ladder climbs itself: only the TOP rung moves it, so clearing a rung the
+// player has already outgrown neither promotes nor demotes. The streak is one
+// signed counter — correct answers push it up, misses (a revealed solution
+// included) push it down — so two in either direction move the mark by one rung.
+function noteConjResult(q, correct) {
+  if (!q || q.level === undefined || q.level !== conjTopLevel()) return;
+  const cfg = CONFIG.conjugation;
+  const streak = state.conjStreak || 0;
+  state.conjStreak = correct ? Math.max(0, streak) + 1 : Math.min(0, streak) - 1;
+  if (state.conjStreak >= cfg.promoteStreak && q.level < conjLevels().length - 1) {
+    state.conjLevel = q.level + 1;
+    state.conjStreak = 0;
+  } else if (state.conjStreak <= -cfg.demoteStreak && q.level > 0) {
+    state.conjLevel = q.level - 1;
+    state.conjStreak = 0;
+  }
+  saveProgress();
+}
+
 function buildQuiz() {
   // A fixed variety template so every session shows the full range of
   // exercises; the vocabulary within each is random. Trimmed to the configured
   // question count.
+  //
+  // Two of the slots are conjugation drills: a warm-up early on, at some rung the
+  // player already owns, and later the probe — the hardest rung they have
+  // reached, and the only question that can move the ladder either way. The
+  // warm-up sits inside the first eight slots so a trimmed session still drills
+  // conjugation at all.
+  const top = conjTopLevel();
+  const warmUp = top > 0 ? Math.floor(Math.random() * top) : 0;
   const plan = [
     () => makeChoose("it2de"),
     () => makeMatch(),
+    () => makeConj(warmUp),
     () => makeType("de2it"),
     () => makeFill("fill-choose"),
     () => makeArrange(),
     () => makeChoose("de2it"),
+    () => makeConj(top),
     () => makeFill("fill-type"),
     () => makeType("it2de"),
   ];
@@ -146,6 +246,8 @@ function resetQuizInput() {
   state.quizRevealed = false;
   state.quizPicked = null;
   state.quizTyped = "";
+  state.quizConj = [];
+  state.quizConjFocus = null;
   state.quizBuilt = [];
   state.quizMatchSel = null;
   state.quizMatchDone = [];
@@ -164,8 +266,14 @@ function goToQuiz() {
 // multiplier the player fought for (see creditKill), then by Fortune's coin
 // nodes. The bank is NOT drained here — a correct answer spends nothing, so the
 // whole session pays out at the same rate; finishing it is what cashes it in.
-function quizReward() {
-  return Math.round(CONFIG.goldPerCorrect * rewardMult() * (state.mods ? state.mods.coinMult : 1));
+//
+// A question may also carry its own stake (`goldMult`): the conjugation ladder
+// pays more the more of the paradigm it makes you write, which is what makes
+// climbing it worth the risk. Called without a question (the reward screen), it
+// answers for a plain one.
+function quizReward(q) {
+  const stake = q && q.goldMult ? q.goldMult : 1;
+  return Math.round(CONFIG.goldPerCorrect * stake * rewardMult() * (state.mods ? state.mods.coinMult : 1));
 }
 
 // Mark the current question checked and, if correct, pay out gold. Shared by
@@ -177,10 +285,12 @@ function settleQuiz(correct) {
   state.quizResults[state.quizIndex] = correct ? "right" : "wrong";
   // Tally the vocabulary this question drilled before anything else — every
   // question resolves through here exactly once (see vocab-history.js).
-  recordQuizOutcome(state.quizList[state.quizIndex], correct);
+  const q = state.quizList[state.quizIndex];
+  recordQuizOutcome(q, correct);
+  noteConjResult(q, correct);
   if (correct) {
     state.quizCorrect++;
-    const reward = quizReward();
+    const reward = quizReward(q);
     state.gold += reward;
     state.quizGoldEarned += reward;
     saveProgress();
@@ -205,12 +315,17 @@ function quizReveal() {
       if (t) built.push(t.id);
     }
     state.quizBuilt = built;
-  } else if (q.type === "type" || q.type === "fill-type") {
+  } else if (q.type === "conj-table") {
+    // The whole paradigm is written in, blanks and given rows alike, so the
+    // learner reads it as one table rather than as their gaps.
+    state.quizConj = q.forms.slice();
+  } else if (q.type === "type" || q.type === "fill-type" || q.type === "conj-type") {
     state.quizTyped = q.answer;
   } else {
     state.quizPicked = null; // choose/fill-choose: highlight only the correct option
   }
   recordQuizOutcome(q, false); // a revealed solution is a word you didn't know
+  noteConjResult(q, false);    // and a rung of the ladder you didn't clear
   state.quizResults[state.quizIndex] = "shown";
   state.quizRevealed = true;
   state.quizChecked = true;
@@ -263,8 +378,40 @@ function quizCheckType() {
   const accepted = q.accept && q.accept.length ? q.accept : [q.answer];
   settleQuiz(accepted.some((a) => typedMatches(state.quizTyped, a)));
 }
-// Fill-the-blank typing shares the exact same check as free typing.
+// Fill-the-blank typing shares the exact same check as free typing, and so does
+// writing a single conjugated form (its `accept` list carries the pronoun
+// variants — see makeConj).
 function quizFillCheckType() { quizCheckType(); }
+
+// --- conjugation table ------------------------------------------------------
+// Each blank row is its own field, mirrored into state.quizConj by person index
+// so the table can be rebuilt at any moment without losing what's written. No
+// re-render on a keystroke (the whole point — a rebuild mid-word would drop the
+// phone's keyboard), so the last field written into is remembered and refocused
+// if something else does force a rebuild.
+function quizConjInput(el) {
+  const i = Number(el.dataset.cell);
+  if (!Number.isInteger(i)) return;
+  if (!state.quizConj) state.quizConj = [];
+  state.quizConj[i] = el.value;
+  state.quizConjFocus = i;
+}
+
+function quizCheckConjTable() {
+  if (state.quizChecked) return;
+  const q = state.quizList[state.quizIndex];
+  const typed = (i) => (state.quizConj && state.quizConj[i]) || "";
+  // The paradigm is one answer, so it is checked as one: a half-filled table is
+  // an unfinished submission, not a wrong one, and tapping Prüfen simply waits.
+  if (q.blanks.some((i) => normAnswer(typed(i)) === "")) return;
+  settleQuiz(q.blanks.every((i) => typedMatches(typed(i), q.forms[i])));
+}
+
+// Whether a single row of a settled table came out right — shared by the table
+// renderer (per-row ✓/✕) and the feedback banner (how many of six).
+function conjRowCorrect(q, i) {
+  return typedMatches((state.quizConj && state.quizConj[i]) || "", q.forms[i]);
+}
 
 function quizMatchTap(col, idx) {
   if (state.quizChecked || state.quizMatchWrong) return;
@@ -333,4 +480,4 @@ function advanceQuiz() {
   state._structuralDirty = true;
 }
 
-window.Incanto.quiz = { buildQuiz, goToQuiz, advanceQuiz, quizChoose, quizTypeInput, quizCheckType, quizFillCheckType, quizMatchTap, quizArrangeAdd, quizArrangeRemove, quizCheckArrange, quizReveal };
+window.Incanto.quiz = { buildQuiz, goToQuiz, advanceQuiz, quizChoose, quizTypeInput, quizCheckType, quizFillCheckType, quizMatchTap, quizArrangeAdd, quizArrangeRemove, quizCheckArrange, quizReveal, quizConjInput, quizCheckConjTable, conjRowCorrect, conjLevels, conjTopLevel, makeConj };

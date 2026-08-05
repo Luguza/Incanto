@@ -95,6 +95,13 @@ function freshState() {
     quizMatchDone: [],       // match: pair ids already solved
     quizMatchWrong: null,    // match: {left, right} flashing red, briefly
     quizMatchMisses: 0,      // match: wrong taps this question
+    quizConj: [],            // conj-table: what is written on each of the six rows, by person index
+    quizConjFocus: null,     // conj-table: last row written into, so a forced rebuild lands back in it
+    // The conjugation ladder (see CONFIG.conjugation): the hardest rung the
+    // player has proved, and the signed streak that moves it. Persisted — a
+    // learner who has earned the whole-table drill keeps it across runs.
+    conjLevel: 0,
+    conjStreak: 0,
     quizWordMisses: [],      // WORD_POOL indices fumbled on the current question (see vocab-history.js)
     quizAnsweredAt: 0,
     clockMs: 0,               // internal clock warped by mode+selection, drives windup + instrumentation
@@ -161,6 +168,8 @@ function saveProgress() {
       nodeRanks: state.nodeRanks,
       activeSpell: state.activeSpell,
       spellOrder: state.spellOrder,
+      conjLevel: state.conjLevel,
+      conjStreak: state.conjStreak,
     }));
   } catch (e) { /* storage unavailable (private mode/quota) — play without saving */ }
 }
@@ -201,6 +210,11 @@ function applySavedProgress() {
   if (data) {
     state.gold = asCount(data.gold);
     state.rewardKills = asCount(data.rewardKills);
+    // The conjugation ladder, clamped to the rungs that currently exist — the
+    // levels are CONFIG, and a save must survive one being added or removed.
+    const rungs = (CONFIG.conjugation && CONFIG.conjugation.levels.length) || 1;
+    state.conjLevel = Math.min(asCount(data.conjLevel), rungs - 1);
+    state.conjStreak = Number.isFinite(data.conjStreak) ? Math.trunc(data.conjStreak) : 0;
     if (data.nodeRanks && typeof data.nodeRanks === "object") {
       const ranks = {};
       const nodes = (typeof TREE_NODES !== "undefined") ? TREE_NODES : {};

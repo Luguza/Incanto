@@ -145,6 +145,62 @@
   .quiz-input:focus { border-color: var(--arcane); box-shadow: 0 0 0 3px var(--arcane-1); }
   .quiz-input:disabled { opacity: 0.7; }
 
+  /* Conjugation drills — a ladder of exercises over one verb's present tense
+     (see CONFIG.conjugation). The lower rungs borrow the sentence-with-a-blank
+     look above; the top two are a table the learner writes into, which at the
+     hardest rung is six empty lines and nothing else. */
+
+  /* What this question pays, next to the rung that earns it. Reads as a stake,
+     not as a button — the same treatment as the banked multiplier chip. */
+  .quiz-stake {
+    font-size: 11px; font-weight: 700; color: var(--gold-lt); letter-spacing: 0.4px;
+    background: var(--gold-1); border: 1px solid var(--gold-2);
+    border-radius: var(--r-pill); padding: 2px 8px;
+  }
+
+  /* On the single-row rungs the pronoun is part of the line being written, so it
+     wears the sentence's own type; in the table it is a column label, so there
+     it takes the display face like every other label in the game. */
+  .conj-person { color: var(--ink-2); letter-spacing: 0.4px; }
+  .conj-row .conj-person { font-family: var(--display-font); letter-spacing: 0.6px; }
+
+  .conj-table {
+    display: flex; flex-direction: column; gap: 7px;
+    width: 100%; max-width: 380px; margin: 0 auto;
+  }
+  /* Pronoun · German gloss · the form. The two label columns are fixed so every
+     row's answer starts on the same line down the table. */
+  .conj-row {
+    display: grid; grid-template-columns: 66px 46px 1fr; align-items: center;
+    gap: 4px 8px; text-align: left; min-height: 40px;
+  }
+  .conj-row .conj-person { text-align: right; font-size: 14.5px; word-spacing: -1px; }
+  .conj-de { font-size: 10.5px; color: var(--ink-4); letter-spacing: 0.2px; }
+
+  .conj-input {
+    font-family: inherit; font-size: 16.5px; width: 100%; padding: 9px 12px;
+    color: var(--ink); background: var(--sunk);
+    border: 1px solid var(--edge); border-radius: var(--r-1);
+    outline: none; transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  }
+  .conj-input::placeholder { color: var(--ink-4); }
+  .conj-input:focus { border-color: var(--arcane); box-shadow: 0 0 0 3px var(--arcane-1); }
+
+  .conj-form { font-size: 16.5px; padding: 9px 2px; color: var(--ink); }
+  /* A row the exercise handed the learner: present, but visibly not theirs. */
+  .conj-form.given { color: var(--ink-4); border-bottom: 1px dashed var(--edge-soft); }
+  .conj-form.ok    { color: var(--good-ink); }
+  .conj-form.no    { color: var(--bad-ink); text-decoration: line-through; text-decoration-color: var(--bad-2); }
+  .conj-form.shown { color: var(--gold-lt); }
+  .conj-mark { font-size: 13px; font-weight: 700; text-decoration: none; display: inline-block; }
+  /* The form that was wanted, on the line under the one that was written. */
+  .conj-fix {
+    grid-column: 3; font-size: 15px; color: var(--good-ink); padding-bottom: 4px;
+  }
+  .conj-fix::before { content: "→ "; color: var(--ink-4); }
+
+  .conj-note { margin: 14px 0 0; font-size: 12.5px; color: var(--ink-4); }
+
   /* Match-pairs board */
   .match-head {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;

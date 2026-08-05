@@ -291,6 +291,96 @@ try {
   const inert = await page.evaluate(() => state.quizIndex);
   check(inert === 0, "keys do not drive the game — a stray Enter/Space changes nothing (index " + inert + ")");
 
+  // 7b. Conjugation drills (see quiz.js + CONFIG.conjugation). A ladder over one
+  //     verb's present tense: pick a form, write a form, fill half a table, and
+  //     at the top write the whole paradigm out from nothing. The paradigms
+  //     themselves must be right, since they are what the game teaches.
+  const conj = await page.evaluate(() => {
+    const byIt = Object.fromEntries(Incanto.CONJ_POOL.map((v) => [v.it, v.forms.join(" ")]));
+    return {
+      rungs: CONFIG.conjugation.levels.length,
+      // the two spelling rules and one irregular, spelled out
+      giocare: byIt.giocare,      // -care grows an h before an i-ending
+      mangiare: byIt.mangiare,    // -iare never doubles its i
+      capire: byIt.capire,        // -isc- in the singular + 3rd plural, not in noi/voi
+      essere: byIt.essere,
+      // every verb has exactly six forms, none of them empty
+      shape: Incanto.CONJ_POOL.every((v) => v.forms.length === 6 && v.forms.every((f) => f && !/undefined/.test(f))),
+      // the top rung leaves every row blank, and the ladder's stake grows with it
+      top: (() => {
+        state.conjLevel = 3;
+        const q = Incanto.quiz.makeConj(3);
+        return { blanks: q.blanks.length, stake: q.goldMult, type: q.type };
+      })(),
+      // the drills are dealt in every session, at the reached rung
+      dealt: (() => { state.conjLevel = 2; buildQuiz(); return state.quizList.filter((q) => q.level !== undefined).map((q) => q.level); })(),
+    };
+  });
+  check(conj.giocare === "gioco giochi gioca giochiamo giocate giocano", "giocare is spelled with its h (" + conj.giocare + ")");
+  check(conj.mangiare === "mangio mangi mangia mangiamo mangiate mangiano", "mangiare keeps a single i (" + conj.mangiare + ")");
+  check(conj.capire === "capisco capisci capisce capiamo capite capiscono", "capire takes -isc- where it should (" + conj.capire + ")");
+  check(conj.essere === "sono sei è siamo siete sono", "the irregulars are written out (essere: " + conj.essere + ")");
+  check(conj.shape && conj.rungs === 4, "every verb carries six forms, over a four-rung ladder");
+  check(conj.top.type === "conj-table" && conj.top.blanks === 6 && conj.top.stake > 1,
+    "the hardest rung is the whole paradigm written out (" + conj.top.blanks + " blank rows, ×" + conj.top.stake + " gold)");
+  check(conj.dealt.length === 2 && Math.max(...conj.dealt) === 2,
+    "every session deals two conjugation drills, up to the rung reached (" + conj.dealt.join(", ") + ")");
+
+  //     Driven the way a thumb drives it: fill the six rows, tap Prüfen. A
+  //     half-filled table must WAIT rather than settle — the paradigm is one
+  //     answer, so a stray tap can't spend it.
+  const table = await page.evaluate(() => {
+    state.conjLevel = 3; state.conjStreak = 0; state.gold = 0;
+    goToQuiz();
+    // the probe, not the warm-up: the rung where every row is blank
+    state.quizIndex = state.quizList.findIndex((q) => q.type === "conj-table" && q.blanks.length === 6);
+    resetQuizInput(); state._structuralDirty = true; render(performance.now());
+    const q = state.quizList[state.quizIndex];
+    return { forms: q.forms, blanks: q.blanks, stake: q.goldMult, rows: document.querySelectorAll(".conj-row").length };
+  });
+  check(table.rows === 6 && table.blanks.length === 6, "the table screen draws all six rows as blanks");
+  await page.fill('.conj-input[data-cell="0"]', table.forms[0]);
+  await page.click('[data-act="quizCheckConjTable"]');
+  await page.waitForTimeout(120);
+  check(await page.evaluate(() => !state.quizChecked), "one row filled in: Prüfen waits instead of settling");
+  for (const i of table.blanks) await page.fill(`.conj-input[data-cell="${i}"]`, table.forms[i]);
+  await page.click('[data-act="quizCheckConjTable"]');
+  await page.waitForTimeout(120);
+  const written = await page.evaluate(() => ({
+    ok: state.quizWasCorrect, gold: state.quizGoldEarned, level: state.conjLevel, streak: state.conjStreak,
+    base: Math.round(CONFIG.goldPerCorrect * rewardMult() * state.mods.coinMult),
+  }));
+  check(written.ok && written.gold === Math.round(written.base * table.stake),
+    "writing the whole paradigm settles correct and pays its stake (" + written.gold + " vs " + written.base + " base)");
+  check(written.streak === 1, "clearing the top rung counts toward the next one (streak " + written.streak + ")");
+
+  //     …and a miss at the top rung steps the ladder back down, so the hardest
+  //     exercise on offer is always one the learner has shown they can take.
+  const slipped = await page.evaluate(() => {
+    state.conjLevel = 3; state.conjStreak = 0;
+    const q = Incanto.quiz.makeConj(3);
+    state.quizList = [q]; state.quizIndex = 0; resetQuizInput();
+    quizReveal();                       // "I don't know" — twice over
+    const after1 = state.conjLevel;
+    resetQuizInput(); state.quizList = [Incanto.quiz.makeConj(state.conjLevel)];
+    quizReveal();
+    return { after1, after2: state.conjLevel, filled: state.quizConj.filter(Boolean).length };
+  });
+  check(slipped.after1 === 3 && slipped.after2 === 2,
+    "two misses at the top rung step the ladder back down (3 → " + slipped.after2 + ")");
+  check(slipped.filled === 6, "revealing a paradigm writes the whole table out for the learner");
+
+  //     The rung reached is progress, so it is persisted like gold is.
+  const kept = await page.evaluate(() => {
+    state.conjLevel = 2; state.conjStreak = 1; saveProgress();
+    const saved = JSON.parse(localStorage.getItem("incanto.save.v1")).conjLevel;
+    state.conjLevel = 0; state.conjStreak = 0;
+    applySavedProgress();                     // what a reload does with the save
+    return { saved, level: state.conjLevel, streak: state.conjStreak };
+  });
+  check(kept.saved === 2 && kept.level === 2 && kept.streak === 1,
+    "the rung the learner reached survives a reload (Stufe " + (kept.level + 1) + ")");
+
   // 8. Binding the book (see book-order.js): the forge's book button opens the
   //    whole spell book as three open volumes, and a page dragged onto another
   //    trades places with it. Driven the way a thumb drives it — press, move,

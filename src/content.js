@@ -1,7 +1,8 @@
 "use strict";
 // ==============================================================================
 // content.js — vocabulary + sentence data. Owns: WORD_POOL, SENTENCE_POOL,
-// BLANKS_BY_POS, SENTENCE_WORDS. Edit here to add/adjust vocab.
+// BLANKS_BY_POS, SENTENCE_WORDS, CONJ_PERSONS, CONJ_POOL. Edit here to add/adjust
+// vocab, sentences and verb paradigms.
 // ==============================================================================
 
 // ---------------------------------------------------------------------------
@@ -267,6 +268,12 @@ const WORD_POOL = [
   { it: "partire", de: "abfahren" },
   { it: "pagare", de: "bezahlen" },
   { it: "cucinare", de: "kochen" },
+  // -isc- verbs (and one more irregular): they earn their place in the pool by
+  // being the patterns the conjugation drills below need more than one example of
+  { it: "finire", de: "beenden" },
+  { it: "preferire", de: "bevorzugen" },
+  { it: "pulire", de: "putzen" },
+  { it: "uscire", de: "hinausgehen" },
 
   // Places
   { it: "la città", de: "die Stadt" },
@@ -401,4 +408,109 @@ const SENTENCE_WORDS = [
   ...new Set(SENTENCE_POOL.flatMap((s) => s.it.split(" ").filter((w) => w.length > 2))),
 ];
 
-Object.assign(window.Incanto, { WORD_POOL, SENTENCE_POOL, SENTENCE_WORDS, BLANKS_BY_POS });
+// ---------------------------------------------------------------------------
+// Conjugation — the present tense (presente indicativo) of the pool's verbs.
+// This is what the conjugation exercises drill (see quiz.js): from picking one
+// form out of four, up to writing the whole paradigm out from nothing.
+//
+// The six persons, in the order every table in the game lists them. `de` is the
+// German pronoun the learner reads the row as; a slash means the one Italian
+// form covers both German ones.
+// ---------------------------------------------------------------------------
+const CONJ_PERSONS = [
+  { it: "io", de: "ich" },
+  { it: "tu", de: "du" },
+  { it: "lui / lei", de: "er / sie" },
+  { it: "noi", de: "wir" },
+  { it: "voi", de: "ihr" },
+  { it: "loro", de: "sie (Pl.)" },
+];
+
+// The three regular classes plus -isc-: verbs like capire that wedge -isc- into
+// the singular and the third person plural, which is a class of its own to a
+// learner even though the grammar books file it under -ire.
+const CONJ_ENDINGS = {
+  are: ["o", "i", "a", "iamo", "ate", "ano"],
+  ere: ["o", "i", "e", "iamo", "ete", "ono"],
+  ire: ["o", "i", "e", "iamo", "ite", "ono"],
+  isc: ["isco", "isci", "isce", "iamo", "ite", "iscono"],
+};
+
+// A regular verb's six forms, built from the stem so the pattern stays a pattern
+// (adding a regular verb below is one line, and it cannot disagree with itself).
+// Two spelling rules keep the written form honest about the sound:
+//  · -care/-gare grow an h before an i-ending, so the c/g stays hard
+//    (giocare → giochi, not *gioci)
+//  · -iare has only ever one i, so the stem's i is swallowed by an i-ending
+//    (mangiare → mangi / mangiamo, not *mangii / *mangiiamo)
+function conjugateRegular(inf, group) {
+  const stem = inf.slice(0, -3);
+  return CONJ_ENDINGS[group].map((end) => {
+    if (group === "are" && /[cg]$/.test(stem) && end[0] === "i") return stem + "h" + end;
+    if (stem.endsWith("i") && end[0] === "i") return stem + end.slice(1);
+    return stem + end;
+  });
+}
+
+// The verbs the drills draw from. `group` is the class its forms are built from;
+// `irr` means the six forms are written out here because nothing generates them.
+// Everything except the -isc- block also lives in WORD_POOL, so a conjugation
+// answer is tallied against the same verb the rune circle teaches.
+const CONJ_POOL = [
+  // -are
+  { it: "parlare", de: "sprechen", group: "are" },
+  { it: "mangiare", de: "essen", group: "are" },
+  { it: "amare", de: "lieben", group: "are" },
+  { it: "giocare", de: "spielen", group: "are" },
+  { it: "lavorare", de: "arbeiten", group: "are" },
+  { it: "studiare", de: "lernen", group: "are" },
+  { it: "comprare", de: "kaufen", group: "are" },
+  { it: "guardare", de: "schauen", group: "are" },
+  { it: "ascoltare", de: "zuhören", group: "are" },
+  { it: "camminare", de: "laufen", group: "are" },
+  { it: "pensare", de: "denken", group: "are" },
+  { it: "trovare", de: "finden", group: "are" },
+  { it: "chiamare", de: "rufen", group: "are" },
+  { it: "aspettare", de: "warten", group: "are" },
+  { it: "arrivare", de: "ankommen", group: "are" },
+  { it: "pagare", de: "bezahlen", group: "are" },
+  { it: "cucinare", de: "kochen", group: "are" },
+  // -ere
+  { it: "leggere", de: "lesen", group: "ere" },
+  { it: "scrivere", de: "schreiben", group: "ere" },
+  { it: "vedere", de: "sehen", group: "ere" },
+  { it: "prendere", de: "nehmen", group: "ere" },
+  { it: "correre", de: "rennen", group: "ere" },
+  { it: "vivere", de: "leben", group: "ere" },
+  { it: "chiudere", de: "schließen", group: "ere" },
+  // -ire
+  { it: "dormire", de: "schlafen", group: "ire" },
+  { it: "sentire", de: "hören", group: "ire" },
+  { it: "aprire", de: "öffnen", group: "ire" },
+  { it: "partire", de: "abfahren", group: "ire" },
+  // -ire with -isc-
+  { it: "capire", de: "verstehen", group: "isc" },
+  { it: "finire", de: "beenden", group: "isc" },
+  { it: "preferire", de: "bevorzugen", group: "isc" },
+  { it: "pulire", de: "putzen", group: "isc" },
+  // irregular — the everyday verbs, which are exactly the ones that misbehave
+  { it: "essere", de: "sein", group: "irr", forms: ["sono", "sei", "è", "siamo", "siete", "sono"] },
+  { it: "avere", de: "haben", group: "irr", forms: ["ho", "hai", "ha", "abbiamo", "avete", "hanno"] },
+  { it: "fare", de: "machen", group: "irr", forms: ["faccio", "fai", "fa", "facciamo", "fate", "fanno"] },
+  { it: "andare", de: "gehen", group: "irr", forms: ["vado", "vai", "va", "andiamo", "andate", "vanno"] },
+  { it: "venire", de: "kommen", group: "irr", forms: ["vengo", "vieni", "viene", "veniamo", "venite", "vengono"] },
+  { it: "stare", de: "bleiben", group: "irr", forms: ["sto", "stai", "sta", "stiamo", "state", "stanno"] },
+  { it: "dare", de: "geben", group: "irr", forms: ["do", "dai", "dà", "diamo", "date", "danno"] },
+  { it: "dire", de: "sagen", group: "irr", forms: ["dico", "dici", "dice", "diciamo", "dite", "dicono"] },
+  { it: "bere", de: "trinken", group: "irr", forms: ["bevo", "bevi", "beve", "beviamo", "bevete", "bevono"] },
+  { it: "uscire", de: "hinausgehen", group: "irr", forms: ["esco", "esci", "esce", "usciamo", "uscite", "escono"] },
+  { it: "sapere", de: "wissen", group: "irr", forms: ["so", "sai", "sa", "sappiamo", "sapete", "sanno"] },
+  { it: "potere", de: "können", group: "irr", forms: ["posso", "puoi", "può", "possiamo", "potete", "possono"] },
+  { it: "volere", de: "wollen", group: "irr", forms: ["voglio", "vuoi", "vuole", "vogliamo", "volete", "vogliono"] },
+  { it: "dovere", de: "müssen", group: "irr", forms: ["devo", "devi", "deve", "dobbiamo", "dovete", "devono"] },
+].map((v) => ({ ...v, forms: v.forms || conjugateRegular(v.it, v.group) }));
+
+Object.assign(window.Incanto, {
+  WORD_POOL, SENTENCE_POOL, SENTENCE_WORDS, BLANKS_BY_POS,
+  CONJ_PERSONS, CONJ_ENDINGS, CONJ_POOL, conjugateRegular,
+});
