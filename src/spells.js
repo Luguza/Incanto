@@ -23,7 +23,7 @@ const SPELLS = [
   {
     id: "fireball", name: "Feuerball", theme: "fireball", sector: "fir", kind: "damage",
     dmgKey: "dmgFireball", paramKey: "aoeFireball", unlock: null,
-    blurb: "Eine Kugel aus Flammen, die dort zerbirst, wo die Horde am dichtesten steht — alles im Umkreis nimmt die volle Wucht, ohne Abschwächung.",
+    blurb: "Eine Kugel aus Flammen, die dort zerbirst, wo die Horde am dichtesten steht. Alles im Umkreis nimmt die volle Wucht, ohne Abschwächung.",
   },
   {
     id: "lightning", name: "Blitzschlag", theme: "lightning", sector: "lig", kind: "damage",
@@ -38,7 +38,7 @@ const SPELLS = [
   {
     id: "meteor", name: "Meteoritenschauer", theme: "meteor", sector: "met", kind: "damage",
     dmgKey: "dmgMeteor", paramKey: "countMeteor", unlock: "meteor",
-    blurb: "Brocken stürzen auf zufällige Stellen des ganzen Ganges — verheerend gegen eine weit verteilte Horde.",
+    blurb: "Brocken stürzen über den ganzen Gang verteilt herab. Gegen eine breit auseinandergezogene Horde ist nichts im Buch verheerender.",
   },
   {
     id: "shield", name: "Bannschild", theme: "shield", sector: "shi", kind: "support",
@@ -48,7 +48,7 @@ const SPELLS = [
   {
     id: "heal", name: "Heilwort", theme: "heal", sector: "hea", kind: "support",
     dmgKey: "dmgHeal", paramKey: null, unlock: "heal",
-    blurb: "Wandelt deine Zauberkraft in Lebenspunkte zurück.",
+    blurb: "Holt dir zurück, was die letzten Seiten gekostet haben. Je stärker du zauberst, desto mehr.",
   },
 ];
 

@@ -353,7 +353,7 @@ function renderHistoryRow(r) {
         r.lastSeenAt ? `<span class="hist-stat dim">${historyAgo(r.lastSeenAt)}</span>` : "",
       ].filter(Boolean).join("");
   const badge = boosted
-    ? `<span class="hist-badge" title="${r.recentWrong} Fehler in den letzten ${CONFIG.vocab.recentDays} Tagen — erscheint häufiger im Runenkreis">⟳ ${r.recentWrong}</span>`
+    ? `<span class="hist-badge" title="${r.recentWrong} Fehler in den letzten ${CONFIG.vocab.recentDays} Tagen, kommt darum öfter in den Runenkreis">⟳ ${r.recentWrong}</span>`
     : "";
   return `
     <div class="hist-row${boosted ? " boosted" : ""}">
@@ -393,11 +393,11 @@ function renderHistoryFull() {
     ? rows.map(renderHistoryRow).join("")
     : `<div class="hist-empty">
          <div class="hist-empty-mark">◈</div>
-         <p>Noch nichts hier — übe im Quiz oder im Runenkreis.</p>
+         <p>Noch nichts zu sehen. Übe im Quiz oder im Runenkreis.</p>
        </div>`;
   // The ⟳ legend is only worth its line when a badge is actually on screen.
   const legend = rows.some((r) => r.score > 0)
-    ? `<p class="hist-legend"><span class="hist-badge">⟳</span> zuletzt verwechselt — erscheint häufiger im Runenkreis</p>`
+    ? `<p class="hist-legend"><span class="hist-badge">⟳</span> zuletzt verwechselt, kommt öfter in den Kreis</p>`
     : "";
 
   app.innerHTML = `

@@ -99,7 +99,7 @@ function renderNav() {
   if (!nav) return;
   nav.innerHTML = `
     <button class="nav-btn" data-phase="study" data-act="navTo" data-args='["study"]' aria-label="Studieren">${navPixSvg(NAV_BOOK)}</button>
-    <button class="nav-btn" data-phase="upgrade" data-act="navTo" data-args='["upgrade"]' aria-label="Schmiede">${navPixSvg(NAV_ANVIL)}</button>
+    <button class="nav-btn" data-phase="upgrade" data-act="navTo" data-args='["upgrade"]' aria-label="Runenbaum">${navPixSvg(NAV_ANVIL)}</button>
     <button class="nav-btn" data-phase="combat" data-act="navTo" data-args='["combat"]' aria-label="Kampf">${navPixSvg(navWeaponRows())}</button>`;
 }
 

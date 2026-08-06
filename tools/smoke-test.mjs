@@ -230,7 +230,9 @@ try {
     const seen = nodeRevealed("ligg");
     treeBuy("ligg");
     const blocked = !state.nodeRanks.ligg;
-    for (let i = 0; i < 4; i++) treeBuy("ligp" + i);
+    // Walk the whole prelude, however long this arm's happens to be — the twelve
+    // arms deliberately don't share one depth (see skilltree.js).
+    for (let i = 0; Incanto.skilltree.TREE_NODES["ligp" + i]; i++) treeBuy("ligp" + i);
     treeBuy("ligg");
     return { seen, blocked, bought: !!state.nodeRanks.ligg, unlocked: !!state.mods.spellsUnlocked.lightning };
   });

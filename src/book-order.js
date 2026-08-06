@@ -73,7 +73,7 @@ function renderBookOrderFull() {
         <button class="bo-back" data-act="closeBookOrder">‹ Runenbaum</button>
         <div class="tree-title">Buch binden</div>
       </div>
-      <p class="bo-hint">Zieh eine Seite auf eine andere — sie tauschen die Plätze.</p>
+      <p class="bo-hint">Zieh eine Seite auf eine andere. Die beiden tauschen die Plätze.</p>
       <div class="bo-stage">
         <svg class="bo-canvas" id="book-order" viewBox="0 0 ${BOOK_W} ${height}"
              preserveAspectRatio="xMidYMid meet" aria-label="Seitenreihenfolge">

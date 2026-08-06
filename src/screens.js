@@ -61,8 +61,8 @@ function renderQuizMult() {
   if (mult <= 1) return "";
   const capped = rewardMultCapped();
   const title = capped
-    ? `Belohnungs-Multiplikator am Anschlag — dieses Quiz löst ihn ein`
-    : `Belohnungs-Multiplikator aus ${state.rewardKills} erlegten Skeletten`;
+    ? `Multiplikator am Anschlag. Dieses Quiz löst ihn ein.`
+    : `Multiplikator aus ${state.rewardKills} erlegten Skeletten`;
   return `<span class="quiz-mult${capped ? " capped" : ""}" title="${title}">${fmtMult(mult)}</span>`;
 }
 
@@ -318,11 +318,11 @@ const QUIZ_CHECK_FN = {
 // What to do when an exercise offers no Check button, so the slot the button
 // would occupy carries the instruction instead of sitting empty.
 const QUIZ_CUE = {
-  choose: "Tippe eine Antwort an",
-  "fill-choose": "Tippe eine Antwort an",
-  "conj-choose": "Tippe die richtige Form an",
-  match: "Tippe zwei zusammengehörende Wörter an",
-  "conj-match": "Tippe Person und Form an",
+  choose: "Antwort antippen",
+  "fill-choose": "Welches Wort passt in die Lücke?",
+  "conj-choose": "Welche Form gehört hierher?",
+  match: "Immer zwei antippen, die zusammengehören",
+  "conj-match": "Person und Form zusammenbringen",
 };
 
 // Bottom action bar, pinned to the foot of the frame. It always ends in the
@@ -339,17 +339,17 @@ function renderQuizFoot(q) {
     } else if (q.type === "match" || q.type === "conj-match") {
       // match has no single answer string; it only pays out when self-solved
       banner = `<div class="quiz-feedback reveal"><span class="fb-mark">◈</span>
-        <span class="fb-text">Paare aufgedeckt — kein Gold verdient</span></div>`;
+        <span class="fb-text">Paare aufgedeckt. Dafür gibt es kein Gold.</span></div>`;
     } else if (q.type === "conj-table") {
       // A paradigm has six answers, and they're already standing in the table
       // itself — so the banner counts them rather than repeating them here.
       if (state.quizRevealed) {
         banner = `<div class="quiz-feedback reveal"><span class="fb-mark">◈</span>
-          <span class="fb-text">Ganze Konjugation aufgedeckt — kein Gold verdient</span></div>`;
+          <span class="fb-text">Ganze Tabelle aufgedeckt. Dafür gibt es kein Gold.</span></div>`;
       } else {
         const right = q.blanks.filter((i) => conjRowCorrect(q, i)).length;
         banner = `<div class="quiz-feedback bad"><span class="fb-mark">✕</span>
-          <span class="fb-text"><strong>${right} von ${q.blanks.length}</strong> Formen richtig — die Lösung steht in der Tabelle</span></div>`;
+          <span class="fb-text"><strong>${right} von ${q.blanks.length}</strong> Formen richtig. Der Rest steht jetzt oben.</span></div>`;
       }
     } else {
       const answer = q.type === "arrange" ? q.answer.join(" ") : q.answer;
@@ -376,7 +376,7 @@ function renderQuizFoot(q) {
     ? `<button class="btn-primary quiz-check" data-act="${checkFn}">Prüfen</button>`
     : `<p class="quiz-cue">${QUIZ_CUE[q.type] || ""}</p>`;
   return `<footer class="quiz-foot">
-    <button class="quiz-reveal" data-act="quizReveal">Ich weiß es nicht — Lösung zeigen</button>
+    <button class="quiz-reveal" data-act="quizReveal">Weiß ich nicht. Lösung zeigen</button>
     ${action}
   </footer>`;
 }
@@ -656,7 +656,7 @@ function renderEndFull() {
 
   app.innerHTML = `
     <div class="screen end-screen reward-screen">
-      <h1 class="reward">Bonus gesichert</h1>
+      <h1 class="reward">Alles gezählt</h1>
       <div class="reward-mult${capped ? " capped" : ""}">
         <span class="reward-mult-num">${fmtMult(mult)}</span>
         <span class="reward-mult-label">Gold im nächsten Quiz</span>
@@ -666,8 +666,8 @@ function renderEndFull() {
       </div>
       <p class="reward-bank"><strong>${banked}</strong> Skelette &middot;
         <span class="coin">◈</span> <strong>${quizReward()}</strong> pro Antwort</p>
-      ${capped ? `<p class="reward-carry">Am Anschlag &mdash; jetzt lernen</p>` : ""}
-      <button class="fight-btn study-btn" data-act="goToQuiz">Lernen &amp; ${fmtMult(mult)} kassieren →</button>
+      ${capped ? `<p class="reward-carry">Voll. Weitere Knochen bringen nichts mehr.</p>` : ""}
+      <button class="fight-btn study-btn" data-act="goToQuiz">Lernen und ${fmtMult(mult)} einlösen →</button>
       <p class="dim">${Math.floor(state.distance)} m &middot; ${state.kills} erlegt &middot; ${elapsed}s</p>
     </div>`;
 }

@@ -1,39 +1,33 @@
 "use strict";
 // ==============================================================================
 // skilltree.js — the Path-of-Exile-style rune upgrade tree that replaces the old
-// two-button shop. The tree is AUTHORED, not scattered: twelve arms grow out of
-// the seed in a fixed, readable shape, and every node's place in that shape is a
-// design decision rather than the output of a growth simulation.
+// two-button shop. Twelve arms grow out of one seed; six carry a page of the
+// book, six carry nothing but raw skill.
 //
-//   root ──► 12 arms, alternating around the circle:
-//              6 SPELL arms  (one per page of the book)
-//              6 GENERIC arms (might, vigour, precision, sustain, guard, fortune)
+// EVERY NUMBER IN THE ARMS TABLE WAS TYPED BY A PERSON. There is no growth
+// simulation here and no PRNG: how long an arm's prelude runs, which ring its
+// branches fork on, how far each twig goes, where the dead ends hang and what
+// each unique costs are all written out one at a time, and they disagree with
+// each other on purpose. An arm is a paragraph, not a row in a spreadsheet:
 //
-//   Every arm has the SAME skeleton, so the tree teaches itself:
-//     rings 1–4   prelude — four cheap, thematically fitting generic nodes.
-//                 On a spell arm these are the toll you pay on the way to the
-//                 page; on a generic arm they are the arm's own bread and butter.
-//     ring 5      the ARM'S KEY — on a spell arm the unique node that unlocks
-//                 that spell (Feuerball, the starter, gets a keystone instead);
-//                 on a generic arm a named notable of the same weight.
-//     rings 6+    the key fans into ASPECT BRANCHES — five on a spell arm
-//                 (raw power · the spell's own % damage · its shape/AOE · crit ·
-//                 leech-and-life), three on a generic arm.
-//     ring 11–14  every aspect branch forks into two twigs, each at its own depth.
-//     ring 15–19  a twig runs out and stops — twig A on the outer rings, carrying
-//                 a unique KEYSTONE; twig B one to three rings shorter. Five of
-//                 those twig-B ends out on the generic arms are the Dornenkrone
-//                 caches. Dead-end offshoots of one or two nodes hang off
-//                 branches the whole way out.
+//     Fortuna    2 nodes to its notable, then one branch that is a single
+//                sixteen-node line of walking speed.
+//     Feuerball  the starter page: three short branches, nothing to explain.
+//     Macht      the widest arm, out to ring 20, priced up for it.
+//     Meteor     six nodes of prelude before the seal even appears.
+//     Zähigkeit  stops at ring 17 and stays fat. It's a health arm.
 //
-// That skeleton is BOOKKEEPING, not geometry. A node's ring fixes its cost and
-// its value and nothing else; where it is DRAWN comes from the layout pass under
-// REST_LEN, which aims at one thing — even spacing everywhere, no clumps and no
-// voids — and gets its organic look from the fact that no two subtrees are the
-// same size rather than from noise sprinkled on top.
+// The common grammar underneath is still there — a prelude, a key, branches that
+// mostly fork once, keystones at the ends — because a player needs to be able to
+// read the second arm faster than the first. What varies is everything else.
 //
-// That gives ~1050 nodes with an actual grammar: reach a page, then choose which
-// facet of it to sharpen. This module owns the layout, the derived stat model
+// A node's ring is BOOKKEEPING: it sets the node's price and its value. Where it
+// is DRAWN comes from the layout pass under REST_LEN, which aims at one thing —
+// even spacing everywhere, no clumps and no voids — and gets its organic look
+// from the fact that no two subtrees are the same size.
+//
+// ~950 nodes with an actual grammar: reach a page, then choose which facet of it
+// to sharpen. This module owns the layout, the derived stat model
 // (recomputeMods), purchase/reveal logic, and the SVG screen. Loads after
 // spells.js (it reads SPELL_BY_ID) and screens.js, so it can define the global
 // `renderUpgradeFull` the loop router calls for the "upgrade" screen.
@@ -86,27 +80,19 @@ const RUNE_GLYPHS = {
 
 // ---------------------------------------------------------------------------
 // Geometry — the tree lives in a large tree-space (seed at TREE_CENTER); the
-// 900-unit SVG viewBox is just the pan/zoom window onto it. A node's place is
-// fully determined by three authored numbers: which arm it's on, its RING
-// (distance from the seed = tier), and its lateral fraction across the arm's
-// wedge. Nothing is random, so ids stay stable and saves keep working.
+// 900-unit SVG viewBox is just the pan/zoom window onto it. A node's RING is the
+// only geometric thing about it that is authored: it fixes the node's tier (its
+// price and its value) and roughly how far out it is drawn. Everything else —
+// the angle, the exact pixel — falls out of the layout pass below.
 // ---------------------------------------------------------------------------
 const TREE_CENTER = 2600;      // seed sits at the middle of the tree-space
 const TREE_VIEW = 900;         // SVG viewBox size = the pan/zoom window
 const HOLE = 165;              // radius of ring 1 (clear space around the seed)
 const NODE_STEP = 96;          // radial distance between consecutive rings
-const PRELUDE_RINGS = 4;       // rings 1..4 — the generic run-up on every arm
-const KEY_RING = 5;            // the spell unlock / arm notable
-const FAN_RING = 6;            // first ring of the aspect branches
-const FORK_RING = 13;          // roughly where an aspect branch splits (±1, per branch)
-const TIP_RING = 19;           // the outermost ring — keystones live here
-const SPUR_STEM = 0.6;         // chance an aspect branch's stem sprouts a dead-end offshoot
-const SPUR_TWIG = 0.45;        // …and the (lower) chance a twig does, out where space is dearer
 
 // --- how the tree is DRAWN -------------------------------------------------
-// A node's ring is bookkeeping: it sets the node's cost and its value, and
-// nothing else. Position comes from a two-step layout that aims for one thing —
-// EVEN SPACING everywhere, with no clumps and no voids.
+// A node's ring is bookkeeping. Position comes from a two-step layout that aims
+// for one thing — EVEN SPACING everywhere, with no clumps and no voids.
 //
 //   1. every subtree is given a slice of the circle proportional to how many
 //      chain-ends it contains, so a fat arm gets more room than a thin one and
@@ -116,9 +102,10 @@ const SPUR_TWIG = 0.45;        // …and the (lower) chance a twig does, out whe
 //      node off its neighbours, and a weak radial pull toward its own ring.
 //
 // The relaxation is what makes it look grown rather than drafted: it spreads
-// nodes into whatever space is going spare, and because subtrees differ in size
-// it never settles anywhere symmetrical. It is fully deterministic — the tree
-// must be pixel-identical on every load, because saves name its nodes.
+// nodes into whatever space is going spare, and because no two arms are the same
+// size or the same length it never settles anywhere symmetrical. It is fully
+// deterministic — the tree must be pixel-identical on every load, because saves
+// name its nodes.
 const REST_LEN = NODE_STEP;        // how long a spring wants its edge to be
 const REPEL_RADIUS = NODE_STEP * 1.35;  // how far a node shoves its neighbours away
 const K_SPRING = 0.3;              // edge springs — hold a chain together
@@ -140,11 +127,17 @@ const VAL_PER_RING = 0.14;
 const COST_RING_POW = 0.9;
 const RANK_GROWTH = 1.45;      // default cost multiplier per extra rank of a node
 
-const UNLOCK_COST = 46;        // base cost of a spell's unlock node (ring 5 ≈ 196 gold)
-const NOTABLE_COST = 40;       // base cost of a generic arm's ring-5 notable
-const KEYSTONE_COST = 90;      // base cost of a branch-tip keystone (ring 20 ≈ 1250 gold)
-const THORN_COST = 70;         // base cost of a Dornenkrone cache
-const THORN_VALUE = 0.10;      // reflected fraction each cache grants (five exist → 50% total)
+// PRICES ARE READ, NOT COMPUTED. Whatever the curve above produces gets snapped
+// onto a ladder a person would actually write down — fives near the seed, tens
+// in the middle, twenty-fives and fifties out in keystone country. A node that
+// costs 250 looks priced; one that costs 247 looks generated, and the shop is
+// the one screen where every number is stared at.
+function priceRound(n) {
+  if (n < 40) return Math.max(5, Math.round(n / 5) * 5);
+  if (n < 200) return Math.round(n / 10) * 10;
+  if (n < 600) return Math.round(n / 25) * 25;
+  return Math.round(n / 50) * 50;
+}
 
 // Stats counted in whole bodies (an extra lightning hop, an extra meteor). They
 // grant exactly 1 wherever they're planted — half a skeleton is not a thing —
@@ -162,31 +155,35 @@ const COUNT_STATS = { chainLightning: 1, countMeteor: 1 };
 // were deliberately left alone even though their caps came down: at +4% a single
 // rank now moves heroDmg 24 → 25 where before it moved 3 → 3, and being able to
 // see one rank do something is the whole point of the rescale.
+//
+// `maxRank` is not uniform on purpose. The small change-loose stats take four
+// ranks and the swingy ones take two, so filling a node in is a different-sized
+// decision depending on what it holds.
 const A = {
-  dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 4,     cost: 15, maxRank: 3,
-                title: "Schneide",      blurb: "Schärft deinen Grundschaden — jede Seite des Buches trifft härter." },
+  dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 4,     cost: 15, maxRank: 4,
+                title: "Schneide",      blurb: "Grundschaden. Gilt für jede Seite des Buches." },
   dmgPct:     { stat: "pctDmg",     theme: "might",   base: 0.04,  cost: 22, maxRank: 3,
                 title: "Zorn",          blurb: "Verstärkt allen Schaden prozentual." },
-  hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3,
+  hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 4,
                 title: "Zähigkeit",     blurb: "Erhöht deine maximalen Lebenspunkte." },
   hpPct:      { stat: "pctHp",      theme: "vigor",   base: 0.04,  cost: 20, maxRank: 3,
                 title: "Lebenskraft",   blurb: "Mehr Lebenspunkte prozentual." },
   critChance: { stat: "critChance", theme: "crit",    base: 0.02,  cost: 22, maxRank: 3,
                 title: "Präzision",     blurb: "Chance, dass ein Treffer kritisch einschlägt." },
-  critMult:   { stat: "critMult",   theme: "crit",    base: 0.09,  cost: 24, maxRank: 3,
+  critMult:   { stat: "critMult",   theme: "crit",    base: 0.09,  cost: 24, maxRank: 2,
                 title: "Wucht",         blurb: "Kritische Treffer schlagen härter zu." },
   // Armour penetration — the counter-stat to CONFIG.armorK. Its supply is
   // deliberately narrow (the Macht arm's Zermalmen branch, two keystones and
   // Falkenauge), so shredding plate is a detour a build chooses, like Dornen.
-  armorPen:   { stat: "armorPen",   theme: "might",   base: 0.25,  cost: 24, maxRank: 3,
-                title: "Durchschlag",   blurb: "Deine Zauber durchschlagen einen Teil der Panzerung des Getroffenen." },
+  armorPen:   { stat: "armorPen",   theme: "might",   base: 0.25,  cost: 24, maxRank: 2,
+                title: "Durchschlag",   blurb: "Schabt Panzerung vom Getroffenen ab, bevor der Zauber sie prüft. Nur der Knochenkoloss trägt welche." },
   regen:      { stat: "regen",      theme: "sustain", base: 1.6,   cost: 20, maxRank: 3,
                 title: "Genesung",      blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
-  leech:      { stat: "leech",      theme: "sustain", base: 0.025, cost: 26, maxRank: 3,
+  leech:      { stat: "leech",      theme: "sustain", base: 0.025, cost: 26, maxRank: 2,
                 title: "Aderlass",      blurb: "Heilt dich für einen Teil des Zauberschadens." },
   coin:       { stat: "coinMult",   theme: "fortune", base: 0.05,  cost: 20, maxRank: 3,
                 title: "Glückssträhne", blurb: "Mehr Gold für richtig gelöste Vokabeln." },
-  walk:       { stat: "walkMult",   theme: "fortune", base: 0.04,  cost: 22, maxRank: 3,
+  walk:       { stat: "walkMult",   theme: "fortune", base: 0.04,  cost: 22, maxRank: 2,
                 title: "Flinkheit",     blurb: "Der Held schreitet zügiger durch den Gang." },
   failProt:   { stat: "spellFailProt", theme: "guard", base: 0.035, cost: 28, maxRank: 2, growth: 1.6,
                 title: "Schutzzauber",  blurb: "Chance, den Rückschlag eines Fehlschlags ganz abzuwehren." },
@@ -195,6 +192,11 @@ const A = {
   shield:     { special: "shield",  theme: "guard",   cost: 26, maxRank: 3,
                 title: "Schildzauber",  blurb: "Manche Zauber gewähren einen absorbierenden Schild." },
 };
+
+// One node, nudged off its archetype. This is how a spot on the map earns a
+// price or a rank count the archetype doesn't have: a node nobody walks past
+// gets marked down, a node on everyone's shortest path gets marked up.
+function tweak(arch, over) { return Object.assign({}, arch, over); }
 
 // Per-spell archetypes are built from the registry so a page and its nodes can
 // never drift apart (see spells.js — dmgKey / paramKey).
@@ -206,312 +208,444 @@ const SPELL_LORE = {
   shield:    { adj: "Bann",    word: "Bann",  akk: "den Bannschild" },
   heal:      { adj: "Segens",  word: "Segen", akk: "das Heilwort" },
 };
-function sigil(id) {
+function sigil(id, over) {
   const L = SPELL_LORE[id];
-  return { stat: SPELL_BY_ID[id].dmgKey, theme: id, base: 0.06, cost: 24, maxRank: 3,
-    title: `${L.adj}zeichen`, blurb: `Verstärkt ${L.akk}.` };
+  return Object.assign({ stat: SPELL_BY_ID[id].dmgKey, theme: id, base: 0.06, cost: 24, maxRank: 3,
+    title: `${L.adj}zeichen`, blurb: `Verstärkt ${L.akk}.` }, over);
 }
 // A "one more body" node: one rank, no scaling, and dear enough that each extra
 // hop/rock is a real decision rather than a rounding error.
-function bodyNode(stat, theme, title, blurb) {
-  return { stat, theme, base: 1, cost: 55, maxRank: 1, growth: 1, title, blurb };
+function bodyNode(stat, theme, cost, title, blurb) {
+  return { stat, theme, base: 1, cost, maxRank: 1, growth: 1, title, blurb };
 }
 // A unique — a keystone, a notable, an unlock, a thorn cache. Fixed value (it
-// already sits at a fixed ring), one rank, and its own halo in the SVG.
+// already sits at a fixed ring), one rank, and its own halo in the SVG. Every
+// one of them is priced by hand at the call site; there is no keystone tariff.
 function uq(theme, title, cost, effect, blurb) {
   return { unique: true, theme, title, cost, effect, blurb, maxRank: 1, growth: 1 };
 }
 
-// ---------------------------------------------------------------------------
-// Branch factories shared by the four damage-spell arms. Each spell arm fans
-// into the same five aspects, so a player who has learned one page knows where
-// to look on the next — only the middle branch (the spell's own shape) differs.
-// ---------------------------------------------------------------------------
-function bRawPower(L) {
-  return { title: "Rohe Kraft", arch: [A.dmgFlat, A.dmgPct, A.dmgFlat],
-    tip: uq("might", `${L.word}gewalt`, KEYSTONE_COST, { flatDmg: 16, pctDmg: 0.06 },
-      "Kraft, die keiner Seite gehört und darum jede trägt.") };
-}
-function bSigil(id, L) {
-  return { title: "Zeichen", arch: [sigil(id), sigil(id), A.dmgPct],
-    tip: uq(id, `Großes ${L.adj}zeichen`, KEYSTONE_COST, { [SPELL_BY_ID[id].dmgKey]: 0.30 },
-      `Das vollendete Zeichen. ${L.akk[0].toUpperCase()}${L.akk.slice(1)} zu führen ist nun deine Kunst.`) };
-}
-function bEdge(L) {
-  return { title: "Schärfe", arch: [A.critChance, A.critMult, A.critChance],
-    tip: uq("crit", `${L.word}stoß`, KEYSTONE_COST, { critChance: 0.06, critMult: 0.25 },
-      "Du siehst die Lücke im Knochen, bevor der Zauber sie findet.") };
-}
-function bDrain(L) {
-  return { title: "Zehrung", arch: [A.leech, A.regen, A.hpFlat],
-    tip: uq("sustain", `${L.word}zehrung`, KEYSTONE_COST, { leech: 0.06, regen: 3.2 },
-      "Was du verbrennst, kehrt zu dir zurück.") };
-}
+// A dead-end offshoot hanging off a chain: `at` is the ring of the node it grows
+// from, `len` how many nodes it runs for, and `tip` an optional unique to end it
+// on. Every one in the table below was placed by eye, to fill a hole in the map
+// or to give a branch a reason to be walked twice.
+function spur(at, len, tip) { return { at, len: len || 1, tip: tip || null }; }
 
 // ---------------------------------------------------------------------------
-// THE ARMS. Twelve of them, alternating spell / generic all the way around, so
-// every page of the book has a plain stat arm on either side of it to lean on.
-// Spell arms carry twice the angular weight (they hold five branches, generic
-// arms three) — see buildSkillTree for how the wedges are cut.
+// THE FIVE THORN CACHES. Reflection has no cap (see CONFIG.caps) — its supply IS
+// the cap, and the supply is these five nodes at 10% apiece. They are the one
+// thing in the tree that is genuinely hidden: no beacon, no halo you can spot
+// from the seed, each one at the end of a dead-end nobody walks by accident.
+// Five different finds rather than five copies of one node, because a player who
+// stumbles on the second one should recognise the family, not the file.
+// ---------------------------------------------------------------------------
+const THORN_VALUE = 0.10;
+const DORNEN = [
+  uq("thorn", "Dornenkrone", 74, { thorns: THORN_VALUE },
+    "Der erste der fünf Horte. Wer sie trägt, gibt einen Teil jedes Schlages zurück."),
+  uq("thorn", "Widerhaken", 68, { thorns: THORN_VALUE },
+    "Klein, rostig, und niemand weiß mehr, aus wem er stammt."),
+  uq("thorn", "Igelhaut", 80, { thorns: THORN_VALUE },
+    "Zweihundert Nadeln, alle nach außen. Umarmungen sind seither selten."),
+  uq("thorn", "Splitterpanzer", 88, { thorns: THORN_VALUE },
+    "Er zerbricht bei jedem Treffer ein wenig, und die Scherben fliegen in die richtige Richtung."),
+  uq("thorn", "Letzte Gunst", 92, { thorns: THORN_VALUE },
+    "Der fünfte und tiefste. Danach gibt der Gang nichts mehr her, das zurückbeißt."),
+];
+
+// ---------------------------------------------------------------------------
+// Branch factories shared by the spell arms. A page's arm is recognisable from
+// the last one you learned — there is always a Zeichen branch, and the raw,
+// sharp and thirsty aspects turn up again and again — but no two arms carry the
+// same set. Which four or five a page gets is a statement about the page.
 //
-// BALANCE, in terms of where a node sits:
-//   · everything cheap and generic lives on rings 1–4, so the first few runs are
-//     spent broadening rather than committing;
-//   · a page of the book costs ~380 gold (four prelude nodes + the key) — about
-//     three runs, and each further page costs the same, so which spell you go
-//     and fetch first is a real choice and not a queue;
-//   · every % damage pool, every crit pool, every HP pool soft-caps on its own
-//     (CONFIG.caps), so the outward push is rewarded with BREADTH — more pages,
-//     more bodies hit, more keystones — rather than with a bigger single number;
-//   · the whole-body nodes (an extra hop, an extra rock) and the keystones sit
-//     from ring 13 outward, which is where the run-away power would be if the
-//     caps didn't bound it.
+// Each factory returns CONTENT only. Its SHAPE (where it forks, how far its two
+// twigs run, what hangs off it) is written at the call site by `shaped`, because
+// that is the part a player reads off the map.
 // ---------------------------------------------------------------------------
-function damageSpellArm(key, id, prelude, shapeBranch) {
-  const L = SPELL_LORE[id];
-  return { key, kind: "spell", spell: id, theme: id, title: SPELL_BY_ID[id].name,
-    prelude, branches: [bRawPower(L), bSigil(id, L), shapeBranch, bEdge(L), bDrain(L)] };
+function shaped(branch, shape) { return Object.assign(branch, shape); }
+
+// Every factory takes its keystone's price AND its keystone's line. Four arms
+// carry a Rohe-Kraft branch and six carry a Zeichen branch; if they shared one
+// blurb the player would meet the same sentence six times and know exactly how
+// it got written.
+function bRawPower(L, cost, blurb) {
+  return { title: "Rohe Kraft", arch: [A.dmgFlat, A.dmgPct, A.dmgFlat],
+    tip: uq("might", `${L.word}gewalt`, cost, { flatDmg: 16, pctDmg: 0.06 }, blurb) };
+}
+function bSigil(id, L, cost, blurb) {
+  return { title: "Zeichen", arch: [sigil(id), sigil(id), A.dmgPct],
+    tip: uq(id, `Großes ${L.adj}zeichen`, cost, { [SPELL_BY_ID[id].dmgKey]: 0.30 }, blurb) };
+}
+function bEdge(L, cost, blurb) {
+  return { title: "Schärfe", arch: [A.critChance, A.critMult, A.critChance],
+    tip: uq("crit", `${L.word}stoß`, cost, { critChance: 0.06, critMult: 0.25 }, blurb) };
+}
+function bDrain(L, cost, blurb) {
+  return { title: "Zehrung", arch: [A.leech, A.regen, A.hpFlat],
+    tip: uq("sustain", `${L.word}zehrung`, cost, { leech: 0.06, regen: 3.2 }, blurb) };
 }
 
+// ---------------------------------------------------------------------------
+// THE ARMS. Twelve of them, and the shape of each one is a separate decision.
+//
+// AROUND THE CIRCLE they are grouped, not alternated. Arms that serve the same
+// build sit next to each other, so a player who commits to one thing ends up
+// working one quadrant of the map instead of running laps:
+//
+//     Macht · Feuerball · Meteoritenschauer · Präzision · Blitzschlag   (offence)
+//     Fortuna                                                          (the hinge)
+//     Zehrung · Heilwort · Zähigkeit                                   (staying up)
+//     Abwehr · Bannschild                                              (not getting hit)
+//     Frostkegel                                                       (closes back to Macht)
+//
+// HOW DEEP the key sits is per arm, and that is the main dial on how expensive a
+// page is to reach. Fortuna's notable is two nodes from the seed because gold
+// pays for everything else; the Meteoritenschauer's seal is six, because it is
+// the page you go and fetch once the rest of the build already works.
+//
+// HOW FAR an arm runs is also per arm. Zähigkeit stops early and stays fat —
+// there is nothing clever at the end of a health arm. Macht and Blitzschlag run
+// all the way out to ring 20. The outer edge of the tree is ragged because
+// twelve separate decisions made it ragged, not because a die was rolled.
+//
+// PRICES: the archetype base and the ring set the ballpark, `toll` marks a whole
+// branch up or down, and `tweak` marks a single node. Every deviation from the
+// curve has a reason written next to it.
+// ---------------------------------------------------------------------------
 const ARMS = [
-  // ---- Blitzschlag: reach. Its shape branch buys hops and softens the falloff.
-  damageSpellArm("lig", "lightning",
-    [A.dmgFlat, A.dmgFlat, A.dmgPct, A.critChance],
-    { title: "Wirkung",
-      arch: [
-        bodyNode("chainLightning", "lightning", "Kettenglied", "Der Blitz springt auf einen weiteren Körper über."),
-        { stat: "falloffLightning", theme: "lightning", base: 0.012, cost: 30, maxRank: 2, growth: 1.6,
-          title: "Leitfähigkeit", blurb: "Jeder Sprung trägt mehr Kraft weiter als zuvor." },
-        sigil("lightning"),
-      ],
-      tip: uq("lightning", "Gewitterfront", KEYSTONE_COST, { chainLightning: 3, falloffLightning: 0.06 },
-        "Kein einzelner Bogen mehr, sondern eine Front, die den ganzen Gang entlangfährt.") }),
-
-  // ---- Might: the plain damage arm. Lifts every page at once.
+  // ---- Macht: the plain damage arm, and the one most builds walk first. It
+  // runs the furthest of the twelve because "more damage" never stops being the
+  // answer to something.
   { key: "mig", kind: "generic", theme: "might", title: "Macht",
-    prelude: [A.dmgFlat, A.dmgFlat, A.dmgPct, A.dmgFlat],
-    notable: uq("might", "Kriegsherz", NOTABLE_COST, { flatDmg: 8, pctDmg: 0.06 },
+    prelude: [A.dmgFlat, tweak(A.dmgFlat, { cost: 12 }), A.dmgPct],
+    notable: uq("might", "Kriegsherz", 40, { flatDmg: 8, pctDmg: 0.06 },
       "Ein Herz, das den Kampf sucht. Alles, was du wirkst, wiegt schwerer."),
     branches: [
-      { title: "Schneide", arch: [A.dmgFlat, A.dmgFlat, A.dmgPct],
-        tip: uq("might", "Henkersklinge", KEYSTONE_COST, { flatDmg: 20, armorPen: 1.2 },
+      shaped({ title: "Schneide", arch: [A.dmgFlat, A.dmgFlat, A.dmgPct, A.dmgFlat],
+        tip: uq("might", "Henkersklinge", 95, { flatDmg: 20, armorPen: 1.2 },
           "Ein Schnitt, der nicht fragt, wie viel Knochen im Weg steht.") },
-      { title: "Zorn", arch: [A.dmgPct, A.dmgPct, A.dmgFlat],
-        tip: uq("might", "Blinder Zorn", KEYSTONE_COST, { pctDmg: 0.18 },
+        { fork: 13, long: 21, short: 16, spurs: [spur(7), spur(11, 2)] }),
+      // Zorn is the flagship: the widest branch on the widest arm, priced up for
+      // it. If you only ever walk one lane in this tree, this is the one.
+      shaped({ title: "Zorn", arch: [A.dmgPct, A.dmgPct, A.dmgFlat],
+        toll: 1.15,
+        tip: uq("might", "Blinder Zorn", 110, { pctDmg: 0.18 },
           "Du hörst auf zu zielen und fängst an zu treffen.") },
+        { fork: 12, long: 22, short: 17, spurs: [spur(9), spur(15, 2, DORNEN[0])] }),
       // Zermalmen is where armour penetration lives: crushing through the plate
-      // is the same idea as crushing through the body behind it.
-      { title: "Zermalmen", arch: [A.armorPen, A.dmgFlat, A.critMult],
-        tip: uq("might", "Zermalmender Hieb", KEYSTONE_COST, { critMult: 0.35, flatDmg: 8, armorPen: 0.6 },
-          "Wenn es kritisch trifft, bleibt nichts stehen, das noch fallen könnte."),
-        tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
-          "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
+      // is the same idea as crushing through the body behind it. Marked down —
+      // it is a detour that only pays against one enemy variant.
+      shaped({ title: "Zermalmen", arch: [A.armorPen, A.dmgFlat, A.critMult],
+        toll: 0.85,
+        tip: uq("might", "Zermalmender Hieb", 85, { critMult: 0.35, flatDmg: 8, armorPen: 0.6 },
+          "Was kritisch getroffen wird, steht nicht mehr auf. Das ist keine Metapher.") },
+        { fork: 14, long: 18, short: 0, spurs: [spur(8, 2)] }),
     ] },
 
-  // ---- Heilwort: the arm that turns spell power back into life.
-  { key: "hea", kind: "spell", spell: "heal", theme: "heal", title: "Heilwort",
-    prelude: [A.hpFlat, A.regen, A.hpPct, A.leech],
+  // ---- Feuerball: the page you start with, so its key is a prize, not a seal,
+  // and the walk to it is the shortest in the tree. This arm is where a new
+  // player learns what an arm IS, so it is deliberately small: three branches,
+  // no leech lane, nothing that needs explaining.
+  { key: "fir", kind: "spell", spell: "fireball", theme: "fireball", title: "Feuerball",
+    prelude: [A.dmgFlat, A.critChance],
     branches: [
-      bRawPower(SPELL_LORE.heal),
-      bSigil("heal", SPELL_LORE.heal),
-      { title: "Quell", arch: [A.regen, A.leech, A.regen],
-        tip: uq("sustain", "Ewige Quelle", KEYSTONE_COST, { regen: 8.0, leech: 0.05 },
-          "Die Quelle versiegt nicht mehr, auch wenn du das Wort nicht sprichst.") },
-      { title: "Fürsorge", arch: [A.hpFlat, A.hpPct, A.hpFlat],
-        tip: uq("vigor", "Zweites Leben", KEYSTONE_COST, { flatHp: 90, pctHp: 0.10 },
-          "Ein Leben in Reserve, für den Schlag, den du nicht kommen siehst.") },
-      { title: "Gelassenheit", arch: [A.haste, A.failProt, A.hpFlat],
-        tip: uq("focus", "Ruhige Hand", KEYSTONE_COST, { castHaste: 0.10, spellFailProt: 0.10 },
-          "Keine Hast in der Hand, und darum kein Zittern im Zeichen.") },
+      shaped(bRawPower(SPELL_LORE.fireball, 80,
+        "Rohe Kraft, ohne Zeichen und ohne Kunst. Der Feuerball war schon immer die ehrlichste Seite im Buch."),
+        { fork: 10, long: 15, short: 12, spurs: [spur(7)] }),
+      shaped(bSigil("fireball", SPELL_LORE.fireball, 90,
+        "Sechs Striche. Der erste sitzt noch, wenn der letzte fällt."),
+        { fork: 11, long: 16, short: 13, spurs: [spur(8, 2)] }),
+      shaped({ title: "Glutkern",
+        arch: [
+          { stat: "aoeFireball", theme: "fireball", base: 0.05, cost: 30, maxRank: 2, growth: 1.6,
+            title: "Glutkern", blurb: "Der Feuerball zerbirst weiter. Die Flammen greifen über den Getroffenen hinaus." },
+          sigil("fireball"),
+          A.haste,
+        ],
+        tip: uq("fireball", "Flammenmeer", 100, { aoeFireball: 0.30 },
+          "Der Radius wächst, bis das Wort Kugel nicht mehr passt.") },
+        { fork: 12, long: 16, short: 14, spurs: [spur(6), spur(14)] }),
     ] },
 
-  // ---- Precision: crit for the whole book.
+  // ---- Meteoritenschauer: the deepest seal in the tree. Six nodes of prelude
+  // is a lot to pay for a page, and that is the point — the shower is the answer
+  // to a hall that has got wide, which is a problem you do not have on run one.
+  { key: "met", kind: "spell", spell: "meteor", theme: "meteor", title: "Meteoritenschauer",
+    prelude: [A.dmgFlat, A.critChance, A.dmgPct, A.critMult, A.dmgFlat, A.dmgPct],
+    branches: [
+      shaped(bRawPower(SPELL_LORE.meteor, 85,
+        "Ein Brocken wiegt, was er wiegt. Ab hier wiegt er mehr."),
+        { fork: 12, long: 18, short: 15, spurs: [spur(10)] }),
+      shaped(bSigil("meteor", SPELL_LORE.meteor, 95,
+        "Das vollendete Zeichen. Wer es einmal geschrieben hat, schreibt es im Schlaf weiter."),
+        { fork: 13, long: 20, short: 16, spurs: [spur(9), spur(15, 2, DORNEN[3])] }),
+      shaped({ title: "Wirkung",
+        arch: [
+          bodyNode("countMeteor", "meteor", 60, "Sternenregen", "Ein Brocken mehr pro Schauer."),
+          { stat: "aoeMeteor", theme: "meteor", base: 0.05, cost: 30, maxRank: 2, growth: 1.6,
+            title: "Einschlagswucht", blurb: "Jeder Brocken reißt einen größeren Krater." },
+          sigil("meteor"),
+        ],
+        toll: 1.1,
+        tip: uq("meteor", "Himmelssturz", 120, { countMeteor: 3, aoeMeteor: 0.30 },
+          "Kein Schauer mehr. Ein Himmel, der herunterkommt.") },
+        { fork: 14, long: 19, short: 17, spurs: [spur(8, 2), spur(12)] }),
+      shaped(bDrain(SPELL_LORE.meteor, 80,
+        "Der Staub, den die Brocken aufwerfen, findet den Weg zurück in deine Lunge."),
+        { fork: 12, long: 16, short: 0, spurs: [spur(10)] }),
+    ] },
+
+  // ---- Präzision: crit for the whole book. Three branches, all short. Crit is
+  // a multiplier on someone else's numbers, so this arm is a detour you take
+  // once the numbers exist, not a place to live.
   { key: "cri", kind: "generic", theme: "crit", title: "Präzision",
     prelude: [A.critChance, A.critMult, A.critChance, A.critMult],
-    notable: uq("crit", "Falkenauge", NOTABLE_COST, { critChance: 0.05, armorPen: 0.3 },
-      "Du liest den Gang wie eine Seite — und siehst, wo er dünn ist."),
+    notable: uq("crit", "Falkenauge", 44, { critChance: 0.05, armorPen: 0.3 },
+      "Du liest den Gang wie eine Seite und siehst, wo er dünn ist."),
     branches: [
-      { title: "Treffsicherheit", arch: [A.critChance, A.critChance, A.critMult],
-        tip: uq("crit", "Schwachstelle", KEYSTONE_COST, { critChance: 0.09 },
+      shaped({ title: "Treffsicherheit", arch: [A.critChance, A.critChance, A.critMult],
+        tip: uq("crit", "Schwachstelle", 80, { critChance: 0.09 },
           "Jeder Körper hat eine. Du findest sie zuverlässig.") },
-      { title: "Wucht", arch: [A.critMult, A.critMult, A.critChance],
-        tip: uq("crit", "Vernichtender Schlag", KEYSTONE_COST, { critMult: 0.45 },
-          "Ein kritischer Treffer ist kein Glück mehr, sondern ein Urteil.") },
-      { title: "Kaltblütigkeit", arch: [A.critChance, A.haste, A.dmgPct],
-        tip: uq("crit", "Meisterstreich", KEYSTONE_COST, { critChance: 0.05, critMult: 0.20, castHaste: 0.05 },
-          "Schnell, ruhig, tödlich — in dieser Reihenfolge."),
-        tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
-          "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
+        { fork: 11, long: 16, short: 13, spurs: [spur(9)] }),
+      shaped({ title: "Wucht", arch: [A.critMult, A.critMult, A.critChance],
+        tip: uq("crit", "Vernichtender Schlag", 100, { critMult: 0.45 },
+          "+45% Krit-Schaden. Es gibt hier nichts Tieferes zu sagen.") },
+        { fork: 13, long: 19, short: 15, spurs: [spur(8, 2), spur(16, 1, DORNEN[1])] }),
+      // Kaltblütigkeit is the thin one: a single chain, no fork, and the only
+      // cast-speed on this side of the tree.
+      shaped({ title: "Kaltblütigkeit", arch: [A.critChance, A.haste, A.dmgPct],
+        toll: 1.1,
+        tip: uq("crit", "Meisterstreich", 90, { critChance: 0.05, critMult: 0.20, castHaste: 0.05 },
+          "Schnell, ruhig, tödlich. In dieser Reihenfolge.") },
+        { fork: 15, long: 18, short: 0, spurs: [spur(11)] }),
     ] },
 
-  // ---- Frostkegel: control. Its shape branch buys cone reach and freeze time.
-  damageSpellArm("fro", "frost",
-    [A.hpFlat, A.dmgFlat, A.hpPct, A.dmgPct],
-    { title: "Wirkung",
-      arch: [
-        { stat: "freezeFrost", theme: "frost", base: 120, cost: 34, maxRank: 2, growth: 1.6,
-          title: "Ewiges Eis", blurb: "Der Frostkegel hält seine Opfer länger fest." },
-        { stat: "coneFrost", theme: "frost", base: 0.04, cost: 30, maxRank: 2, growth: 1.6,
-          title: "Weiter Atem", blurb: "Der Kegel greift tiefer in den Gang hinein." },
-        sigil("frost"),
-      ],
-      tip: uq("frost", "Ewiger Winter", KEYSTONE_COST, { freezeFrost: 1200, coneFrost: 0.25 },
-        "Der halbe Gang steht still, und dein nächster Zauber zerschlägt ihn.") }),
+  // ---- Blitzschlag: reach. Five branches, forks late, runs to ring 20. The
+  // longest arm on the offence side, because a chain that hits eight bodies is
+  // worth a long walk and nothing else in the book scales with crowd size.
+  { key: "lig", kind: "spell", spell: "lightning", theme: "lightning", title: "Blitzschlag",
+    prelude: [A.dmgFlat, A.dmgFlat, A.dmgPct, A.critChance, A.dmgFlat],
+    branches: [
+      shaped(bRawPower(SPELL_LORE.lightning, 90,
+        "Spannung ist kein Zeichen. Sie steht einfach an, bis irgendwo etwas nachgibt."),
+        { fork: 14, long: 21, short: 17, spurs: [spur(9), spur(12)] }),
+      shaped(bSigil("lightning", SPELL_LORE.lightning, 100,
+        "Unten am Rand steht in kleiner Schrift: nicht bei Regen."),
+        { fork: 13, long: 20, short: 16, spurs: [spur(10, 2)] }),
+      shaped({ title: "Wirkung",
+        arch: [
+          bodyNode("chainLightning", "lightning", 65, "Kettenglied", "Ein Körper mehr in der Kette."),
+          { stat: "falloffLightning", theme: "lightning", base: 0.012, cost: 30, maxRank: 2, growth: 1.6,
+            title: "Leitfähigkeit", blurb: "Jeder Sprung trägt mehr Kraft weiter als zuvor." },
+          sigil("lightning"),
+        ],
+        toll: 1.2,   // the branch that makes the spell; priced like it
+        tip: uq("lightning", "Gewitterfront", 130, { chainLightning: 3, falloffLightning: 0.06 },
+          "Drei Sprünge mehr, und jeder trägt weiter als der davor. Der Gang wird auf einmal sehr kurz.") },
+        { fork: 15, long: 22, short: 18, spurs: [spur(8), spur(11, 2)] }),
+      shaped(bEdge(SPELL_LORE.lightning, 85,
+        "Du siehst die Lücke im Knochen, bevor der Bogen sie findet."),
+        { fork: 12, long: 17, short: 15, spurs: [spur(16, 2, DORNEN[4])] }),
+      shaped(bDrain(SPELL_LORE.lightning, 75,
+        "Der Bogen kehrt um, wenn er niemanden mehr findet, und du bist das Nächstbeste."),
+        { fork: 13, long: 16, short: 0, spurs: [] }),
+    ] },
 
-  // ---- Sustain: regen and leech, the arm that lets a build stay out longer.
+  // ---- Fortuna: gold and pace. Belongs to no page — it funds all of them, so
+  // its notable is two nodes from the seed and its prelude is the cheapest in
+  // the tree. It hides no thorn cache: five exist, and the arm every build walks
+  // through on its way somewhere else is the wrong place to hide anything.
+  { key: "for", kind: "generic", theme: "fortune", title: "Fortuna",
+    prelude: [tweak(A.coin, { cost: 14 }), A.walk],
+    notable: uq("fortune", "Glücksmünze", 34, { coinMult: 0.12 },
+      "Sie fällt immer richtig herum. Frag nicht, warum."),
+    branches: [
+      shaped({ title: "Glückssträhne", arch: [A.coin, A.coin, A.walk],
+        tip: uq("fortune", "Goldrausch", 105, { coinMult: 0.25 },
+          "Jede richtige Vokabel klingt jetzt anders. Nämlich metallisch.") },
+        { fork: 13, long: 19, short: 16, spurs: [spur(7), spur(10, 2)] }),
+      // The long thin one: sixteen nodes of walking speed in a single line out
+      // to ring 19, which is exactly the joke it sounds like.
+      shaped({ title: "Flinkheit", arch: [A.walk, A.walk, A.hpFlat],
+        toll: 0.9,
+        tip: uq("fortune", "Windschritt", 75, { walkMult: 0.20 },
+          "Der Gang zwischen zwei Lagern wird kurz genug, um kein Gang mehr zu sein.") },
+        { fork: 21, long: 21, short: 0, spurs: [spur(9), spur(14), spur(18)] }),
+      shaped({ title: "Fündigkeit", arch: [A.coin, A.haste, A.walk, A.coin],
+        tip: uq("fortune", "Schatzsinn", 95, { coinMult: 0.15, castHaste: 0.05 },
+          "Du riechst Gold durch Stein und sparst dir den Umweg.") },
+        { fork: 12, long: 17, short: 14, spurs: [spur(8)] }),
+    ] },
+
+  // ---- Zehrung: regen and leech, the arm that lets a build stay out longer.
   { key: "sus", kind: "generic", theme: "sustain", title: "Zehrung",
-    prelude: [A.regen, A.leech, A.regen, A.hpFlat],
-    notable: uq("sustain", "Lebensband", NOTABLE_COST, { regen: 4.0, leech: 0.03 },
+    prelude: [A.regen, A.leech, A.hpFlat],
+    notable: uq("sustain", "Lebensband", 38, { regen: 4.0, leech: 0.03 },
       "Ein Faden zwischen dir und allem, was du niederstreckst."),
     branches: [
-      { title: "Genesung", arch: [A.regen, A.regen, A.hpFlat],
-        tip: uq("sustain", "Lebensstrom", KEYSTONE_COST, { regen: 8.8 },
+      shaped({ title: "Genesung", arch: [A.regen, A.regen, A.hpFlat],
+        tip: uq("sustain", "Lebensstrom", 85, { regen: 8.8 },
           "Wunden schließen sich, während du noch zeichnest.") },
-      { title: "Aderlass", arch: [A.leech, A.leech, A.dmgFlat],
-        tip: uq("sustain", "Blutdurst", KEYSTONE_COST, { leech: 0.09 },
+        { fork: 12, long: 17, short: 14, spurs: [spur(8), spur(13)] }),
+      shaped({ title: "Aderlass", arch: [A.leech, A.leech, A.dmgFlat],
+        toll: 1.1,
+        tip: uq("sustain", "Blutdurst", 100, { leech: 0.09 },
           "Jeder Zauber bringt dir zurück, was er dem Gang nimmt.") },
-      { title: "Wandeln", arch: [A.leech, A.hpPct, A.regen],
-        tip: uq("sustain", "Wandelndes Grab", KEYSTONE_COST, { leech: 0.05, regen: 4.0, flatHp: 36 },
-          "Du gehst durch die Toten, als wärst du einer von ihnen."),
-        tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
-          "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
+        { fork: 14, long: 20, short: 16, spurs: [spur(10, 2)] }),
+      shaped({ title: "Wandeln", arch: [A.leech, A.hpPct, A.regen],
+        tip: uq("sustain", "Wandelndes Grab", 90, { leech: 0.05, regen: 4.0, flatHp: 36 },
+          "Die Skelette sehen kurz auf, wenn du vorbeigehst, und beschließen dann, dass du dazugehörst.") },
+        { fork: 13, long: 18, short: 0, spurs: [spur(9), spur(16, 2, DORNEN[2])] }),
     ] },
 
-  // ---- Meteoritenschauer: area. Its shape branch buys rocks and crater size.
-  damageSpellArm("met", "meteor",
-    [A.critChance, A.dmgFlat, A.critMult, A.dmgPct],
-    { title: "Wirkung",
-      arch: [
-        bodyNode("countMeteor", "meteor", "Sternenregen", "Ein weiterer Brocken stürzt bei jedem Schauer herab."),
-        { stat: "aoeMeteor", theme: "meteor", base: 0.05, cost: 30, maxRank: 2, growth: 1.6,
-          title: "Einschlagswucht", blurb: "Jeder Brocken reißt einen größeren Krater." },
-        sigil("meteor"),
-      ],
-      tip: uq("meteor", "Himmelssturz", KEYSTONE_COST, { countMeteor: 3, aoeMeteor: 0.30 },
-        "Nicht mehr ein Schauer, sondern ein Himmel, der herunterkommt.") }),
+  // ---- Heilwort: the arm that turns spell power back into life. Four branches
+  // and no crit lane anywhere on it — nothing here wants to be a bigger number,
+  // it wants to still be standing.
+  { key: "hea", kind: "spell", spell: "heal", theme: "heal", title: "Heilwort",
+    prelude: [A.hpFlat, A.regen, A.leech],
+    branches: [
+      shaped(bRawPower(SPELL_LORE.heal, 75,
+        "Auch ein Segen ist eine Menge Kraft, die irgendwohin muss."),
+        { fork: 12, long: 16, short: 14, spurs: [spur(9)] }),
+      shaped(bSigil("heal", SPELL_LORE.heal, 90,
+        "Das Zeichen ist nicht schöner geworden. Nur richtiger."),
+        { fork: 13, long: 18, short: 15, spurs: [spur(8, 2)] }),
+      shaped({ title: "Quell", arch: [A.regen, A.leech, A.regen],
+        tip: uq("sustain", "Ewige Quelle", 100, { regen: 8.0, leech: 0.05 },
+          "»Und als er das Wort vergaß, floss es weiter.« Der Rest der Seite ist unleserlich.") },
+        { fork: 14, long: 19, short: 16, spurs: [spur(10)] }),
+      shaped({ title: "Gelassenheit", arch: [A.haste, A.failProt, A.hpFlat],
+        toll: 0.9,
+        tip: uq("focus", "Ruhige Hand", 85, { castHaste: 0.10, spellFailProt: 0.10 },
+          "Keine Hast in der Hand, und darum kein Zittern im Zeichen.") },
+        { fork: 12, long: 15, short: 0, spurs: [spur(13)] }),
+    ] },
 
-  // ---- Guard: absorb, fail-protection, the arm that keeps a fragile build alive.
+  // ---- Zähigkeit: the plain HP arm. It stops at ring 17 and stays fat all the
+  // way. There is nothing clever at the end of a health arm and pretending
+  // otherwise would only make the walk longer.
+  { key: "vig", kind: "generic", theme: "vigor", title: "Zähigkeit",
+    prelude: [A.hpFlat, A.hpFlat, A.hpPct, A.hpFlat],
+    notable: uq("vigor", "Eisenleib", 36, { flatHp: 60, pctHp: 0.06 },
+      "Ein Körper, der gelernt hat, im Gang zu stehen."),
+    branches: [
+      shaped({ title: "Knochenbau", arch: [A.hpFlat, A.hpFlat, A.hpPct],
+        toll: 0.9,
+        tip: uq("vigor", "Mark und Bein", 70, { flatHp: 102 },
+          "+102 LP. Keine Geschichte dazu, nur die Zahl.") },
+        { fork: 11, long: 16, short: 13, spurs: [spur(7), spur(9), spur(13, 2)] }),
+      shaped({ title: "Lebenskraft", arch: [A.hpPct, A.hpPct, A.hpFlat],
+        tip: uq("vigor", "Zweites Herz", 85, { pctHp: 0.18 },
+          "Ein zweiter Schlag hinter dem ersten, für den Fall der Fälle.") },
+        { fork: 12, long: 16, short: 14, spurs: [spur(8, 2)] }),
+      shaped({ title: "Beharrlichkeit", arch: [A.hpFlat, A.regen, A.hpPct],
+        tip: uq("vigor", "Unbeugsam", 80, { regen: 7.2, flatHp: 36 },
+          "Du gehst weiter, weil Stehenbleiben nie zur Debatte stand.") },
+        { fork: 13, long: 15, short: 0, spurs: [spur(10)] }),
+    ] },
+
+  // ---- Abwehr: absorb, fail-protection, the arm that keeps a fragile build
+  // alive. Its prelude is long (five) because a shield you can reach in two
+  // nodes makes the early hall boring.
   { key: "gua", kind: "generic", theme: "guard", title: "Abwehr",
-    prelude: [A.hpFlat, A.shield, A.failProt, A.hpFlat],
-    notable: uq("guard", "Wächterrune", NOTABLE_COST, { shieldChance: 0.08, shieldAmount: 15, shieldMax: 25 },
+    prelude: [A.hpFlat, A.shield, A.failProt, A.hpFlat, A.shield],
+    notable: uq("guard", "Wächterrune", 42, { shieldChance: 0.08, shieldAmount: 15, shieldMax: 25 },
       "Eine Rune, die mitwacht, wenn du dich auf das Zeichnen konzentrierst."),
     branches: [
-      { title: "Schildzauber", arch: [A.shield, A.shield, A.hpFlat],
-        tip: uq("guard", "Ewiger Wall", KEYSTONE_COST, { shieldChance: 0.12, shieldAmount: 25, shieldMax: 60 },
-          "Der Schild fällt nicht mehr ganz — er wird nur dünner.") },
-      { title: "Schutzzauber", arch: [A.failProt, A.hpFlat, A.haste],
-        tip: uq("guard", "Bannkreis", KEYSTONE_COST, { spellFailProt: 0.14 },
+      shaped({ title: "Schildzauber", arch: [A.shield, A.shield, A.hpFlat],
+        tip: uq("guard", "Ewiger Wall", 105, { shieldChance: 0.12, shieldAmount: 25, shieldMax: 60 },
+          "Der Schild fällt nicht mehr ganz. Er wird nur dünner.") },
+        { fork: 13, long: 18, short: 16, spurs: [spur(9), spur(15, 2)] }),
+      shaped({ title: "Schutzzauber", arch: [A.failProt, A.hpFlat, A.haste],
+        toll: 1.05,
+        tip: uq("guard", "Bannkreis", 95, { spellFailProt: 0.14 },
           "Ein misslungenes Zeichen kostet dich meist nur noch das Zeichen.") },
-      { title: "Standhaftigkeit", arch: [A.hpFlat, A.shield, A.hpPct],
-        tip: uq("guard", "Eisenwille", KEYSTONE_COST, { flatHp: 60, spellFailProt: 0.06, shieldMax: 30 },
-          "Was dich treffen will, muss erst durch deinen Entschluss."),
-        tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
-          "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
+        { fork: 12, long: 17, short: 15, spurs: [spur(8)] }),
+      shaped({ title: "Standhaftigkeit", arch: [A.hpFlat, A.shield, A.hpPct],
+        tip: uq("guard", "Eisenwille", 90, { flatHp: 60, spellFailProt: 0.06, shieldMax: 30 },
+          "Was dich treffen will, muss erst durch deinen Entschluss.") },
+        { fork: 14, long: 19, short: 0, spurs: [spur(10, 2)] }),
     ] },
 
   // ---- Bannschild: absorb built from spell power, so raw damage lifts it too.
   { key: "shi", kind: "spell", spell: "shield", theme: "shield", title: "Bannschild",
-    prelude: [A.hpFlat, A.hpFlat, A.shield, A.hpPct],
+    prelude: [A.hpFlat, A.shield, A.hpPct, A.hpFlat],
     branches: [
-      bRawPower(SPELL_LORE.shield),
-      bSigil("shield", SPELL_LORE.shield),
-      { title: "Wirkung", arch: [A.shield, A.shield, sigil("shield")],
-        tip: uq("shield", "Unzerbrechlich", KEYSTONE_COST, { shieldChance: 0.15, shieldAmount: 30, shieldMax: 100 },
+      shaped(bSigil("shield", SPELL_LORE.shield, 95,
+        "Ein geschlossener Ring, an dem nichts mehr fehlt."),
+        { fork: 13, long: 17, short: 15, spurs: [spur(9)] }),
+      shaped({ title: "Wirkung", arch: [A.shield, A.shield, sigil("shield")],
+        toll: 1.1,
+        tip: uq("shield", "Unzerbrechlich", 115, { shieldChance: 0.15, shieldAmount: 30, shieldMax: 100 },
           "Der Bann hält, auch wenn du längst nicht mehr hinsiehst.") },
-      { title: "Bollwerk", arch: [A.hpFlat, A.hpPct, A.hpFlat],
-        tip: uq("vigor", "Steinhaut", KEYSTONE_COST, { flatHp: 90, pctHp: 0.08 },
+        { fork: 14, long: 20, short: 16, spurs: [spur(8, 2), spur(12)] }),
+      shaped({ title: "Bollwerk", arch: [A.hpFlat, A.hpPct, A.hpFlat],
+        toll: 0.85,
+        tip: uq("vigor", "Steinhaut", 70, { flatHp: 90, pctHp: 0.08 },
           "Knochen prallen ab, wo sie früher eindrangen.") },
-      { title: "Wehrhaftigkeit", arch: [A.failProt, A.haste, A.hpFlat],
-        tip: uq("guard", "Bannwall", KEYSTONE_COST, { spellFailProt: 0.12, castHaste: 0.06 },
+        { fork: 12, long: 16, short: 14, spurs: [spur(10)] }),
+      shaped({ title: "Wehrhaftigkeit", arch: [A.failProt, A.haste, A.hpFlat],
+        tip: uq("guard", "Bannwall", 85, { spellFailProt: 0.12, castHaste: 0.06 },
           "Der Schild steht schon, bevor das Zeichen fertig ist.") },
+        { fork: 13, long: 18, short: 0, spurs: [spur(15)] }),
     ] },
 
-  // ---- Vigour: the plain HP arm.
-  { key: "vig", kind: "generic", theme: "vigor", title: "Zähigkeit",
-    prelude: [A.hpFlat, A.hpFlat, A.hpPct, A.hpFlat],
-    notable: uq("vigor", "Eisenleib", NOTABLE_COST, { flatHp: 60, pctHp: 0.06 },
-      "Ein Körper, der gelernt hat, im Gang zu stehen."),
+  // ---- Frostkegel: control. It closes the ring back round to Macht, because
+  // freezing the front row is what makes a damage build's next cast land on six
+  // bodies instead of one. Its Zeichen branch is short and its Wirkung branch is
+  // the long one: on this page the shape IS the spell.
+  { key: "fro", kind: "spell", spell: "frost", theme: "frost", title: "Frostkegel",
+    prelude: [A.hpFlat, A.dmgFlat, A.hpPct, A.dmgPct],
     branches: [
-      { title: "Knochenbau", arch: [A.hpFlat, A.hpFlat, A.hpPct],
-        tip: uq("vigor", "Mark und Bein", KEYSTONE_COST, { flatHp: 102 },
-          "Du trägst mehr, als ein Mensch tragen sollte.") },
-      { title: "Lebenskraft", arch: [A.hpPct, A.hpPct, A.hpFlat],
-        tip: uq("vigor", "Zweites Herz", KEYSTONE_COST, { pctHp: 0.18 },
-          "Ein zweiter Schlag hinter dem ersten, für den Fall der Fälle.") },
-      { title: "Beharrlichkeit", arch: [A.hpFlat, A.regen, A.hpPct],
-        tip: uq("vigor", "Unbeugsam", KEYSTONE_COST, { regen: 7.2, flatHp: 36 },
-          "Du gehst weiter, weil Stehenbleiben nie zur Debatte stand."),
-        tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
-          "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
-    ] },
-
-  // ---- Feuerball: the page you start with, so its key is a keystone, not a
-  // seal. Its shape branch buys blast radius — the spell's whole upgrade path.
-  damageSpellArm("fir", "fireball",
-    [A.dmgFlat, A.dmgPct, A.critChance, A.dmgFlat],
-    { title: "Wirkung",
-      arch: [
-        { stat: "aoeFireball", theme: "fireball", base: 0.05, cost: 30, maxRank: 2, growth: 1.6,
-          title: "Glutkern", blurb: "Der Feuerball zerbirst weiter — die Flammen greifen über den Getroffenen hinaus." },
-        sigil("fireball"),
-        A.haste,
-      ],
-      tip: uq("fireball", "Flammenmeer", KEYSTONE_COST, { aoeFireball: 0.30 },
-        "Keine Kugel mehr, sondern eine Woge, die über die Reihen schlägt — und jede trifft sie voll.") }),
-
-  // ---- Fortune: gold and pace. Belongs to no page — it funds all of them.
-  { key: "for", kind: "generic", theme: "fortune", title: "Fortuna",
-    prelude: [A.coin, A.walk, A.coin, A.walk],
-    notable: uq("fortune", "Glücksmünze", NOTABLE_COST, { coinMult: 0.12 },
-      "Sie fällt immer richtig herum. Frag nicht, warum."),
-    branches: [
-      { title: "Glückssträhne", arch: [A.coin, A.coin, A.walk],
-        tip: uq("fortune", "Goldrausch", KEYSTONE_COST, { coinMult: 0.25 },
-          "Jede richtige Vokabel klingt jetzt anders — nämlich metallisch.") },
-      { title: "Flinkheit", arch: [A.walk, A.walk, A.hpFlat],
-        tip: uq("fortune", "Windschritt", KEYSTONE_COST, { walkMult: 0.20 },
-          "Der Gang zwischen zwei Lagern wird kurz genug, um kein Gang mehr zu sein.") },
-      { title: "Fündigkeit", arch: [A.coin, A.haste, A.walk],
-        // No Dornenkrone out here: exactly five caches exist, and Fortuna — the
-        // one arm that belongs to no page — is the one that doesn't hide one.
-        tip: uq("fortune", "Schatzsinn", KEYSTONE_COST, { coinMult: 0.15, castHaste: 0.05 },
-          "Du riechst Gold durch Stein — und sparst dir den Umweg.") },
+      shaped(bSigil("frost", SPELL_LORE.frost, 85,
+        "Beim Zeichnen beschlägt das Papier. Das gehört so."),
+        { fork: 12, long: 15, short: 13, spurs: [spur(9)] }),
+      shaped({ title: "Wirkung",
+        arch: [
+          { stat: "freezeFrost", theme: "frost", base: 120, cost: 34, maxRank: 2, growth: 1.6,
+            title: "Ewiges Eis", blurb: "Der Frostkegel hält seine Opfer länger fest." },
+          { stat: "coneFrost", theme: "frost", base: 0.04, cost: 30, maxRank: 2, growth: 1.6,
+            title: "Weiter Atem", blurb: "Der Kegel greift tiefer in den Gang hinein." },
+          sigil("frost"),
+        ],
+        toll: 1.2,
+        tip: uq("frost", "Ewiger Winter", 125, { freezeFrost: 1200, coneFrost: 0.25 },
+          "Der halbe Gang steht still, und dein nächster Zauber zerschlägt ihn.") },
+        { fork: 15, long: 21, short: 18, spurs: [spur(8), spur(11, 2), spur(19)] }),
+      shaped(bEdge(SPELL_LORE.frost, 80,
+        "Gefrorener Knochen springt, wo lebendiger nachgeben würde."),
+        { fork: 13, long: 18, short: 15, spurs: [spur(10)] }),
+      shaped(bDrain(SPELL_LORE.frost, 75,
+        "Die Kälte nimmt ihnen, was sie nie gebraucht haben, und gibt es dir."),
+        { fork: 12, long: 16, short: 0, spurs: [spur(8, 2)] }),
     ] },
 ];
 
 // ---------------------------------------------------------------------------
-// Layout — grow the graph from the ARMS table first, then place it. Position is
-// a two-step job (see the constants above): give every subtree a slice of the
+// Layout — grow the graph from the ARMS table first, then place it. Growing it
+// involves no randomness at all: every ring in the table above was typed by
+// hand, so the shape on screen is the shape in the source. Position is a
+// two-step job (see the constants above): give every subtree a slice of the
 // circle proportional to how many chain-ends it holds, then relax the whole
-// thing under springs + repulsion so the density evens out and the shape stops
-// looking drafted.
+// thing under springs + repulsion so the density evens out.
 // ---------------------------------------------------------------------------
 function ringRadius(ring) { return HOLE + (ring - 1) * NODE_STEP; }
-function ringCost(base, ring) { return Math.max(5, Math.round(base * Math.pow(ring, COST_RING_POW))); }
-
-// Small seeded PRNG. It decides which offshoots exist and how long twigs run,
-// and saves name the nodes on them, so the layout never touches Math.random.
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+function ringCost(base, ring, mul) {
+  return priceRound(base * Math.pow(ring, COST_RING_POW) * (mul || 1));
 }
 
 function buildSkillTree() {
   const nodes = {
     root: { title: "Ursprung", theme: "origin", ring: 0, maxRank: 0, cost: 0, growth: 1, effect: {},
       path: "Runenbaum",
-      blurb: "Der Quell deiner Macht. Zwölf Arme wachsen von hier — sechs tragen je eine Seite deines Buches, sechs tragen nichts als rohe Fertigkeit." },
+      blurb: "Der Quell deiner Macht. Zwölf Arme wachsen von hier: sechs tragen je eine Seite deines Buches, sechs tragen nichts als rohe Fertigkeit." },
   };
   const kids = { root: [] };
   const edges = [];
   // Children are recorded in the order they are grown, and the angular pass
-  // below hands out slices in that same order — so an arm's five branches stay
-  // side by side in the order the ARMS table lists them.
+  // below hands out slices in that same order — so an arm's branches stay side
+  // by side in the order the ARMS table lists them.
   const add = (id, node, parent) => {
     nodes[id] = node;
     kids[id] = [];
@@ -520,74 +654,69 @@ function buildSkillTree() {
     return id;
   };
 
-  ARMS.forEach((arm, armIdx) => {
-    const rng = mulberry32(0x9E3779B1 ^ Math.imul(armIdx + 1, 2654435761));
-    // Some arms simply don't grow as far as others. Without this every arm ends
-    // on the same ring and the whole tree is drawn inside a perfect circle.
-    const armReach = rng() < 0.4 ? 1 : 0;
-
-    // A dead-end offshoot: one or two nodes hanging off the side of a chain,
-    // ending on a node with an extra rank so the detour is worth walking.
-    const sprout = (chain, arch, path, chance) => {
-      if (chain.length < 2 || rng() >= chance) return;
-      const at = chain[1 + Math.floor(rng() * (chain.length - 1))];
-      const count = rng() < 0.42 ? 2 : 1;
-      let prev = at.id;
-      for (let j = 0; j < count; j++) {
-        prev = add(`${at.id}s${j}`,
-          archNode(arch[(at.idx + 2 + j) % arch.length], at.ring + j + 1, path, j === count - 1 ? 4 : 0),
-          prev);
-      }
-    };
-
-    // --- rings 1..4: the prelude
+  ARMS.forEach((arm) => {
+    // --- the prelude: one ring per entry, however many the arm was given
     let prev = "root";
-    const prelude = [];
     arm.prelude.forEach((arch, i) => {
-      prev = add(`${arm.key}p${i}`, archNode(arch, i + 1, arm.title), prev);
-      prelude.push({ id: prev, ring: i + 1, idx: i });
+      prev = add(`${arm.key}p${i}`, archNode(arch, i + 1, arm.title, { priceMul: arm.toll }), prev);
     });
-    sprout(prelude, arm.prelude, arm.title, 0.55);
 
-    // --- ring 5: the key — a spell's seal, or a generic arm's notable
-    const key = add(`${arm.key}g`, keyNode(arm), prev);
+    // --- the key: a spell's seal, or a generic arm's notable. It sits one ring
+    // past the prelude, which is why an arm's prelude length IS its price.
+    const keyRing = arm.prelude.length + 1;
+    const key = add(`${arm.key}g`, keyNode(arm, keyRing), prev);
+    const fanRing = keyRing + 1;
 
-    // --- rings 6..19: the aspect branches, each forking into two twigs
     arm.branches.forEach((br, b) => {
       const path = `${arm.title} · ${br.title}`;
-      const forkRing = FORK_RING - 2 + Math.floor(rng() * 4);   // 11..14 — no two branches split in line
-      const stem = [];
-      let sPrev = key;
-      for (let ring = FAN_RING; ring < forkRing; ring++) {
-        const i = ring - FAN_RING;
-        sPrev = add(`${arm.key}b${b}n${i}`, archNode(br.arch[i % br.arch.length], ring, path), sPrev);
-        stem.push({ id: sPrev, ring, idx: i });
-      }
-      sprout(stem, br.arch, path, SPUR_STEM);
+      const mul = br.toll || 1;
+      const pick = (i) => br.arch[((i % br.arch.length) + br.arch.length) % br.arch.length];
+      // Where a spur may hang from: every node on the stem and on the long twig,
+      // keystone excepted — a dead end growing out of a keystone would read as a
+      // mistake.
+      const byRing = {};
 
-      for (let t = 0; t < 2; t++) {
-        // Where a twig stops. Twig A carries the keystone so it runs long, but
-        // not to a fixed ring — together with armReach and the varying fork this
-        // is what keeps the outer edge ragged instead of circular, and it thins
-        // the outermost band so the tips have room to breathe.
-        const tipRing = TIP_RING - armReach - (t === 0
-          ? Math.floor(rng() * 2)                 // twig A: one of the two outer rings
-          : 1 + Math.floor(rng() * 3));           // twig B: one to three rings shorter
-        const twig = [];
+      let sPrev = key;
+      for (let ring = fanRing; ring < br.fork; ring++) {
+        const i = ring - fanRing;
+        sPrev = add(`${arm.key}b${b}n${i}`, archNode(pick(i), ring, path, { priceMul: mul }), sPrev);
+        byRing[ring] = { id: sPrev, idx: i };
+      }
+
+      // A branch forks in two, or it doesn't. `short: 0` means this one stays a
+      // single line all the way out, which is how the thin lanes on the map get
+      // to be thin.
+      const twigs = br.short ? [br.long, br.short] : [br.long];
+      twigs.forEach((tipRing, t) => {
         let tPrev = sPrev;
-        for (let ring = forkRing; ring <= tipRing; ring++) {
-          const i = ring - forkRing;
+        for (let ring = br.fork; ring <= tipRing; ring++) {
+          const i = ring - br.fork;
           const isTip = ring === tipRing;
           const tipSpec = isTip ? (t === 0 ? br.tip : br.tip2) : null;
           const node = tipSpec
-            ? uniqueNode(tipSpec, ring, path)
-            : archNode(br.arch[(i + 1 + t * 2) % br.arch.length], ring, path,
-                isTip ? 4 : 0);   // a twig with no keystone ends on a deeper-ranked node instead
+            ? uniqueNode(tipSpec, ring, path, mul)
+            : archNode(pick(i + 1 + t * 2), ring, path,
+                // a twig that ends on no keystone ends on a deeper-ranked node
+                { priceMul: mul, maxRank: isTip ? 4 : 0 });
           tPrev = add(`${arm.key}b${b}t${t}n${i}`, node, tPrev);
-          twig.push({ id: tPrev, ring, idx: i });
+          if (t === 0 && !tipSpec && !byRing[ring]) byRing[ring] = { id: tPrev, idx: i + 1 };
         }
-        sprout(twig.slice(0, -1), br.arch, path, SPUR_TWIG);   // never off the keystone itself
-      }
+      });
+
+      (br.spurs || []).forEach((sp, si) => {
+        const at = byRing[sp.at];
+        if (!at) return;
+        let prevId = at.id;
+        for (let j = 0; j < sp.len; j++) {
+          const last = j === sp.len - 1;
+          const ring = sp.at + j + 1;
+          const node = (last && sp.tip)
+            ? uniqueNode(sp.tip, ring, path, mul)
+            : archNode(pick(at.idx + 2 + j), ring, path,
+                { priceMul: mul, maxRank: last ? 4 : 0 });
+          prevId = add(`${arm.key}b${b}s${si}n${j}`, node, prevId);
+        }
+      });
     });
   });
 
@@ -721,8 +850,10 @@ function relaxTree(pos, nodes, edges) {
   ids.forEach((id, i) => { pos[id].x = px[i]; pos[id].y = py[i]; });
 }
 
-// One archetype, resolved at a ring: value scaled by the tier, cost by the ring.
-function archNode(arch, ring, path, maxRankOverride) {
+// One archetype, resolved at a ring: value scaled by the tier, cost by the ring
+// and by whatever the branch it landed on is charging (see `toll`).
+function archNode(arch, ring, path, opts) {
+  const o = opts || {};
   const tier = 1 + VAL_PER_RING * (ring - 1);
   let effect;
   if (arch.special === "shield") {
@@ -738,37 +869,52 @@ function archNode(arch, ring, path, maxRankOverride) {
     effect = { [arch.stat]: v };
   }
   return { title: arch.title, theme: arch.theme, ring, path, effect, blurb: arch.blurb,
-    maxRank: maxRankOverride || arch.maxRank || 3,
-    cost: ringCost(arch.cost, ring), growth: arch.growth || RANK_GROWTH };
+    maxRank: o.maxRank || arch.maxRank || 3,
+    cost: ringCost(arch.cost, ring, o.priceMul), growth: arch.growth || RANK_GROWTH };
 }
 
 // A unique — its value is authored outright, only its price knows about depth.
-function uniqueNode(spec, ring, path) {
+function uniqueNode(spec, ring, path, priceMul) {
   return { title: spec.title, theme: spec.theme, ring, path, effect: spec.effect, blurb: spec.blurb,
-    unique: true, maxRank: 1, growth: 1, cost: ringCost(spec.cost, ring) };
+    unique: true, maxRank: 1, growth: 1, cost: ringCost(spec.cost, ring, priceMul) };
 }
 
-// The node at ring 5. On a spell arm that carries a sealed page it is the seal
-// itself; on the starter's arm and on every generic arm it is a named notable,
-// so all twelve arms have the same milestone at the same depth.
-function keyNode(arm) {
+// WHAT A PAGE COSTS TO OPEN. Not one tariff for all five seals: the second spell
+// a player reaches should be affordable on a couple of decent quiz sessions, and
+// the shower should feel like something you saved up for. Multiply by the ring
+// the arm's prelude puts the seal on and the five come out at roughly
+// 150 / 200 / 200 / 210 / 350 gold, which is the spread the pacing wants.
+const UNLOCK_COST = {
+  heal: 44,        // the cheapest seal, and on the shortest spell prelude but one
+  lightning: 40,   // dearer than it looks: it sits five nodes deep
+  frost: 46,
+  shield: 50,
+  meteor: 62,      // six nodes of prelude on top. This is the late-game page.
+};
+
+// The key node, one ring past its arm's prelude. On a spell arm that carries a
+// sealed page it is the seal itself; on the starter's arm and on every generic
+// arm it is a named notable.
+function keyNode(arm, ring) {
   const spell = arm.spell ? SPELL_BY_ID[arm.spell] : null;
   // `beacon` shows a key through the fog from the very first screen (see
   // nodeRevealed). Twelve lit signs ringing the seed are what make the tree
   // navigable: you pick an arm because you can see what it leads to, not by
-  // spending four nodes to find out.
+  // spending four nodes to find out. They do NOT sit on one ring — Fortuna's is
+  // almost inside the seed and the shower's is way out — so the ring of lights
+  // is lopsided, which is the first thing the map tells you about the twelve.
   if (spell && spell.unlock) {
-    return { title: spell.name, theme: arm.theme, ring: KEY_RING, path: arm.title, beacon: true,
+    return { title: spell.name, theme: arm.theme, ring, path: arm.title, beacon: true,
       maxRank: 1, unique: true, unlocks: spell.id, growth: 1, effect: {},
-      cost: ringCost(UNLOCK_COST, KEY_RING),
+      cost: ringCost(UNLOCK_COST[spell.id] || 46, ring),
       blurb: `Ein versiegeltes Zeichen. Heb es, und der Zauber schlägt eine neue Seite in deinem Buch auf. ${spell.blurb}` };
   }
   const node = arm.notable
-    ? uniqueNode(arm.notable, KEY_RING, arm.title)
+    ? uniqueNode(arm.notable, ring, arm.title)
     // Feuerball is already known, so its arm's key is a prize rather than a lock.
     : uniqueNode(uq("fireball", "Feuermal", 40, { dmgFireball: 0.15, flatDmg: 4 },
-        "Das Zeichen, mit dem du geboren wurdest. Der Feuerball war nie versiegelt — er war nur nie geschärft."),
-      KEY_RING, arm.title);
+        "Das Zeichen, mit dem du geboren wurdest. Der Feuerball war nie versiegelt, nur nie geschärft."),
+      ring, arm.title);
   node.beacon = true;
   return node;
 }
@@ -818,7 +964,10 @@ function nodeRevealed(id) {
   return nodeReachable(id);
 }
 function nodeCost(node, rank) {
-  return Math.round(node.cost * Math.pow(node.growth || RANK_GROWTH, rank));
+  // Rank 2 of a node is priced off rank 1 and then snapped back onto the same
+  // ladder, so a node's second and third pip read as prices too rather than as
+  // whatever 1.45× happened to produce.
+  return priceRound(node.cost * Math.pow(node.growth || RANK_GROWTH, rank));
 }
 
 // ---------------------------------------------------------------------------
@@ -1094,6 +1243,15 @@ function edgeSvg(a, b) {
     `</g>`;
 }
 
+// Where a node sits, as a breadcrumb. A branch is often named after the stat it
+// holds, so plenty of nodes would otherwise be captioned "Macht · Zorn" directly
+// under a heading that already says ZORN. Drop the tail when it repeats.
+function treePathLabel(node) {
+  if (!node.path || node.path === node.title) return "";
+  if (node.path.endsWith(` · ${node.title}`)) return node.path.slice(0, -(node.title.length + 3));
+  return node.path;
+}
+
 // The bottom info panel: a single click on a node fills this in and enables the
 // otherwise-greyed "Kaufen" button.
 function renderTreeInfo() {
@@ -1103,13 +1261,13 @@ function renderTreeInfo() {
 
   if (!node) {
     return `<div class="tree-info empty">
-      <div class="ti-hint">Tippe ein Zeichen an, um seine Wirkung zu sehen.</div>
+      <div class="ti-hint">Tipp ein Zeichen an, dann steht hier, was es kann.</div>
       ${disabledBuy}</div>`;
   }
   if (!nodeRevealed(id)) {
     return `<div class="tree-info">
-      <div class="ti-head"><span class="ti-name">Verborgenes Zeichen</span></div>
-      <div class="ti-blurb">Schalte ein benachbartes Zeichen frei, um dieses zu enthüllen.</div>
+      <div class="ti-head"><span class="ti-name">Unter dem Nebel</span></div>
+      <div class="ti-blurb">Kauf ein Zeichen daneben, dann liegt auch dieses offen.</div>
       ${disabledBuy}</div>`;
   }
 
@@ -1142,14 +1300,14 @@ function renderTreeInfo() {
     <div class="ti-head">
       <span class="ti-rune">${runeGlyphSvg(node.theme, 24)}</span>
       <span class="ti-name" style="color:${theme.color}">${node.title}</span>
-      <span class="ti-tier">Stufe ${node.ring}</span>
+      <span class="ti-tier">Ring ${node.ring}</span>
       ${node.unique ? `<span class="ti-unique" style="color:${theme.color}">${node.unlocks ? "Zauber" : "Einzigartig"}</span>`
         : node.maxRank ? `<span class="ti-dots" style="color:${theme.color}">${dots}</span>` : ""}
     </div>
-    ${node.path && node.path !== node.title ? `<div class="ti-path">${node.path}</div>` : ""}
+    ${treePathLabel(node) ? `<div class="ti-path">${treePathLabel(node)}</div>` : ""}
     <div class="ti-blurb">${node.blurb}</div>
     ${node.unlocks ? `<div class="ti-effect">Schaltet frei: <b>${SPELL_BY_ID[node.unlocks].name}</b></div>` : ""}
-    ${per ? `<div class="ti-effect">${node.unique ? "Einmalig" : "Pro Stufe"}: <b>${per}</b>` +
+    ${per ? `<div class="ti-effect">${node.unique ? "Einmalig" : "Pro Rang"}: <b>${per}</b>` +
       `${!node.unique && total ? ` &middot; Gesamt: <b>${total}</b>` : ""}</div>` : ""}
     ${buy}</div>`;
 }

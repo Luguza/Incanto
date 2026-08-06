@@ -57,6 +57,13 @@ function wordIndexOf(pair) { return WORD_POOL.indexOf(pair); }
 function wordIndexByIt(word) { return WORD_POOL.findIndex((p) => p.it === word); }
 
 // --- per-type question builders ---------------------------------------------
+// Rough word class, read straight off the string: the pool writes nouns with
+// their article on both sides ("der Markt" / "il mercato") and everything else
+// bare. It's enough to tell a noun from a not-noun, which is the only
+// distinction the option grid needs.
+const ARTICLES = /^(der|die|das|il|lo|la|l'|i|gli|le)\b|^l'/i;
+function wordClass(w) { return ARTICLES.test(w) ? "noun" : "other"; }
+
 function makeChoose(dir) {
   // dir: "it2de" (show Italian, pick German) or "de2it" (show German, pick Italian)
   const pair = sampleN(WORD_POOL, 1)[0];
@@ -65,9 +72,17 @@ function makeChoose(dir) {
   const answer = pair[answerKey];
   // Exclude any word that shares the prompt (a synonym would be an equally
   // correct option) as well as one that repeats the answer text.
-  const distractors = sampleN(WORD_POOL, CONFIG.quizOptionCount - 1,
-    (p) => p[answerKey] !== answer && p[promptKey] !== pair[promptKey])
-    .map((p) => p[answerKey]);
+  const usable = (p) => p[answerKey] !== answer && p[promptKey] !== pair[promptKey];
+  // Distractors of the answer's own word class first. Offering "können" and
+  // "bezahlen" against "der Markt" doesn't test anything: three of the four
+  // options are eliminated before the learner has read them. Falls back to the
+  // whole pool when a class runs thin, so the grid is never short an option.
+  const want = CONFIG.quizOptionCount - 1;
+  const cls = wordClass(answer);
+  const same = sampleN(WORD_POOL, want, (p) => usable(p) && wordClass(p[answerKey]) === cls);
+  const rest = same.length >= want ? []
+    : sampleN(WORD_POOL, want - same.length, (p) => usable(p) && !same.includes(p));
+  const distractors = same.concat(rest).map((p) => p[answerKey]);
   return { type: "choose", dir, prompt: pair[promptKey], answer, words: [wordIndexOf(pair)],
     options: shuffleArray([answer, ...distractors]) };
 }
