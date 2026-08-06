@@ -314,9 +314,9 @@ function bDrain(L, cost, blurb) {
 // curve has a reason written next to it.
 // ---------------------------------------------------------------------------
 const ARMS = [
-  // ---- Macht: the plain damage arm, and the one most builds walk first. It
-  // runs the furthest of the twelve because "more damage" never stops being the
-  // answer to something.
+  // ---- Macht: the plain damage arm, and the one most builds walk first. Along
+  // with Blitzschlag it reaches furthest of the twelve, because "more damage"
+  // never stops being the answer to something.
   { key: "mig", kind: "generic", theme: "might", title: "Macht",
     prelude: [A.dmgFlat, tweak(A.dmgFlat, { cost: 12 }), A.dmgPct],
     notable: uq("might", "Kriegsherz", 40, { flatDmg: 8, pctDmg: 0.06 },
@@ -334,8 +334,8 @@ const ARMS = [
           "Du hörst auf zu zielen und fängst an zu treffen.") },
         { fork: 12, long: 22, short: 17, spurs: [spur(9), spur(15, 2, DORNEN[0])] }),
       // Zermalmen is where armour penetration lives: crushing through the plate
-      // is the same idea as crushing through the body behind it. Marked down —
-      // it is a detour that only pays against one enemy variant.
+      // is the same idea as crushing through the body behind it. Marked down,
+      // because it is a detour that only pays against one enemy variant.
       shaped({ title: "Zermalmen", arch: [A.armorPen, A.dmgFlat, A.critMult],
         toll: 0.85,
         tip: uq("might", "Zermalmender Hieb", 85, { critMult: 0.35, flatDmg: 8, armorPen: 0.6 },
@@ -369,8 +369,8 @@ const ARMS = [
     ] },
 
   // ---- Meteoritenschauer: the deepest seal in the tree. Six nodes of prelude
-  // is a lot to pay for a page, and that is the point — the shower is the answer
-  // to a hall that has got wide, which is a problem you do not have on run one.
+  // is a lot to pay for a page, and that is the point. The shower answers a hall
+  // that has got wide, which is not a problem you have on run one.
   { key: "met", kind: "spell", spell: "meteor", theme: "meteor", title: "Meteoritenschauer",
     prelude: [A.dmgFlat, A.critChance, A.dmgPct, A.critMult, A.dmgFlat, A.dmgPct],
     branches: [
@@ -396,9 +396,9 @@ const ARMS = [
         { fork: 12, long: 16, short: 0, spurs: [spur(10)] }),
     ] },
 
-  // ---- Präzision: crit for the whole book. Three branches, all short. Crit is
-  // a multiplier on someone else's numbers, so this arm is a detour you take
-  // once the numbers exist, not a place to live.
+  // ---- Präzision: crit for the whole book. Crit is a multiplier on someone
+  // else's numbers, so this is a detour you take once the numbers exist rather
+  // than a place to live: two short branches and one that goes a bit further.
   { key: "cri", kind: "generic", theme: "crit", title: "Präzision",
     prelude: [A.critChance, A.critMult, A.critChance, A.critMult],
     notable: uq("crit", "Falkenauge", 44, { critChance: 0.05, armorPen: 0.3 },
@@ -421,9 +421,9 @@ const ARMS = [
         { fork: 15, long: 18, short: 0, spurs: [spur(11)] }),
     ] },
 
-  // ---- Blitzschlag: reach. Five branches, forks late, runs to ring 20. The
-  // longest arm on the offence side, because a chain that hits eight bodies is
-  // worth a long walk and nothing else in the book scales with crowd size.
+  // ---- Blitzschlag: reach. Five branches, all of them forking late, and the
+  // only arm besides Macht that reaches ring 22. A chain that hits eight bodies
+  // is worth a long walk, and nothing else in the book scales with crowd size.
   { key: "lig", kind: "spell", spell: "lightning", theme: "lightning", title: "Blitzschlag",
     prelude: [A.dmgFlat, A.dmgFlat, A.dmgPct, A.critChance, A.dmgFlat],
     branches: [
@@ -465,8 +465,8 @@ const ARMS = [
         tip: uq("fortune", "Goldrausch", 105, { coinMult: 0.25 },
           "Jede richtige Vokabel klingt jetzt anders. Nämlich metallisch.") },
         { fork: 13, long: 19, short: 16, spurs: [spur(7), spur(10, 2)] }),
-      // The long thin one: sixteen nodes of walking speed in a single line out
-      // to ring 19, which is exactly the joke it sounds like.
+      // The long thin one: seventeen nodes of walking speed in a single line
+      // out to ring 21, which is exactly the joke it sounds like.
       shaped({ title: "Flinkheit", arch: [A.walk, A.walk, A.hpFlat],
         toll: 0.9,
         tip: uq("fortune", "Windschritt", 75, { walkMult: 0.20 },
@@ -522,9 +522,9 @@ const ARMS = [
         { fork: 12, long: 15, short: 0, spurs: [spur(13)] }),
     ] },
 
-  // ---- Zähigkeit: the plain HP arm. It stops at ring 17 and stays fat all the
-  // way. There is nothing clever at the end of a health arm and pretending
-  // otherwise would only make the walk longer.
+  // ---- Zähigkeit: the plain HP arm. It stops at ring 16, the shallowest of the
+  // twelve, and stays fat the whole way. There is nothing clever at the end of a
+  // health arm and pretending otherwise would only make the walk longer.
   { key: "vig", kind: "generic", theme: "vigor", title: "Zähigkeit",
     prelude: [A.hpFlat, A.hpFlat, A.hpPct, A.hpFlat],
     notable: uq("vigor", "Eisenleib", 36, { flatHp: 60, pctHp: 0.06 },
@@ -879,11 +879,17 @@ function uniqueNode(spec, ring, path, priceMul) {
     unique: true, maxRank: 1, growth: 1, cost: ringCost(spec.cost, ring, priceMul) };
 }
 
-// WHAT A PAGE COSTS TO OPEN. Not one tariff for all five seals: the second spell
-// a player reaches should be affordable on a couple of decent quiz sessions, and
-// the shower should feel like something you saved up for. Multiply by the ring
-// the arm's prelude puts the seal on and the five come out at roughly
-// 150 / 200 / 200 / 210 / 350 gold, which is the spread the pacing wants.
+// WHAT A PAGE COSTS TO OPEN. Not one tariff for all five seals. Multiply the
+// base by the ring the arm's prelude puts the seal on, then add the prelude
+// itself, and the whole walk from the seed to a new page comes out at:
+//
+//     Heilwort 270 · Frostkegel 375 · Bannschild 390 · Blitzschlag 445
+//     Meteoritenschauer 715
+//
+// A finished quiz pays 120 gold at ×1 and 600 at ×5, so the first extra page is
+// a session or two and the shower is something you save up for. The old tree
+// charged ~380 for every page, which made "which spell next" a queue instead of
+// a decision.
 const UNLOCK_COST = {
   heal: 44,        // the cheapest seal, and on the shortest spell prelude but one
   lightning: 40,   // dearer than it looks: it sits five nodes deep
