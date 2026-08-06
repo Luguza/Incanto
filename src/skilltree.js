@@ -863,7 +863,12 @@ function archNode(arch, ring, path, opts) {
     effect = { [arch.stat]: 1 };
   } else {
     let v = arch.base * tier;
-    if (arch.stat === "flatDmg" || arch.stat === "flatHp" || arch.stat === "freezeFrost") v = Math.max(1, Math.round(v));
+    // Values read off a panel, same as prices: nobody writes "+37 LP" on a rune.
+    // The big pools land on fives and the freeze on half-seconds' worth of
+    // milliseconds; damage is small enough to stay on whole points.
+    if (arch.stat === "flatHp") v = Math.max(5, Math.round(v / 5) * 5);
+    else if (arch.stat === "freezeFrost") v = Math.max(50, Math.round(v / 50) * 50);
+    else if (arch.stat === "flatDmg") v = Math.max(1, Math.round(v));
     else if (arch.stat === "regen") v = Math.round(v * 10) / 10;
     else v = Math.round(v * 1000) / 1000;
     effect = { [arch.stat]: v };
@@ -913,7 +918,7 @@ function keyNode(arm, ring) {
     return { title: spell.name, theme: arm.theme, ring, path: arm.title, beacon: true,
       maxRank: 1, unique: true, unlocks: spell.id, growth: 1, effect: {},
       cost: ringCost(UNLOCK_COST[spell.id] || 46, ring),
-      blurb: `Ein versiegeltes Zeichen. Heb es, und der Zauber schlägt eine neue Seite in deinem Buch auf. ${spell.blurb}` };
+      blurb: `Versiegelt. Heb das Zeichen, und die Seite schlägt sich auf. ${spell.blurb}` };
   }
   const node = arm.notable
     ? uniqueNode(arm.notable, ring, arm.title)
@@ -1312,7 +1317,8 @@ function renderTreeInfo() {
     </div>
     ${treePathLabel(node) ? `<div class="ti-path">${treePathLabel(node)}</div>` : ""}
     <div class="ti-blurb">${node.blurb}</div>
-    ${node.unlocks ? `<div class="ti-effect">Schaltet frei: <b>${SPELL_BY_ID[node.unlocks].name}</b></div>` : ""}
+    ${node.unlocks && SPELL_BY_ID[node.unlocks].name !== node.title
+      ? `<div class="ti-effect">Schaltet frei: <b>${SPELL_BY_ID[node.unlocks].name}</b></div>` : ""}
     ${per ? `<div class="ti-effect">${node.unique ? "Einmalig" : "Pro Rang"}: <b>${per}</b>` +
       `${!node.unique && total ? ` &middot; Gesamt: <b>${total}</b>` : ""}</div>` : ""}
     ${buy}</div>`;

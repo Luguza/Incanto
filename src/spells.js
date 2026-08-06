@@ -38,7 +38,7 @@ const SPELLS = [
   {
     id: "meteor", name: "Meteoritenschauer", theme: "meteor", sector: "met", kind: "damage",
     dmgKey: "dmgMeteor", paramKey: "countMeteor", unlock: "meteor",
-    blurb: "Brocken stürzen über den ganzen Gang verteilt herab. Gegen eine breit auseinandergezogene Horde ist nichts im Buch verheerender.",
+    blurb: "Brocken stürzen über den ganzen Gang verteilt herab. Nichts trifft eine breite Horde härter.",
   },
   {
     id: "shield", name: "Bannschild", theme: "shield", sector: "shi", kind: "support",
