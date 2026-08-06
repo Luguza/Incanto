@@ -166,9 +166,27 @@ const COUNT_STATS = { chainLightning: 1, countMeteor: 1 };
 // rank now moves heroDmg 24 → 25 where before it moved 3 → 3, and being able to
 // see one rank do something is the whole point of the rescale.
 const A = {
-  dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 4,     cost: 15, maxRank: 3,
-                title: "Schneide",      blurb: "Schärft deinen Grundschaden — jede Seite des Buches trifft härter." },
-  dmgPct:     { stat: "pctDmg",     theme: "might",   base: 0.04,  cost: 22, maxRank: 3,
+  // THE THREE STAGES OF DAMAGE (see recomputeMods, and CONFIG.caps for what is
+  // bounded). A hit is built in this order and no other:
+  //
+  //   1. KERN        (heroBaseDmg + flatBase) × (1 + pctBase)
+  //   2. VERSTÄRKUNG × (1 + pctDmg) × the page's own factor × its sigils
+  //   3. ZUSCHLAG    + flatDmg — added last, after every multiplier
+  //
+  // Stage 3 is why the split exists. A node that reads "+5 Schaden je Treffer"
+  // puts exactly 5 on the number that pops over a skeleton — on every page of
+  // the book, at any depth of the tree, forever. It is uncapped, because a
+  // promise with a hidden ceiling is not a promise. Stage 1's flat pool is
+  // uncapped for the same reason; only the two PERCENT pools are bent by a soft
+  // cap, since a percentage of a growing base compounds and this tree holds
+  // +1400% of it (see CONFIG.caps).
+  dmgBaseFlat:{ stat: "flatBase",   theme: "might",   base: 1.5,   cost: 16, maxRank: 3, ringVal: 0.35,
+                title: "Kernschliff",   blurb: "Vertieft den Kern, aus dem jeder Zauber gerechnet wird — alles danach vervielfacht ihn." },
+  dmgBasePct: { stat: "pctBase",    theme: "might",   base: 0.02,  cost: 22, maxRank: 3,
+                title: "Härtung",       blurb: "Hebt deinen Kernschaden prozentual, bevor irgendein Faktor darauf greift." },
+  dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 2.5,   cost: 15, maxRank: 3, ringVal: 0.35,
+                title: "Schneide",      blurb: "Legt festen Schaden auf JEDEN Treffer — ganz zuletzt, nach allen Faktoren. Was hier steht, kommt genau so an." },
+  dmgPct:     { stat: "pctDmg",     theme: "might",   base: 0.025, cost: 22, maxRank: 3,
                 title: "Zorn",          blurb: "Verstärkt allen Schaden prozentual." },
   hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3,
                 title: "Zähigkeit",     blurb: "Erhöht deine maximalen Lebenspunkte." },
@@ -231,7 +249,7 @@ function uq(theme, title, cost, effect, blurb) {
 // to look on the next — only the middle branch (the spell's own shape) differs.
 // ---------------------------------------------------------------------------
 function bRawPower(L) {
-  return { title: "Rohe Kraft", arch: [A.dmgFlat, A.dmgPct, A.dmgFlat],
+  return { title: "Rohe Kraft", arch: [A.dmgBaseFlat, A.dmgPct, A.dmgFlat],
     tip: uq("might", `${L.word}gewalt`, KEYSTONE_COST, { flatDmg: 16, pctDmg: 0.06 },
       "Kraft, die keiner Seite gehört und darum jede trägt.") };
 }
@@ -279,7 +297,7 @@ function damageSpellArm(key, id, prelude, shapeBranch) {
 const ARMS = [
   // ---- Blitzschlag: reach. Its shape branch buys hops and softens the falloff.
   damageSpellArm("lig", "lightning",
-    [A.dmgFlat, A.dmgFlat, A.dmgPct, A.critChance],
+    [A.dmgFlat, A.dmgBaseFlat, A.dmgPct, A.critChance],
     { title: "Wirkung",
       arch: [
         bodyNode("chainLightning", "lightning", "Kettenglied", "Der Blitz springt auf einen weiteren Körper über."),
@@ -292,14 +310,14 @@ const ARMS = [
 
   // ---- Might: the plain damage arm. Lifts every page at once.
   { key: "mig", kind: "generic", theme: "might", title: "Macht",
-    prelude: [A.dmgFlat, A.dmgFlat, A.dmgPct, A.dmgFlat],
+    prelude: [A.dmgBaseFlat, A.dmgFlat, A.dmgBasePct, A.dmgFlat],
     notable: uq("might", "Kriegsherz", NOTABLE_COST, { flatDmg: 8, pctDmg: 0.06 },
       "Ein Herz, das den Kampf sucht. Alles, was du wirkst, wiegt schwerer."),
     branches: [
-      { title: "Schneide", arch: [A.dmgFlat, A.dmgFlat, A.dmgPct],
+      { title: "Schneide", arch: [A.dmgFlat, A.dmgFlat, A.dmgBaseFlat],
         tip: uq("might", "Henkersklinge", KEYSTONE_COST, { flatDmg: 20, armorPen: 1.2 },
           "Ein Schnitt, der nicht fragt, wie viel Knochen im Weg steht.") },
-      { title: "Zorn", arch: [A.dmgPct, A.dmgPct, A.dmgFlat],
+      { title: "Zorn", arch: [A.dmgPct, A.dmgBasePct, A.dmgPct],
         tip: uq("might", "Blinder Zorn", KEYSTONE_COST, { pctDmg: 0.18 },
           "Du hörst auf zu zielen und fängst an zu treffen.") },
       // Zermalmen is where armour penetration lives: crushing through the plate
@@ -349,7 +367,7 @@ const ARMS = [
 
   // ---- Frostkegel: control. Its shape branch buys cone reach and freeze time.
   damageSpellArm("fro", "frost",
-    [A.hpFlat, A.dmgFlat, A.hpPct, A.dmgPct],
+    [A.hpFlat, A.dmgBaseFlat, A.hpPct, A.dmgPct],
     { title: "Wirkung",
       arch: [
         { stat: "freezeFrost", theme: "frost", base: 120, cost: 34, maxRank: 2, growth: 1.6,
@@ -451,7 +469,7 @@ const ARMS = [
   // ---- Feuerball: the page you start with, so its key is a keystone, not a
   // seal. Its shape branch buys blast radius — the spell's whole upgrade path.
   damageSpellArm("fir", "fireball",
-    [A.dmgFlat, A.dmgPct, A.critChance, A.dmgFlat],
+    [A.dmgFlat, A.dmgPct, A.critChance, A.dmgBaseFlat],
     { title: "Wirkung",
       arch: [
         { stat: "aoeFireball", theme: "fireball", base: 0.05, cost: 30, maxRank: 2, growth: 1.6,
@@ -726,7 +744,12 @@ function relaxTree(pos, nodes, edges) {
 
 // One archetype, resolved at a ring: value scaled by the tier, cost by the ring.
 function archNode(arch, ring, path, maxRankOverride) {
-  const tier = 1 + VAL_PER_RING * (ring - 1);
+  // `ringVal` scales how fast this archetype grows with depth. The two flat
+  // DAMAGE pools use a gentler slope than everything else (see the A table):
+  // they are uncapped now, so their supply is what bounds the game instead of a
+  // ceiling, and a stat that both compounds with depth and never stops would
+  // put four digits over a skeleton by the time a deep arm is walked.
+  const tier = 1 + VAL_PER_RING * (arch.ringVal == null ? 1 : arch.ringVal) * (ring - 1);
   let effect;
   if (arch.special === "shield") {
     effect = { shieldChance: Math.min(0.12, 0.05 + 0.004 * ring),
@@ -735,7 +758,8 @@ function archNode(arch, ring, path, maxRankOverride) {
     effect = { [arch.stat]: 1 };
   } else {
     let v = arch.base * tier;
-    if (arch.stat === "flatDmg" || arch.stat === "flatHp" || arch.stat === "freezeFrost") v = Math.max(1, Math.round(v));
+    if (arch.stat === "flatDmg" || arch.stat === "flatBase" || arch.stat === "flatHp" ||
+        arch.stat === "freezeFrost") v = Math.max(1, Math.round(v));
     else if (arch.stat === "regen") v = Math.round(v * 10) / 10;
     else v = Math.round(v * 1000) / 1000;
     effect = { [arch.stat]: v };
@@ -862,7 +886,7 @@ const SPELL_PARAM_STATS = [
 
 function recomputeMods() {
   const sum = {
-    flatDmg: 0, flatHp: 0, pctDmg: 0, pctHp: 0,
+    flatDmg: 0, flatBase: 0, pctBase: 0, flatHp: 0, pctDmg: 0, pctHp: 0,
     critChance: 0, critMult: 0, armorPen: 0,
     leech: 0, regen: 0, walkMult: 0, coinMult: 0, castHaste: 0,
     shieldChance: 0, shieldAmount: 0, shieldMax: 0,
@@ -898,6 +922,9 @@ function recomputeMods() {
   }
 
   state.mods = {
+    // Stage 3 of the damage model: read by spellPower and added to every hit
+    // after every multiplier, so what the node printed is what lands.
+    flatDmg: sum.flatDmg,
     critChance: Math.min(caps.critChance, sum.critChance),
     critMult: 1.5 + Math.min(caps.critMult, sum.critMult),  // base ×1.5 on a crit
     // Armour points shredded off whatever the target wears, before the mitigation
@@ -921,20 +948,32 @@ function recomputeMods() {
     thorns: sum.thorns,
     spellFailProt: Math.min(caps.spellFailProt, sum.spellFailProt),
   };
-  // Flat + percent pools soft-cap so a wall of stacked HP/damage nodes plateaus.
+  // HP still soft-caps: it is one pool feeding one number, and a wall of stacked
+  // vitality nodes has to plateau or nothing in the hall can kill you.
   const flatHp = softCap(sum.flatHp, caps.flatHp);
-  const flatDmg = softCap(sum.flatDmg, caps.flatDmg);
   const pctHp = softCap(sum.pctHp, caps.pctHp);
+  // DAMAGE is built in three stages instead (see the A table). The two FLAT
+  // pools pass through untouched — a flat node's printed number is a promise,
+  // and it is kept at any depth — while the two PERCENT pools soft-cap, because
+  // they multiply a base that is itself growing and the tree holds +1400% of
+  // them (see CONFIG.caps).
+  const flatBase = sum.flatBase;
+  const pctBase = softCap(sum.pctBase, caps.pctBase);
   const pctDmg = softCap(sum.pctDmg, caps.pctDmg);
+  const flatDmg = sum.flatDmg;
   // The RAW pools and the four derived ones, kept for the ledger screen (see
   // stats.js). Nothing in combat reads them: they exist so the player can be
   // shown what a soft cap is currently eating — the difference between what the
   // tooltips promised and what the hero actually carries — instead of that loss
   // living only inside this function.
   state.mods.sums = sum;
-  state.mods.derived = { flatHp, flatDmg, pctHp, pctDmg };
+  state.mods.derived = { flatHp, pctHp, flatBase, pctBase, pctDmg, flatDmg };
   state.heroMaxHP = Math.round((CONFIG.heroBaseHP + flatHp) * (1 + pctHp));
-  state.heroDmg = Math.max(1, Math.round((CONFIG.heroBaseDmg + flatDmg) * (1 + pctDmg)));
+  // Stages 1 and 2. Stage 3 (flatDmg) is deliberately NOT in here: it is added
+  // after the page's own factor too, inside spellPower, which is the whole point
+  // of splitting it out — see spells.js.
+  state.heroDmg = Math.max(1,
+    Math.round((CONFIG.heroBaseDmg + flatBase) * (1 + pctBase) * (1 + pctDmg)));
   if (state.heroShield == null) state.heroShield = 0;
   if (state.heroShield > state.mods.shieldMax) state.heroShield = state.mods.shieldMax;
 }
@@ -966,7 +1005,12 @@ function treeBuy(id) {
 // Effect wording (single-click info)
 // ---------------------------------------------------------------------------
 const STAT_FMT = {
-  flatDmg:      (v) => `+${Math.round(v)} Schaden`,
+  // The three damage stages read differently on purpose: "je Treffer" is the
+  // one that lands verbatim on every body, and it must not be confusable with
+  // the two that get multiplied on the way.
+  flatDmg:      (v) => `+${Math.round(v)} Schaden je Treffer`,
+  flatBase:     (v) => `+${Math.round(v)} Kernschaden`,
+  pctBase:      (v) => `+${Math.round(v * 100)}% Kernschaden`,
   flatHp:       (v) => `+${Math.round(v)} LP`,
   pctDmg:       (v) => `+${Math.round(v * 100)}% Schaden`,
   pctHp:        (v) => `+${Math.round(v * 100)}% LP`,

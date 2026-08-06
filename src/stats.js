@@ -136,23 +136,49 @@ function svHeroTab() {
     pct > 0.005 ? `dann ${svPlusPct(pct)}` : "",
   ].filter(Boolean).join(", ");
 
-  out.push(svSection("might", "Angriff", "was ein Treffer trägt", [
+  // THE THREE STAGES, in the order a hit is actually built (see skilltree.js).
+  // The section is written as a pipeline rather than a pile of stats, because
+  // the whole reason the model is split is that WHERE a number enters decides
+  // what it is worth — and the one that enters last is the only one that arrives
+  // at its printed size.
+  const kern = (CONFIG.heroBaseDmg + (der.flatBase || 0)) * (1 + (der.pctBase || 0));
+  const flatLate = der.flatDmg || 0;
+  out.push(svSection("might", "Angriff", "wie ein Treffer gebaut wird", [
+    svRow({
+      label: "① Kernschaden", value: svNum(kern, 1), color: TREE_THEMES.might.color,
+      note: `${buildNote(CONFIG.heroBaseDmg, der.flatBase || 0, der.pctBase || 0)} — der Kern, auf den ` +
+        `danach jeder Faktor greift`,
+    }),
+    svRow({
+      label: "Fester Kern", value: svPlus(der.flatBase || 0, 0), color: TREE_THEMES.might.color,
+      flag: "ohne Grenze",
+      note: "Kernschliff-Zeichen · sie werden von allem danach vervielfacht",
+    }),
+    svRow({
+      label: "Kern-Härtung", value: svPlusPct(der.pctBase || 0), frac: (der.pctBase || 0) / caps.pctBase,
+      cap: caps.pctBase, color: TREE_THEMES.might.color,
+      note: svSoftNote(sums.pctBase || 0, der.pctBase || 0, (v) => svPlusPct(v)) ||
+        `Sockelgrenze ${svPlusPct(caps.pctBase)}`,
+    }),
+    svRow({
+      label: "② Verstärkung", value: "×" + svNum(1 + (der.pctDmg || 0), 2),
+      frac: (der.pctDmg || 0) / caps.pctDmg, cap: caps.pctDmg, color: TREE_THEMES.might.color,
+      note: svSoftNote(sums.pctDmg || 0, der.pctDmg || 0, (v) => svPlusPct(v)) ||
+        `${svPlusPct(der.pctDmg || 0)} aus Zorn-Zeichen · Sockelgrenze ${svPlusPct(caps.pctDmg)}`,
+    }),
     svRow({
       label: "Grundschaden", value: svNum(state.heroDmg), color: TREE_THEMES.might.color,
-      note: `${buildNote(CONFIG.heroBaseDmg, der.flatDmg || 0, der.pctDmg || 0)} — ` +
-        `jede Seite des Buches rechnet damit`,
+      note: `Kern × Verstärkung — hiermit rechnet jede Seite des Buches, bevor sie ihren ` +
+        `eigenen Faktor daraufsetzt`,
     }),
     svRow({
-      label: "Fester Zuschlag", value: svPlus(der.flatDmg || 0, 1), frac: (der.flatDmg || 0) / caps.flatDmg,
-      cap: caps.flatDmg, color: TREE_THEMES.might.color,
-      note: svSoftNote(sums.flatDmg || 0, der.flatDmg || 0, (v) => svPlus(v, 1)) ||
-        `Sockelgrenze ${svPlus(caps.flatDmg)}`,
-    }),
-    svRow({
-      label: "Prozentualer Zuschlag", value: svPlusPct(der.pctDmg || 0), frac: (der.pctDmg || 0) / caps.pctDmg,
-      cap: caps.pctDmg, color: TREE_THEMES.might.color,
-      note: svSoftNote(sums.pctDmg || 0, der.pctDmg || 0, (v) => svPlusPct(v)) ||
-        `Sockelgrenze ${svPlusPct(caps.pctDmg)}`,
+      label: "③ Zuschlag je Treffer", value: svPlus(flatLate, 0), tone: "gold",
+      color: TREE_THEMES.might.color, flag: "ohne Grenze",
+      note: flatLate > 0
+        ? `kommt ganz zuletzt auf JEDEN getroffenen Körper — nach deinen Faktoren und nach dem ` +
+          `Seitenfaktor. <b>${svPlus(flatLate, 0)}</b> auf dem Feuerball wie auf dem Frostkegel, ` +
+          `heute und nach hundert weiteren Zeichen. Heilwort und Bannschild bleiben außen vor.`
+        : "Schneide-Zeichen legen hier festen Schaden auf jeden Treffer — und zwar genau den, der auf ihnen steht",
     }),
     svRow({
       label: "Krit-Chance", value: svPct(m.critChance), frac: m.critChance / caps.critChance,
@@ -166,7 +192,8 @@ function svHeroTab() {
     }),
     svRow({
       label: "Erwartete Ausbeute", value: "×" + svNum(critAvg, 2), color: TREE_THEMES.crit.color,
-      note: `was ein Treffer im Schnitt über viele Würfe trägt — ${svNum(state.heroDmg * critAvg, 1)} Grundschaden`,
+      note: `was ein Treffer im Schnitt über viele Würfe trägt — auf eine Seite mit Faktor ×1,00 ` +
+        `sind das ${svNum((state.heroDmg + flatLate) * critAvg, 1)} je Körper`,
     }),
     svRow({
       label: "Rüstungsbruch", value: svNum(m.armorPen, 2) + " Punkte", frac: m.armorPen / caps.armorPen,
@@ -462,7 +489,10 @@ function svSpellCard(spell) {
     }),
     svRow({
       label: "Zauberkraft", value: svNum(power, 1), color: theme.color,
-      note: `${svNum(state.heroDmg)} Grundschaden × ${svNum(cfg.dmgMult, 2)} Seitenfaktor × ${svNum(1 + pct, 2)} Zeichen`,
+      note: `${svNum(state.heroDmg)} Grundschaden × ${svNum(cfg.dmgMult, 2)} Seitenfaktor × ${svNum(1 + pct, 2)} Zeichen` +
+        (spell.kind === "support"
+          ? " — der Zuschlag je Treffer bleibt bei Beistandsseiten außen vor"
+          : ` <b>+ ${svNum(m.flatDmg || 0)} Zuschlag</b>, ganz zuletzt`),
     }),
   ];
   // The frost cone deliberately never crits (see the resolver), so promising an
@@ -648,10 +678,14 @@ function renderStatsFull() {
             <span class="tree-gold"><span class="coin">◈</span> ${svNum(state.gold)}</span>
           </div>
           <div class="sv-hero">
+            <!-- Not heroDmg: that is only stages ① and ②, and since stage ③ is
+                 added after a page's own factor it would understate every hit
+                 the player actually sees. This is what a page with factor ×1,00
+                 puts on a body — the Feuerball number, exactly. -->
             <div class="sv-hero-tile might">
               <span class="sv-hero-rune">${runeGlyphSvg("might", 22)}</span>
-              <b>${svNum(state.heroDmg)}</b>
-              <span class="sv-hero-label">Grundschaden</span>
+              <b>${svNum(state.heroDmg + (state.mods.flatDmg || 0))}</b>
+              <span class="sv-hero-label">Schaden je Treffer</span>
             </div>
             <div class="sv-hero-tile vigor">
               <span class="sv-hero-rune">${runeGlyphSvg("vigor", 22)}</span>

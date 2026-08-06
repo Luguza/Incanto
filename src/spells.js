@@ -138,13 +138,23 @@ function spellSelect(id) {
 // Spell power — every spell reads the same hero damage and scales it by its own
 // multiplier plus its own page's % nodes, so a generic damage node lifts the
 // whole book and a spell node lifts one page.
+//
+// Then, LAST of all, the flat stage is added (see skilltree.js — the three
+// stages of damage). It goes on after the page's factor and after its sigils,
+// which is what makes "+5 Schaden je Treffer" mean exactly five more damage on
+// every body this spell touches — on the ×1.00 Feuerball and on the ×0.35
+// Frostkegel alike, rather than five multiplied down to under two.
+//
+// Support pages are excluded: a damage node has no business inflating a heal or
+// a ward, and Heilwort deriving its pool from spell power is why it would.
 // ---------------------------------------------------------------------------
 function spellPower(id) {
   const spell = SPELL_BY_ID[id];
   const cfg = CONFIG.spells[id];
   if (!spell || !cfg) return state.heroDmg;
   const pct = (state.mods.spellPct && state.mods.spellPct[id]) || 0;
-  return state.heroDmg * cfg.dmgMult * (1 + pct);
+  const scaled = state.heroDmg * cfg.dmgMult * (1 + pct);
+  return spell.kind === "support" ? scaled : scaled + (state.mods.flatDmg || 0);
 }
 
 // How long the traced rune charges before the spell actually leaves it.

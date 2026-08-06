@@ -11,6 +11,17 @@ const CONFIG = {
   // couple of skeleton blows so the very first upgradeless run is a real fight
   // (not an instant death) — a few cheap early nodes then tip a lone skeleton in
   // the hero's favour; see CONFIG.caps for why stacking past that plateaus.
+  // DAMAGE IS BUILT IN THREE STAGES (see skilltree.js: the A table, and
+  // recomputeMods). Kern → Verstärkung → Zuschlag: a flat node adds to the core
+  // that everything else multiplies, or — the Schneide nodes — lands last of
+  // all, after the page's own factor, so its printed number is exactly what
+  // arrives on every body. Neither flat pool is capped; only the percentages
+  // are. What that costs is the old promise that a damage number never reaches
+  // four digits: on the cheapest-first curve a hit is ~58 at 1.000 gold spent,
+  // ~91 at 3.000, ~128 at 10.000 and ~280 at 30.000, so a crit on a shattered
+  // freeze passes 1.000 somewhere around 30.000 gold — deep into a tree that
+  // costs a couple of hundred finished quizzes to reach that far.
+  //
   // NUMBER SCALE. Every damage and HP figure in the game is carried at ×8 the
   // scale it reads at naturally, for one reason: a PERCENTAGE needs resolution
   // to express itself. At the old scale a fresh hero's frost cone hit for 1 and
@@ -150,10 +161,11 @@ const CONFIG = {
   //   eff       = max(0, armor - mods.armorPen)
   //
   // Percentage rather than subtraction, for two reasons rooted in this game:
-  //  · `state.heroDmg` runs from 3 to ~48 across a fully-grown tree (heroBaseDmg
-  //    plus caps.flatDmg / caps.pctDmg), so any flat deduction big enough to
-  //    matter at 3 damage is a wall, and any small enough to be fair at 3 is
-  //    invisible at 48. A fraction holds its meaning across that whole span.
+  //  · a hit runs from 24 on a fresh hero into the hundreds on a deep tree, and
+  //    with the flat damage stage uncapped (see caps) there is no top end at all
+  //    any more — so any flat deduction big enough to matter at 24 is a wall,
+  //    and any small enough to be fair at 24 is invisible at 300. A fraction
+  //    holds its meaning across the whole span, however far it now runs.
   //  · most pages of the book deal their damage in many small hits (a meteor
   //    rock at 0.5x, a fifth lightning hop at 0.27x, a frost cone at 0.35x).
   //    A flat deduction taxes each hit separately and would collapse those into
@@ -326,8 +338,19 @@ const CONFIG = {
   // keystones) rather than in a bigger single number.
   caps: {
     flatHp: 190,        // soft-cap on summed +flat HP (before % HP)
-    flatDmg: 44,        // soft-cap on summed +flat damage (before % damage)
     pctHp: 0.6,         // soft-cap on summed % HP  (approaches +60%)
+    // DAMAGE has no flat cap at all — neither on the Kern pool nor on the
+    // Zuschlag added after every multiplier. A flat node prints a whole number
+    // and that number is what arrives, at ring 1 and at ring 19 alike; a ceiling
+    // that quietly ate it is exactly what this model was split apart to remove.
+    // Growth stays bounded because flat damage is LINEAR in ranks bought while
+    // gold is exponential in them: the cheapest-first curve reaches +15 by 1.000
+    // gold, +45 by 10.000 and +95 by 30.000, and nobody walks the whole tree.
+    //
+    // The two PERCENT pools still soft-cap, and they are the reason a cap has to
+    // exist somewhere: they multiply a base that is itself growing, the tree
+    // holds ~+1.400% of them, and uncapped that is a ×15 on top of a ×15.
+    pctBase: 0.5,       // soft-cap on summed % Kernschaden (approaches +50%)
     pctDmg: 0.5,        // soft-cap on summed % damage (approaches +50%)
     critChance: 0.6,    // hard ceiling on crit chance
     critMult: 1.0,      // hard ceiling on bonus crit damage (max crit ×2.5)

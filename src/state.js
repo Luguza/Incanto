@@ -35,6 +35,7 @@ function freshState() {
     // Derived combat modifiers (see skilltree.recomputeMods). Safe defaults so
     // combat never touches an undefined field before the first recompute.
     mods: {
+      flatDmg: 0,
       critChance: 0, critMult: 1.5, leech: 0, regen: 0, castHaste: 0,
       walkMult: 1, coinMult: 1, shieldChance: 0, shieldAmount: 0, shieldMax: 0,
       thorns: 0, spellFailProt: 0,

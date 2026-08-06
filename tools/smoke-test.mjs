@@ -597,6 +597,70 @@ try {
   check(await rowValue("Grundschaden") === String(ledger.dmg),
     "a bought damage node moves the ledger's Grundschaden row (" + ledger.dmg + ")");
 
+  //     THE PROMISE. Damage is built in three stages (see skilltree.js), and the
+  //     last one exists so that a node reading "+N Schaden je Treffer" puts
+  //     exactly N on every body it touches — on the ×1.00 Feuerball and the
+  //     ×0.35 Frostkegel alike, on the first rank and after the pool is already
+  //     hundreds deep. It is uncapped precisely so that stays true, and this is
+  //     the guard on it. Support pages are the one exception: a damage node must
+  //     not inflate a heal.
+  const promise = await page.evaluate(() => {
+    const { TREE_NODES: N, treeBuy } = Incanto.skilltree;
+    const { SPELLS, spellPower } = Incanto.spells;
+    state.nodeRanks = {}; state.gold = 10 ** 7; recomputeMods();
+    const ids = SPELLS.map((s) => s.id);
+    const snap = () => Object.fromEntries(ids.map((id) => [id, spellPower(id)]));
+    // The Macht prelude runs Kernschliff · Schneide · Härtung · Schneide, so
+    // migp1 and migp3 are flat "je Treffer" nodes with a reachable path.
+    const deltas = [];
+    const measureRanks = (id) => {
+      const want = N[id].effect.flatDmg;
+      for (let r = 0; r < N[id].maxRank; r++) {
+        const before = snap();
+        treeBuy(id);
+        const after = snap();
+        deltas.push({ id, want, got: Object.fromEntries(ids.map((s) => [s, +(after[s] - before[s]).toFixed(6)])) });
+      }
+    };
+    treeBuy("migp0");                                   // reach the first Schneide
+    measureRanks("migp1");
+    for (let r = 0; r < N.migp2.maxRank; r++) treeBuy("migp2");   // walk on past the Härtung
+    measureRanks("migp3");
+    // …and once more from deep inside the pool: buy out the Macht arm until the
+    // stack is dozens of points deep, then buy one more rank and check it still
+    // pays its full face.
+    const adj = {};
+    for (const [a, b] of Incanto.skilltree.TREE_EDGES) { (adj[a] = adj[a] || []).push(b); (adj[b] = adj[b] || []).push(a); }
+    const reachable = (id) => (adj[id] || []).some((x) => x === "root" || (state.nodeRanks[x] || 0) > 0);
+    for (let guard = 0; guard < 400 && state.mods.flatDmg < 60; guard++) {
+      const next = Object.keys(N).find((id) =>
+        id.startsWith("mig") && (state.nodeRanks[id] || 0) < N[id].maxRank && reachable(id));
+      if (!next) break;
+      treeBuy(next);
+    }
+    const deepBefore = snap();
+    const deepId = Object.keys(N).find((id) =>
+      N[id].effect.flatDmg && (state.nodeRanks[id] || 0) < N[id].maxRank && reachable(id));
+    const deepWant = N[deepId].effect.flatDmg;
+    treeBuy(deepId);
+    const deepAfter = snap();
+    return {
+      deltas, pool: state.mods.flatDmg,
+      deepWant, deepGot: +(deepAfter.fireball - deepBefore.fireball).toFixed(6),
+      deepFrost: +(deepAfter.frost - deepBefore.frost).toFixed(6),
+      support: +(deepAfter.heal - deepBefore.heal).toFixed(6),
+    };
+  });
+  const paysFace = promise.deltas.every((d) =>
+    ["fireball", "lightning", "frost", "meteor"].every((s) => d.got[s] === d.want) &&
+    ["shield", "heal"].every((s) => d.got[s] === 0));
+  check(paysFace,
+    "every rank of a flat node pays its printed value on all four damage pages, and none of it on the support pages");
+  check(promise.deepGot === promise.deepWant && promise.deepFrost === promise.deepWant &&
+    promise.support === 0 && promise.pool > 40,
+    "it still pays face value deep in the pool (+" + promise.deepWant + " on a +" +
+    Math.round(promise.pool) + " stack, Frostkegel included)");
+
   //     A stat sitting on its ceiling must SAY so — further nodes of that kind
   //     are wasted gold, and that is the question a stat screen answers.
   const flagged = await page.evaluate(() => {
