@@ -292,9 +292,10 @@ try {
   check(inert === 0, "keys do not drive the game — a stray Enter/Space changes nothing (index " + inert + ")");
 
   // 7b. Conjugation drills (see quiz.js + CONFIG.conjugation). A ladder over one
-  //     verb's present tense: pick a form, write a form, fill half a table, and
-  //     at the top write the whole paradigm out from nothing. The paradigms
-  //     themselves must be right, since they are what the game teaches.
+  //     verb's present tense: tap the pairs together, pick a form, write a form,
+  //     fill half a table, and at the top write the whole paradigm out from
+  //     nothing. The paradigms themselves must be right, since they are what the
+  //     game teaches.
   const conj = await page.evaluate(() => {
     const byIt = Object.fromEntries(Incanto.CONJ_POOL.map((v) => [v.it, v.forms.join(" ")]));
     return {
@@ -308,9 +309,26 @@ try {
       shape: Incanto.CONJ_POOL.every((v) => v.forms.length === 6 && v.forms.every((f) => f && !/undefined/.test(f))),
       // the top rung leaves every row blank, and the ladder's stake grows with it
       top: (() => {
-        state.conjLevel = 3;
-        const q = Incanto.quiz.makeConj(3);
+        const last = CONFIG.conjugation.levels.length - 1;
+        state.conjLevel = last;
+        const q = Incanto.quiz.makeConj(last);
         return { blanks: q.blanks.length, stake: q.goldMult, type: q.type };
+      })(),
+      // the two easy rungs are matching boards, and a board must be solvable:
+      // no two tiles alike in either column, over many deals
+      boards: (() => {
+        const bad = { dupes: 0, short: 0, kinds: new Set() };
+        for (let i = 0; i < 200; i++) {
+          for (const lv of [0, 1]) {
+            const q = Incanto.quiz.makeConj(lv);
+            bad.kinds.add(q.type);
+            if (q.pairs.length !== CONFIG.conjugation.levels[lv].pairs) bad.short++;
+            const persons = new Set(q.pairs.map((p) => p.it));
+            const forms = new Set(q.pairs.map((p) => p.de));
+            if (persons.size !== q.pairs.length || forms.size !== q.pairs.length) bad.dupes++;
+          }
+        }
+        return { dupes: bad.dupes, short: bad.short, kinds: [...bad.kinds] };
       })(),
       // the drills are dealt in every session, at the reached rung
       dealt: (() => { state.conjLevel = 2; buildQuiz(); return state.quizList.filter((q) => q.level !== undefined).map((q) => q.level); })(),
@@ -320,17 +338,50 @@ try {
   check(conj.mangiare === "mangio mangi mangia mangiamo mangiate mangiano", "mangiare keeps a single i (" + conj.mangiare + ")");
   check(conj.capire === "capisco capisci capisce capiamo capite capiscono", "capire takes -isc- where it should (" + conj.capire + ")");
   check(conj.essere === "sono sei è siamo siete sono", "the irregulars are written out (essere: " + conj.essere + ")");
-  check(conj.shape && conj.rungs === 4, "every verb carries six forms, over a four-rung ladder");
+  check(conj.shape && conj.rungs === 6, "every verb carries six forms, over a six-rung ladder");
   check(conj.top.type === "conj-table" && conj.top.blanks === 6 && conj.top.stake > 1,
     "the hardest rung is the whole paradigm written out (" + conj.top.blanks + " blank rows, ×" + conj.top.stake + " gold)");
+  check(conj.boards.kinds.join(",") === "conj-match" && conj.boards.dupes === 0 && conj.boards.short === 0,
+    "the easy rungs deal full matching boards with no two tiles alike (400 boards)");
   check(conj.dealt.length === 2 && Math.max(...conj.dealt) === 2,
     "every session deals two conjugation drills, up to the rung reached (" + conj.dealt.join(", ") + ")");
+
+  //     The easy rung, driven the way a thumb drives it: tap a person, tap its
+  //     form, four times over. Solving it settles the question, pays out, and
+  //     opens the next rung of the ladder.
+  const board = await page.evaluate(() => {
+    state.conjLevel = 0; state.conjStreak = 0;
+    goToQuiz();
+    state.quizIndex = state.quizList.findIndex((q) => q.type === "conj-match");
+    resetQuizInput(); state._structuralDirty = true; render(performance.now());
+    const q = state.quizList[state.quizIndex];
+    return {
+      // for each left tile, which right tile carries its partner
+      taps: q.left.map((t, i) => [i, q.right.findIndex((r) => r.id === t.id)]),
+      tiles: document.querySelectorAll(".match-tile").length,
+      head: [...document.querySelectorAll(".match-head span")].map((n) => n.textContent.trim()),
+      gold: state.quizGoldEarned,
+    };
+  });
+  check(board.tiles === 8 && board.head[0] === "Person" && board.head[2] === "Form",
+    "the matching rung draws a person/form board (" + board.tiles + " tiles, " + board.head[0] + " | " + board.head[2] + ")");
+  for (const [l, r] of board.taps) {
+    await page.click(`[data-act="quizMatchTap"][data-args='["left",${l}]']`);
+    await page.click(`[data-act="quizMatchTap"][data-args='["right",${r}]']`);
+  }
+  await page.waitForTimeout(150);
+  const solved = await page.evaluate(() => ({
+    ok: state.quizWasCorrect, earned: state.quizGoldEarned, level: state.conjLevel,
+  }));
+  check(solved.ok && solved.earned > board.gold,
+    "tapping the pairs together solves the board and pays out (◈ " + (solved.earned - board.gold) + ")");
+  check(solved.level === 1, "clearing a rung opens the next one (Stufe " + (solved.level + 1) + ")");
 
   //     Driven the way a thumb drives it: fill the six rows, tap Prüfen. A
   //     half-filled table must WAIT rather than settle — the paradigm is one
   //     answer, so a stray tap can't spend it.
   const table = await page.evaluate(() => {
-    state.conjLevel = 3; state.conjStreak = 0; state.gold = 0;
+    state.conjLevel = CONFIG.conjugation.levels.length - 1; state.conjStreak = 0; state.gold = 0;
     goToQuiz();
     // the probe, not the warm-up: the rung where every row is blank
     state.quizIndex = state.quizList.findIndex((q) => q.type === "conj-table" && q.blanks.length === 6);
@@ -352,22 +403,22 @@ try {
   }));
   check(written.ok && written.gold === Math.round(written.base * table.stake),
     "writing the whole paradigm settles correct and pays its stake (" + written.gold + " vs " + written.base + " base)");
-  check(written.streak === 1, "clearing the top rung counts toward the next one (streak " + written.streak + ")");
+  check(written.streak === 1, "a clean run at the top rung is recorded (streak " + written.streak + ")");
 
   //     …and a miss at the top rung steps the ladder back down, so the hardest
   //     exercise on offer is always one the learner has shown they can take.
   const slipped = await page.evaluate(() => {
-    state.conjLevel = 3; state.conjStreak = 0;
-    const q = Incanto.quiz.makeConj(3);
-    state.quizList = [q]; state.quizIndex = 0; resetQuizInput();
+    const last = CONFIG.conjugation.levels.length - 1;
+    state.conjLevel = last; state.conjStreak = 0;
+    state.quizList = [Incanto.quiz.makeConj(last)]; state.quizIndex = 0; resetQuizInput();
     quizReveal();                       // "I don't know" — twice over
     const after1 = state.conjLevel;
     resetQuizInput(); state.quizList = [Incanto.quiz.makeConj(state.conjLevel)];
     quizReveal();
-    return { after1, after2: state.conjLevel, filled: state.quizConj.filter(Boolean).length };
+    return { last, after1, after2: state.conjLevel, filled: state.quizConj.filter(Boolean).length };
   });
-  check(slipped.after1 === 3 && slipped.after2 === 2,
-    "two misses at the top rung step the ladder back down (3 → " + slipped.after2 + ")");
+  check(slipped.after1 === slipped.last && slipped.after2 === slipped.last - 1,
+    "two misses at the top rung step the ladder back down (" + slipped.last + " → " + slipped.after2 + ")");
   check(slipped.filled === 6, "revealing a paradigm writes the whole table out for the learner");
 
   //     The rung reached is progress, so it is persisted like gold is.

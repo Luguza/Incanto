@@ -67,16 +67,27 @@ const CONFIG = {
   // exercise on offer is always the hardest one the player has shown they can
   // take. `state.conjLevel` is that high-water mark and is persisted.
   conjugation: {
-    // `kind` picks the exercise (choose = pick a form, type = write one form,
-    // table = fill a paradigm); `blanks` is how many of the six rows a table
-    // leaves empty; `gold` multiplies that question's payout.
+    // `kind` picks the exercise (match = tap the pairs together, choose = pick a
+    // form, type = write one form, table = fill a paradigm); `pairs` is the size
+    // of a matching board and `mixed` makes it draw one form each from several
+    // verbs instead of a single paradigm; `blanks` is how many of the six rows a
+    // table leaves empty; `gold` multiplies that question's payout.
+    //
+    // The two matching rungs are the easy end on purpose: a closed board can be
+    // solved by elimination, so a learner who only half-knows the endings still
+    // gets somewhere, and reads the whole paradigm while doing it.
     levels: [
-      { kind: "choose", name: "Form wählen", gold: 1 },
-      { kind: "type", name: "Form schreiben", gold: 1.4 },
-      { kind: "table", name: "Halbe Tabelle", blanks: 3, gold: 2.2 },
-      { kind: "table", name: "Ganze Tabelle", blanks: 6, gold: 3.2 },
+      { kind: "match", name: "Formen zuordnen", pairs: 4, gold: 1 },
+      { kind: "match", name: "Personen zuordnen", pairs: 4, mixed: true, gold: 1.2 },
+      { kind: "choose", name: "Form wählen", gold: 1.3 },
+      { kind: "type", name: "Form schreiben", gold: 1.7 },
+      { kind: "table", name: "Halbe Tabelle", blanks: 3, gold: 2.4 },
+      { kind: "table", name: "Ganze Tabelle", blanks: 6, gold: 3.4 },
     ],
-    promoteStreak: 2,  // correct answers at the top rung before the next one opens
+    // Promotion is quick and demotion is slow: one clean run at the top rung
+    // opens the next, but it takes two slips to close it again, so the ladder
+    // reaches for the hard exercises and lets go of them reluctantly.
+    promoteStreak: 1,  // correct answers at the top rung before the next one opens
     demoteStreak: 2,   // misses at the top rung before it steps back down
   },
   // Fighting doesn't pay out gold — it charges the multiplier the quiz pays out

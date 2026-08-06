@@ -16,9 +16,10 @@ const QUIZ_TITLE = {
   "fill-choose": "Lücke füllen",
   "fill-type": "Lücke füllen",
   arrange: "Satz bilden",
-  "conj-choose": "Verb beugen",
-  "conj-type": "Verb beugen",
-  "conj-table": "Verb beugen",
+  "conj-match": "Verb konjugieren",
+  "conj-choose": "Verb konjugieren",
+  "conj-type": "Verb konjugieren",
+  "conj-table": "Verb konjugieren",
 };
 
 function quizDirLabel(dir) {
@@ -80,6 +81,7 @@ function renderQuizFull() {
     case "fill-choose": body = renderFillChooseBody(q); break;
     case "fill-type":   body = renderFillTypeBody(q); break;
     case "arrange":     body = renderArrangeBody(q); break;
+    case "conj-match":  body = renderConjMatchBody(q); break;
     case "conj-choose": body = renderConjChooseBody(q); break;
     case "conj-type":   body = renderConjTypeBody(q); break;
     case "conj-table":  body = renderConjTableBody(q); break;
@@ -202,12 +204,14 @@ function renderMatchBody(q) {
   const left = q.left.map((t, i) => tile("left", i, t)).join("");
   const right = q.right.map((t, i) => tile("right", i, t)).join("");
   // The board has no Check button — it settles itself — so it carries its own
-  // progress readout instead.
+  // progress readout instead. What the two columns hold is the question's to
+  // say: vocabulary boards pair the languages, conjugation boards pair a person
+  // with the form it takes.
   return `
     <div class="match-head">
-      <span>Italienisch</span>
+      <span>${q.leftLabel || "Italienisch"}</span>
       <span class="match-count">${state.quizMatchDone.length} / ${q.pairs.length} Paare</span>
-      <span>Deutsch</span>
+      <span>${q.rightLabel || "Deutsch"}</span>
     </div>
     <div class="match-cols">
       <div class="match-col">${left}</div>
@@ -231,6 +235,18 @@ function renderConjLine(q, filled) {
     ? `<span class="blank filled">${filled}</span>`
     : `<span class="blank">&nbsp;</span>`;
   return `<p class="quiz-sentence"><span class="conj-person">${CONJ_PERSONS[q.person].it}</span> ${slot}</p>`;
+}
+
+// The easy rungs: a board of person tiles and form tiles to tap together. Drawn
+// from one verb, the paradigm itself is on the screen and the pairs eliminate
+// each other; drawn from several, only the endings can solve it, so the head
+// says which board this is instead of naming a verb there isn't one of.
+function renderConjMatchBody(q) {
+  const head = q.mixed
+    ? `<p class="quiz-prompt">Welche Person gehört zu welcher Form?</p>
+       <p class="quiz-hint">Verschiedene Verben &middot; Präsens</p>`
+    : renderConjHead(q);
+  return head + renderMatchBody(q);
 }
 
 function renderConjChooseBody(q) {
@@ -306,6 +322,7 @@ const QUIZ_CUE = {
   "fill-choose": "Tippe eine Antwort an",
   "conj-choose": "Tippe die richtige Form an",
   match: "Tippe zwei zusammengehörende Wörter an",
+  "conj-match": "Tippe Person und Form an",
 };
 
 // Bottom action bar, pinned to the foot of the frame. It always ends in the
@@ -319,7 +336,7 @@ function renderQuizFoot(q) {
     if (state.quizWasCorrect) {
       banner = `<div class="quiz-feedback good"><span class="fb-mark">✓</span>
         <span class="fb-text">Richtig</span><span class="fb-gain"><span class="coin">◈</span> +${quizReward(q)}</span></div>`;
-    } else if (q.type === "match") {
+    } else if (q.type === "match" || q.type === "conj-match") {
       // match has no single answer string; it only pays out when self-solved
       banner = `<div class="quiz-feedback reveal"><span class="fb-mark">◈</span>
         <span class="fb-text">Paare aufgedeckt — kein Gold verdient</span></div>`;
@@ -328,7 +345,7 @@ function renderQuizFoot(q) {
       // itself — so the banner counts them rather than repeating them here.
       if (state.quizRevealed) {
         banner = `<div class="quiz-feedback reveal"><span class="fb-mark">◈</span>
-          <span class="fb-text">Ganze Beugung aufgedeckt — kein Gold verdient</span></div>`;
+          <span class="fb-text">Ganze Konjugation aufgedeckt — kein Gold verdient</span></div>`;
       } else {
         const right = q.blanks.filter((i) => conjRowCorrect(q, i)).length;
         banner = `<div class="quiz-feedback bad"><span class="fb-mark">✕</span>

@@ -156,8 +156,55 @@ function conjDistractors(verb, answer, n) {
   return [...shuffleArray(own), ...shuffleArray(foreign)].slice(0, n);
 }
 
+// Persons a verb spells unmistakably. A paradigm can write two of them the same
+// way (essere: io sono / loro sono), and a matching board with two identical
+// tiles on it has no right answer — so those persons stay off the boards.
+function unmistakablePersons(verb) {
+  return CONJ_PERSONS
+    .map((_, i) => i)
+    .filter((i) => verb.forms.indexOf(verb.forms[i]) === verb.forms.lastIndexOf(verb.forms[i]));
+}
+
+// The easy end of the ladder: a closed board of person tiles and form tiles to
+// tap together. Two boards, and the difference is where the forms come from —
+// ONE verb's paradigm (read the table off, the pairs eliminate each other), or
+// one form each from several verbs, which can only be solved off the ENDINGS
+// since no two tiles share a stem.
+function makeConjMatch(level, lv) {
+  const n = Math.min(lv.pairs || 4, CONJ_PERSONS.length);
+  const pairs = [];
+  const take = (verb, person) => pairs.push({
+    id: pairs.length, person,
+    it: CONJ_PERSONS[person].it, de: verb.forms[person],
+    wid: conjWords(verb)[0] ?? -1,
+  });
+  const q = { type: "conj-match", level, goldMult: lv.gold, mixed: !!lv.mixed };
+  if (lv.mixed) {
+    for (const verb of shuffleArray(CONJ_POOL.slice())) {
+      if (pairs.length === n) break;
+      // a person no other tile claims, spelled a way no other tile spells
+      const person = shuffleArray(unmistakablePersons(verb))
+        .find((i) => !pairs.some((p) => p.person === i || p.de === verb.forms[i]));
+      if (person !== undefined) take(verb, person);
+    }
+  } else {
+    const verb = sampleN(CONJ_POOL, 1)[0];
+    q.verb = { it: verb.it, de: verb.de, group: verb.group };
+    q.forms = verb.forms.slice();
+    for (const person of sampleN(unmistakablePersons(verb), n)) take(verb, person);
+  }
+  q.pairs = pairs;
+  q.words = [...new Set(pairs.map((p) => p.wid))].filter((w) => w >= 0);
+  q.leftLabel = "Person";
+  q.rightLabel = "Form";
+  q.left = shuffleArray(pairs.map((p) => ({ id: p.id, word: p.it })));
+  q.right = shuffleArray(pairs.map((p) => ({ id: p.id, word: p.de })));
+  return q;
+}
+
 function makeConj(level) {
   const lv = conjLevels()[level];
+  if (lv.kind === "match") return makeConjMatch(level, lv);
   const verb = sampleN(CONJ_POOL, 1)[0];
   const q = {
     level, goldMult: lv.gold,
@@ -305,7 +352,7 @@ function settleQuiz(correct) {
 function quizReveal() {
   if (state.quizChecked) return;
   const q = state.quizList[state.quizIndex];
-  if (q.type === "match") {
+  if (q.type === "match" || q.type === "conj-match") {
     state.quizMatchDone = q.pairs.map((p) => p.id);
     state.quizMatchSel = null;
   } else if (q.type === "arrange") {
