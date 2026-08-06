@@ -91,7 +91,63 @@ try {
   const buf = await page.locator("canvas.scene").screenshot({ path: SHOT });
   check(buf.length > 1500, "canvas.scene screenshot is non-trivial (" + buf.length + " bytes) -> " + SHOT);
 
-  // 3. Delegated UI dispatch: open the skill-tree upgrade screen with a tier-1
+  // 3. The spell book turns under the finger, and ALL of it does. A page turn is
+  //    one motion on one progress: the held leaf stands up to the spine over the
+  //    first half of the drag, and the leaf it carries over lies down on the far
+  //    side during the second — both straight off the pointer, so dragging the
+  //    whole span leaves nothing to animate on release. This is a regression
+  //    guard: the second half used to be able to run only after the book was
+  //    re-rendered at its new spread, so a drag stopped dead at the gutter and
+  //    the rest of the turn played by itself once the finger let go.
+  await page.evaluate(() => { state.bookSpread = 0; state._structuralDirty = true; render(performance.now()); });
+  const book = await page.locator("#spellbook").boundingBox();
+  const bx = book.x + book.width * 0.8, by = book.y + book.height * 0.55;
+  // How far each leaf is through its swing, read off the transform setTurn wrote
+  // (1 = lying flat and open, 0.02 = stood up against the spine).
+  const probeBook = () => page.evaluate(() => {
+    const svg = document.getElementById("spellbook");
+    const open = (el) => {
+      if (!el) return null;
+      const m = /scale\(([-\d.]+)/.exec(el.getAttribute("transform") || "");
+      return m ? +m[1] : 1;
+    };
+    const carried = svg.querySelector(".bk-turn .bk-page");
+    return {
+      spread: state.bookSpread,
+      held: open(svg.querySelector(':scope > .bk-page:not(.under)[data-side="1"]')),
+      carried: carried ? open(carried) : null,
+      carriedSide: carried ? carried.dataset.side : null,
+    };
+  });
+  await page.mouse.move(bx, by);
+  await page.mouse.down();
+  await page.mouse.move(bx - book.width * 0.3, by, { steps: 8 });   // half a turn
+  await page.waitForTimeout(60);
+  const halfTurn = await probeBook();
+  await page.mouse.move(bx - book.width * 0.6, by, { steps: 8 });   // and the rest of it
+  await page.waitForTimeout(60);
+  const fullTurn = await probeBook();
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const landed = await probeBook();
+  check(halfTurn.held <= 0.06 && halfTurn.carried !== null && halfTurn.carried <= 0.06 &&
+    halfTurn.carriedSide === "-1",
+    "half a drag stands the held leaf up at the spine, the leaf it carries behind it");
+  check(fullTurn.carried >= 0.94 && fullTurn.held <= 0.06,
+    "the second half lays that leaf down on the other side under the finger too " +
+    "(carried " + fullTurn.carried + ")");
+  check(landed.spread === 1 && landed.carried === null && landed.held === 1,
+    "letting go of a finished turn just commits the spread (" + landed.spread + ")");
+  await page.mouse.move(bx, by);
+  await page.mouse.down();
+  await page.mouse.move(bx - book.width * 0.06, by, { steps: 3 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const sprung = await probeBook();
+  check(sprung.spread === 1 && sprung.carried === null && sprung.held === 1,
+    "a drag that falls short springs back and turns nothing");
+
+  // 4. Delegated UI dispatch: open the skill-tree upgrade screen with a tier-1
   //    node selected, click its data-act "Kaufen" button, confirm treeBuy() ran
   //    (the node's rank incremented). Exercises the full click -> [data-act] ->
   //    window[fn] path, plus the tree's reveal/purchase logic + stat recompute.
@@ -109,7 +165,7 @@ try {
   check(bought.rank === 1, "delegated data-act='treeBuy' fired treeBuy() (migp0 rank=" + bought.rank + ")");
   check(bought.gold < before, "buying the node spent gold (" + before + " -> " + bought.gold + ")");
 
-  // 4. The skill tree is authored, not grown (see skilltree.js): twelve arms out
+  // 5. The skill tree is authored, not grown (see skilltree.js): twelve arms out
   //    of one seed, one connected acyclic graph, every sealed page reachable by
   //    exactly one unlock node, and no node overlapping another on screen.
   const tree = await page.evaluate(() => {
@@ -166,7 +222,7 @@ try {
   check(spacing.p5 >= 66 && spacing.p95 <= 130,
     "node spacing is even (5th-95th percentile " + spacing.p5.toFixed(0) + "-" + spacing.p95.toFixed(0) + ")");
 
-  // 5. A beacon key is visible from the first screen but NOT buyable until the
+  // 6. A beacon key is visible from the first screen but NOT buyable until the
   //    prelude that leads to it has been walked.
   const beacon = await page.evaluate(() => {
     const { nodeRevealed, treeBuy } = Incanto.skilltree;
@@ -181,7 +237,7 @@ try {
   check(beacon.seen && beacon.blocked, "a spell key is lit through the fog but not buyable unreached");
   check(beacon.bought && beacon.unlocked, "walking its prelude makes the key buyable and opens the page");
 
-  // 6. Learning history (see vocab-history.js): quiz answers and rune pairings
+  // 7. Learning history (see vocab-history.js): quiz answers and rune pairings
   //    both feed a per-word record, and a word fumbled inside the recent window
   //    is dealt back into the circle far more often than the pool average —
   //    until it is relearned, which retires the boost again.
@@ -235,7 +291,7 @@ try {
   check(seenTab.n > 0 && seenTab.allMet,
     "the 'Gesehen' tab lists only vocabulary actually met (" + seenTab.n + " rows)");
 
-  // 7. A wrong answer must STOP on the question and show the solution — that
+  // 8. A wrong answer must STOP on the question and show the solution — that
   //    pause is the whole point of the quiz, and it is only ever dismissed by
   //    tapping Weiter. Driven the way a phone drives it: fill the field, tap
   //    Prüfen, tap Weiter. Nothing here presses a key, because nothing in the
@@ -291,7 +347,7 @@ try {
   const inert = await page.evaluate(() => state.quizIndex);
   check(inert === 0, "keys do not drive the game — a stray Enter/Space changes nothing (index " + inert + ")");
 
-  // 7b. Conjugation drills (see quiz.js + CONFIG.conjugation). A ladder over one
+  // 8b. Conjugation drills (see quiz.js + CONFIG.conjugation). A ladder over one
   //     verb's present tense: tap the pairs together, pick a form, write a form,
   //     fill half a table, and at the top write the whole paradigm out from
   //     nothing. The paradigms themselves must be right, since they are what the
@@ -432,7 +488,7 @@ try {
   check(kept.saved === 2 && kept.level === 2 && kept.streak === 1,
     "the rung the learner reached survives a reload (Stufe " + (kept.level + 1) + ")");
 
-  // 8. Binding the book (see book-order.js): the forge's book button opens the
+  // 9. Binding the book (see book-order.js): the forge's book button opens the
   //    whole spell book as three open volumes, and a page dragged onto another
   //    trades places with it. Driven the way a thumb drives it — press, move,
   //    release — because that is the only input this game has.
@@ -509,9 +565,9 @@ try {
   check(inCombat.names.join(",") === inCombat.want.join(",") && inCombat.names.length === 2,
     "the combat book opens on the newly bound order (" + inCombat.names.join(" | ") + ")");
 
-  // 9. The reward bank. Kills charge a gold multiplier that must survive dying
-  //    and starting over — it is spent only by finishing a whole quiz, so a run
-  //    cut short is never wasted fighting.
+  // 10. The reward bank. Kills charge a gold multiplier that must survive dying
+  //     and starting over — it is spent only by finishing a whole quiz, so a run
+  //     cut short is never wasted fighting.
   const bank = await page.evaluate(() => {
     state.rewardKills = 0; state.kills = 0;
     creditKill(); creditKill(); creditKill();
