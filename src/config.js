@@ -52,10 +52,44 @@ const CONFIG = {
   heroStridePx: 4.5,              // corridor pixels per radian of footstep bob (cadence follows ground covered)
   // Currency is earned only in the post-death vocab quiz, then spent between
   // runs on permanent build upgrades
-  quizQuestionCount: 8,  // one of each Duolingo-style exercise per session
+  quizQuestionCount: 10, // one of each Duolingo-style exercise per session, plus two conjugation drills
   quizOptionCount: 4,
   quizMatchPairs: 5,     // tap-to-match exercise: pairs per board
   goldPerCorrect: 12,
+  // CONJUGATION DRILLS (see quiz.js + content.js CONJ_POOL). A ladder rather
+  // than one exercise: each rung asks for more of the verb's paradigm and pays
+  // more gold for it, and the top rung is the whole table written out from
+  // nothing — no options, no given forms, six blank lines.
+  //
+  // Which rung the game DEALS is not a setting the player hunts for in a menu:
+  // the ladder climbs itself. Clear the top rung twice and the next one opens;
+  // slip on it twice and it steps back down (see noteConjResult), so the hardest
+  // exercise on offer is always the hardest one the player has shown they can
+  // take. `state.conjLevel` is that high-water mark and is persisted.
+  conjugation: {
+    // `kind` picks the exercise (match = tap the pairs together, choose = pick a
+    // form, type = write one form, table = fill a paradigm); `pairs` is the size
+    // of a matching board and `mixed` makes it draw one form each from several
+    // verbs instead of a single paradigm; `blanks` is how many of the six rows a
+    // table leaves empty; `gold` multiplies that question's payout.
+    //
+    // The two matching rungs are the easy end on purpose: a closed board can be
+    // solved by elimination, so a learner who only half-knows the endings still
+    // gets somewhere, and reads the whole paradigm while doing it.
+    levels: [
+      { kind: "match", name: "Formen zuordnen", pairs: 4, gold: 1 },
+      { kind: "match", name: "Personen zuordnen", pairs: 4, mixed: true, gold: 1.2 },
+      { kind: "choose", name: "Form wählen", gold: 1.3 },
+      { kind: "type", name: "Form schreiben", gold: 1.7 },
+      { kind: "table", name: "Halbe Tabelle", blanks: 3, gold: 2.4 },
+      { kind: "table", name: "Ganze Tabelle", blanks: 6, gold: 3.4 },
+    ],
+    // Promotion is quick and demotion is slow: one clean run at the top rung
+    // opens the next, but it takes two slips to close it again, so the ladder
+    // reaches for the hard exercises and lets go of them reluctantly.
+    promoteStreak: 1,  // correct answers at the top rung before the next one opens
+    demoteStreak: 2,   // misses at the top rung before it steps back down
+  },
   // Fighting doesn't pay out gold — it charges the multiplier the quiz pays out
   // AT. Every skeleton slain lifts it, and the charge BANKS across runs
   // (state.rewardKills): dying doesn't burn it, starting a fresh run doesn't

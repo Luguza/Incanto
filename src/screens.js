@@ -16,10 +16,28 @@ const QUIZ_TITLE = {
   "fill-choose": "Lücke füllen",
   "fill-type": "Lücke füllen",
   arrange: "Satz bilden",
+  "conj-match": "Verb konjugieren",
+  "conj-choose": "Verb konjugieren",
+  "conj-type": "Verb konjugieren",
+  "conj-table": "Verb konjugieren",
 };
 
 function quizDirLabel(dir) {
   return dir === "it2de" ? "Italienisch → Deutsch" : "Deutsch → Italienisch";
+}
+
+// The caption under the exercise title. A conjugation drill names its rung of
+// the ladder and what that rung pays, so the player can see both that the
+// exercise got harder and why they'd want it to (see CONFIG.conjugation).
+function quizTaskAside(q) {
+  if (q.dir) return `<span class="quiz-dir">${quizDirLabel(q.dir)}</span>`;
+  if (q.level === undefined) return "";
+  const levels = CONFIG.conjugation.levels;
+  const rung = `<span class="quiz-dir">Stufe ${q.level + 1}/${levels.length} &middot; ${levels[q.level].name}</span>`;
+  const stake = q.goldMult > 1
+    ? `<span class="quiz-stake" title="Diese Frage zahlt ${fmtMult(q.goldMult)} Gold"><span class="coin">◈</span> ${fmtMult(q.goldMult)}</span>`
+    : "";
+  return rung + stake;
 }
 
 // The session at a glance: one cell per question, coloured once it settles.
@@ -63,8 +81,12 @@ function renderQuizFull() {
     case "fill-choose": body = renderFillChooseBody(q); break;
     case "fill-type":   body = renderFillTypeBody(q); break;
     case "arrange":     body = renderArrangeBody(q); break;
+    case "conj-match":  body = renderConjMatchBody(q); break;
+    case "conj-choose": body = renderConjChooseBody(q); break;
+    case "conj-type":   body = renderConjTypeBody(q); break;
+    case "conj-table":  body = renderConjTableBody(q); break;
   }
-  const dir = q.dir ? `<span class="quiz-dir">${quizDirLabel(q.dir)}</span>` : "";
+  const dir = quizTaskAside(q);
   app.innerHTML = `
     <div class="screen quiz-screen">
       <div class="frame quiz-frame">
@@ -89,8 +111,17 @@ function renderQuizFull() {
 
   // Keep focus in the text field for the typed exercises (only rebuilt on
   // check/entry, never on keystroke, so the cursor stays put while typing).
-  if ((q.type === "type" || q.type === "fill-type") && !state.quizChecked) {
-    const inp = document.getElementById("quiz-input");
+  if (!state.quizChecked) {
+    let inp = null;
+    if (q.type === "type" || q.type === "fill-type" || q.type === "conj-type") {
+      inp = document.getElementById("quiz-input");
+    } else if (q.type === "conj-table") {
+      // Back into the row that was last written in, or the first empty one when
+      // the table is fresh — never a row that already holds a form.
+      const cell = state.quizConjFocus != null ? state.quizConjFocus
+        : q.blanks.find((i) => !((state.quizConj && state.quizConj[i]) || "").trim());
+      if (cell != null) inp = document.querySelector(`.conj-input[data-cell="${cell}"]`);
+    }
     if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
   }
 }
@@ -173,17 +204,93 @@ function renderMatchBody(q) {
   const left = q.left.map((t, i) => tile("left", i, t)).join("");
   const right = q.right.map((t, i) => tile("right", i, t)).join("");
   // The board has no Check button — it settles itself — so it carries its own
-  // progress readout instead.
+  // progress readout instead. What the two columns hold is the question's to
+  // say: vocabulary boards pair the languages, conjugation boards pair a person
+  // with the form it takes.
   return `
     <div class="match-head">
-      <span>Italienisch</span>
+      <span>${q.leftLabel || "Italienisch"}</span>
       <span class="match-count">${state.quizMatchDone.length} / ${q.pairs.length} Paare</span>
-      <span>Deutsch</span>
+      <span>${q.rightLabel || "Deutsch"}</span>
     </div>
     <div class="match-cols">
       <div class="match-col">${left}</div>
       <div class="match-col">${right}</div>
     </div>`;
+}
+
+// --- conjugation ------------------------------------------------------------
+// All three rungs open the same way: the infinitive, large, with its German
+// meaning under it. What changes is how much of the paradigm the learner has to
+// produce — one form out of four, one form written, or the whole table.
+function renderConjHead(q) {
+  return `<p class="quiz-prompt"><span class="quiz-word">${q.verb.it}</span></p>
+    <p class="quiz-hint">${q.verb.de} &middot; Präsens</p>`;
+}
+
+// The single row being asked about, drawn like a sentence with a blank in it so
+// it reads the same as the fill-the-blank exercises next to it.
+function renderConjLine(q, filled) {
+  const slot = filled
+    ? `<span class="blank filled">${filled}</span>`
+    : `<span class="blank">&nbsp;</span>`;
+  return `<p class="quiz-sentence"><span class="conj-person">${CONJ_PERSONS[q.person].it}</span> ${slot}</p>`;
+}
+
+// The easy rungs: a board of person tiles and form tiles to tap together. Drawn
+// from one verb, the paradigm itself is on the screen and the pairs eliminate
+// each other; drawn from several, only the endings can solve it, so the head
+// says which board this is instead of naming a verb there isn't one of.
+function renderConjMatchBody(q) {
+  const head = q.mixed
+    ? `<p class="quiz-prompt">Welche Person gehört zu welcher Form?</p>
+       <p class="quiz-hint">Verschiedene Verben &middot; Präsens</p>`
+    : renderConjHead(q);
+  return head + renderMatchBody(q);
+}
+
+function renderConjChooseBody(q) {
+  const filled = state.quizChecked
+    ? (state.quizWasCorrect || state.quizRevealed ? q.answer : q.options[state.quizPicked])
+    : null;
+  return `${renderConjHead(q)}${renderConjLine(q, filled)}${renderOptions(q)}`;
+}
+
+function renderConjTypeBody(q) {
+  return `${renderConjHead(q)}${renderConjLine(q, null)}${renderTypeInput("quizCheckType")}`;
+}
+
+// The hardest rung: six rows, and at the top of the ladder every one of them is
+// blank — the whole paradigm written out from nothing but the infinitive. A half
+// table leaves three rows standing as worked examples. Once checked, each row it
+// asked for carries its own verdict and, when wrong, the form it wanted.
+function renderConjTableBody(q) {
+  const rows = CONJ_PERSONS.map((p, i) => {
+    const asked = q.blanks.includes(i);
+    const written = (state.quizConj && state.quizConj[i]) || "";
+    let cell;
+    if (!asked) {
+      cell = `<span class="conj-form given">${q.forms[i]}</span>`;
+    } else if (!state.quizChecked) {
+      cell = `<input class="conj-input" type="text" autocomplete="off" autocapitalize="off"
+        autocorrect="off" spellcheck="false" placeholder="…" value="${written}"
+        aria-label="${p.it}" data-cell="${i}" data-oninput="quizConjInput">`;
+    } else if (state.quizRevealed) {
+      cell = `<span class="conj-form shown">${q.forms[i]}</span>`;
+    } else if (conjRowCorrect(q, i)) {
+      cell = `<span class="conj-form ok">${written} <span class="conj-mark">✓</span></span>`;
+    } else {
+      cell = `<span class="conj-form no">${written || "—"} <span class="conj-mark">✕</span></span>
+        <span class="conj-fix">${q.forms[i]}</span>`;
+    }
+    return `<div class="conj-row${asked ? " asked" : ""}">
+      <span class="conj-person">${p.it}</span><span class="conj-de">${p.de}</span>${cell}</div>`;
+  }).join("");
+  const note = state.quizChecked ? "" :
+    `<p class="conj-note">${q.blanks.length === CONJ_PERSONS.length
+      ? "Alle sechs Formen schreiben, dann prüfen"
+      : "Die leeren Zeilen ausfüllen, dann prüfen"}</p>`;
+  return `${renderConjHead(q)}<div class="conj-table">${rows}</div>${note}`;
 }
 
 function renderArrangeBody(q) {
@@ -204,13 +311,18 @@ function renderArrangeBody(q) {
 }
 
 // Which exercises need an explicit submit; the rest settle on tap.
-const QUIZ_CHECK_FN = { type: "quizCheckType", "fill-type": "quizFillCheckType", arrange: "quizCheckArrange" };
+const QUIZ_CHECK_FN = {
+  type: "quizCheckType", "fill-type": "quizFillCheckType", arrange: "quizCheckArrange",
+  "conj-type": "quizCheckType", "conj-table": "quizCheckConjTable",
+};
 // What to do when an exercise offers no Check button, so the slot the button
 // would occupy carries the instruction instead of sitting empty.
 const QUIZ_CUE = {
   choose: "Tippe eine Antwort an",
   "fill-choose": "Tippe eine Antwort an",
+  "conj-choose": "Tippe die richtige Form an",
   match: "Tippe zwei zusammengehörende Wörter an",
+  "conj-match": "Tippe Person und Form an",
 };
 
 // Bottom action bar, pinned to the foot of the frame. It always ends in the
@@ -223,11 +335,22 @@ function renderQuizFoot(q) {
     let banner;
     if (state.quizWasCorrect) {
       banner = `<div class="quiz-feedback good"><span class="fb-mark">✓</span>
-        <span class="fb-text">Richtig</span><span class="fb-gain"><span class="coin">◈</span> +${quizReward()}</span></div>`;
-    } else if (q.type === "match") {
+        <span class="fb-text">Richtig</span><span class="fb-gain"><span class="coin">◈</span> +${quizReward(q)}</span></div>`;
+    } else if (q.type === "match" || q.type === "conj-match") {
       // match has no single answer string; it only pays out when self-solved
       banner = `<div class="quiz-feedback reveal"><span class="fb-mark">◈</span>
         <span class="fb-text">Paare aufgedeckt — kein Gold verdient</span></div>`;
+    } else if (q.type === "conj-table") {
+      // A paradigm has six answers, and they're already standing in the table
+      // itself — so the banner counts them rather than repeating them here.
+      if (state.quizRevealed) {
+        banner = `<div class="quiz-feedback reveal"><span class="fb-mark">◈</span>
+          <span class="fb-text">Ganze Konjugation aufgedeckt — kein Gold verdient</span></div>`;
+      } else {
+        const right = q.blanks.filter((i) => conjRowCorrect(q, i)).length;
+        banner = `<div class="quiz-feedback bad"><span class="fb-mark">✕</span>
+          <span class="fb-text"><strong>${right} von ${q.blanks.length}</strong> Formen richtig — die Lösung steht in der Tabelle</span></div>`;
+      }
     } else {
       const answer = q.type === "arrange" ? q.answer.join(" ") : q.answer;
       const shown = state.quizRevealed;

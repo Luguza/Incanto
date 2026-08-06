@@ -40,7 +40,7 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 |------|------|
 | `src/core.js` | `window.Incanto` root namespace (loads first) |
 | `src/config.js` | `CONFIG` — all gameplay numbers, flags, colours |
-| `src/content.js` | vocab + sentences: `WORD_POOL`, `SENTENCE_POOL`, … |
+| `src/content.js` | vocab, sentences + verb paradigms: `WORD_POOL`, `SENTENCE_POOL`, `CONJ_POOL` (present tense, regular forms generated from `CONJ_ENDINGS`, irregulars written out), `CONJ_PERSONS`, … |
 | `src/encounters.js` | **where enemy packs are designed**: `PACKS` (formations), `ENCOUNTER_PLAN` (which pack at which metre mark), `LATE_CYCLE` (endless tail). Deterministic — no randomness |
 | `src/vocab-history.js` | the learning record: per-word tallies (seen / correct / wrong, split quiz vs. rune circle) in `state.vocab` + its own save key, the per-day buckets behind "struggled with lately", the `struggleDrawPool` weighting `drawLoadout` deals review words from, and `renderHistoryFull` (the Lernverlauf screen) |
 | `src/state.js` | `state`, `freshState`, save/load/clear (persistence), and the **reward bank**: `creditKill` / `rewardMult` — kills charge a gold multiplier that banks across runs (persisted) and is only spent by finishing a whole quiz |
@@ -54,7 +54,7 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 | `src/spellbook.js` | the open book along the bottom of combat: page geometry (the V the circle nests in), the page's own `(u,v)` frame everything written rides on, the runic body script, `SPELL_ART` (the animated page effects, staged in 3D on the page — CSS keyframes live in `combat.css`), flipping. A book is assembled from parts (`bookDefs` once per SVG + `bookMarkup` per volume) so it can be drawn more than once |
 | `src/book-order.js` | the order screen: the whole book as three open volumes in ONE SVG, where a page is dragged onto another to trade places (`swapBookPages`). Reached from the **Buch** button on the upgrade screen |
 | `src/combat.js` | rune matching + cast dispatch (`handleRuneClick`, `hitEnemy`) |
-| `src/quiz.js` | vocab-quiz logic + exercise handlers (`quizChoose`, `buildQuiz`, …); `quizReward` applies the banked multiplier, `advanceQuiz` cashes it in on the last question |
+| `src/quiz.js` | vocab-quiz logic + exercise handlers (`quizChoose`, `buildQuiz`, …); `quizReward` applies the banked multiplier plus the question's own stake, `advanceQuiz` cashes the multiplier in on the last question. Also the **conjugation ladder**: `makeConj` deals a rung of `CONFIG.conjugation.levels` (zuordnen: one verb's paradigm → zuordnen: forms from several verbs → pick a form → write a form → half a table → the whole paradigm), `noteConjResult` moves `state.conjLevel` up or down on the top rung |
 | `src/screens.js` | full-screen DOM renderers (innerHTML into `#app`) |
 | `src/nav.js` | bottom phase-switcher nav (`navTo`, pixel-art icons) — renders into `<nav id="bottom-nav">` |
 | `src/input.js` | pointer/drag handling for the rune circle |
