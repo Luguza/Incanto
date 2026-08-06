@@ -110,6 +110,15 @@ errors, confirms the scene renders, and exercises the delegated UI dispatch:
 node tools/smoke-test.mjs        # exits non-zero on any failure
 ```
 
+It also guards the **rune tree's readability**, which is easy to lose by
+accident when arms are re-shaped or the relax forces in `skilltree.js` are
+re-tuned: every pair of node discs must keep `MIN_NODE_GAP` (22) units of clear
+space between their rims, no two connections may cross, and no connection may be
+drawn through a node it isn't attached to. Each failure names the offending
+pair. `HOLE` / `NODE_STEP` are the dial for the first one — node discs are a
+fixed size, so raising those is the only thing that buys real air rather than
+drawing the same crowd bigger.
+
 For scene/visual changes, don't rely on code-reading alone. Drive the game
 headlessly with the pre-installed Chromium (Playwright, `executablePath` under
 `/opt/pw-browsers/`) and screenshot `canvas.scene`. Note: canvas asset building

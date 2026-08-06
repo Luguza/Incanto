@@ -192,19 +192,48 @@ try {
   check(tree.thorns === 5, "exactly five Dornenkrone caches exist (" + tree.thorns + ")");
   check(tree.unknownTheme === 0, "every node's theme resolves to a colour + glyph");
 
-  //    …and it is laid out evenly. The whole point of radialSlices + relaxTree is
-  //    that nodes sit at a roughly constant distance from each other everywhere:
-  //    no clumps, no voids. Guard the nearest-neighbour spread so a tweak to the
-  //    forces or the node counts can't quietly go back to a lumpy web.
-  const spacing = await page.evaluate(() => {
-    const { TREE_NODES: N } = Incanto.skilltree;
-    const P = Incanto.skilltree.NODE_POS;
+  //    …and it is laid out with room to breathe. Two properties decide whether
+  //    the web is readable on a phone, and both are easy to lose by accident
+  //    when arms are re-shaped or the relax forces are re-tuned:
+  //
+  //      1. every pair of node DISCS keeps a real gap. Centre-to-centre distance
+  //         is not the measure — a unique is 33 units across and a plain node 28,
+  //         so the same distance is roomy for two plain nodes and almost touching
+  //         for two uniques. Measure the gap between the rims.
+  //      2. no two CONNECTIONS cross, and no connection is drawn straight through
+  //         an unrelated node. radialSlices gives every subtree its own wedge
+  //         precisely so this holds; the relaxation has to preserve it.
+  //
+  //    Both report the offending pair, because "somewhere in 800 nodes" is not a
+  //    bug report. HOLE / NODE_STEP in skilltree.js are the dial for (1).
+  const MIN_NODE_GAP = 22;      // units of clear space between two node rims
+  const layout = await page.evaluate((minGap) => {
+    const { TREE_NODES: N, TREE_EDGES: E, NODE_POS: P } = Incanto.skilltree;
     const ids = Object.keys(N);
-    const cell = 220, grid = new Map();
+    // Same radii the SVG draws with (see nodeRadius): uniques sit a little larger.
+    const R = (id) => (id === "root" ? 34 : N[id].unique ? 33 : 28);
+
+    // --- 1. disc-to-disc clearance, over a grid so this stays O(n) ------------
+    const cell = 260, grid = new Map();
     for (const id of ids) {
       const p = P[id], k = Math.floor(p.x / cell) + "," + Math.floor(p.y / cell);
       (grid.get(k) || grid.set(k, []).get(k)).push(id);
     }
+    const gaps = [];
+    let tightest = Infinity, tightestPair = null;
+    for (const id of ids) {
+      const p = P[id], cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell);
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++)
+        for (const o of grid.get(cx + i + "," + (cy + j)) || []) {
+          if (o <= id) continue;                       // each pair once
+          const gap = Math.hypot(p.x - P[o].x, p.y - P[o].y) - R(id) - R(o);
+          gaps.push(gap);
+          if (gap < tightest) { tightest = gap; tightestPair = id + " / " + o; }
+        }
+    }
+    gaps.sort((a, b) => a - b);
+    // Nearest-neighbour spread, the other half of "even": guards voids as well
+    // as clumps, so the relaxation can't fix crowding by tearing holes instead.
     const nn = ids.map((id) => {
       const p = P[id], cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell);
       let best = Infinity;
@@ -216,11 +245,71 @@ try {
         }
       return best;
     }).sort((a, b) => a - b);
-    return { min: nn[0], p5: nn[(nn.length * 0.05) | 0], p95: nn[(nn.length * 0.95) | 0] };
-  });
-  check(spacing.min >= 58, "no two nodes overlap (closest pair " + spacing.min.toFixed(0) + ")");
-  check(spacing.p5 >= 66 && spacing.p95 <= 130,
-    "node spacing is even (5th-95th percentile " + spacing.p5.toFixed(0) + "-" + spacing.p95.toFixed(0) + ")");
+
+    // --- 2. connection crossings ---------------------------------------------
+    // The drawn segment, not the centre-to-centre line: edgeSvg stops each end at
+    // its node's rim, so that is the geometry a player actually sees.
+    const seg = ([a, b]) => {
+      const pa = P[a], pb = P[b];
+      const dx = pb.x - pa.x, dy = pb.y - pa.y, len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len;
+      return { a, b, x1: pa.x + ux * (R(a) + 1.5), y1: pa.y + uy * (R(a) + 1.5),
+        x2: pb.x - ux * (R(b) + 1.5), y2: pb.y - uy * (R(b) + 1.5) };
+    };
+    const segs = E.map(seg);
+    const side = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    let crossings = 0, firstCross = null;
+    for (let i = 0; i < segs.length; i++) {
+      for (let j = i + 1; j < segs.length; j++) {
+        const s = segs[i], t = segs[j];
+        // Edges that share a node meet at that node by definition, not a crossing.
+        if (s.a === t.a || s.a === t.b || s.b === t.a || s.b === t.b) continue;
+        const p1 = { x: s.x1, y: s.y1 }, p2 = { x: s.x2, y: s.y2 };
+        const p3 = { x: t.x1, y: t.y1 }, p4 = { x: t.x2, y: t.y2 };
+        if ((side(p3, p4, p1) > 0) !== (side(p3, p4, p2) > 0) &&
+            (side(p1, p2, p3) > 0) !== (side(p1, p2, p4) > 0)) {
+          crossings++;
+          if (!firstCross) firstCross = `${s.a}–${s.b} x ${t.a}–${t.b}`;
+        }
+      }
+    }
+    // A line ploughing through a node it isn't connected to reads exactly as
+    // wrong as two lines crossing, so it fails the same check.
+    let throughNode = 0, firstThrough = null;
+    for (const s of segs) {
+      const dx = s.x2 - s.x1, dy = s.y2 - s.y1, L2 = dx * dx + dy * dy || 1;
+      for (const id of ids) {
+        if (id === s.a || id === s.b) continue;
+        const p = P[id];
+        let t = ((p.x - s.x1) * dx + (p.y - s.y1) * dy) / L2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        if (Math.hypot(s.x1 + t * dx - p.x, s.y1 + t * dy - p.y) < R(id) + 2) {
+          throughNode++;
+          if (!firstThrough) firstThrough = `${s.a}–${s.b} through ${id}`;
+        }
+      }
+    }
+
+    return {
+      tightest, tightestPair,
+      gapP5: gaps[(gaps.length * 0.05) | 0],
+      under: gaps.filter((g) => g < minGap).length,
+      nnMin: nn[0], nnP5: nn[(nn.length * 0.05) | 0], nnP95: nn[(nn.length * 0.95) | 0],
+      crossings, firstCross, throughNode, firstThrough,
+    };
+  }, MIN_NODE_GAP);
+
+  check(layout.tightest >= MIN_NODE_GAP,
+    `every pair of node discs keeps ${MIN_NODE_GAP}+ units of air (tightest ` +
+    `${layout.tightest.toFixed(0)} at ${layout.tightestPair}` +
+    (layout.under ? `, ${layout.under} pairs too close` : "") + ")");
+  check(layout.crossings === 0,
+    "no two connections cross" + (layout.firstCross ? " (e.g. " + layout.firstCross + ")" : ""));
+  check(layout.throughNode === 0,
+    "no connection is drawn through an unrelated node" +
+    (layout.firstThrough ? " (e.g. " + layout.firstThrough + ")" : ""));
+  check(layout.nnP5 >= 66 && layout.nnP95 <= 150,
+    "node spacing is even (5th-95th percentile " + layout.nnP5.toFixed(0) + "-" + layout.nnP95.toFixed(0) + ")");
 
   // 6. A beacon key is visible from the first screen but NOT buyable until the
   //    prelude that leads to it has been walked.

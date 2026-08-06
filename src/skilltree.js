@@ -87,8 +87,13 @@ const RUNE_GLYPHS = {
 // ---------------------------------------------------------------------------
 const TREE_CENTER = 2600;      // seed sits at the middle of the tree-space
 const TREE_VIEW = 900;         // SVG viewBox size = the pan/zoom window
-const HOLE = 165;              // radius of ring 1 (clear space around the seed)
-const NODE_STEP = 96;          // radial distance between consecutive rings
+// HOLE and NODE_STEP are the whole layout's breathing room. A node disc is 28
+// units across the middle (33 for a unique) and does not scale with them, so
+// raising these is the one dial that buys genuine air between nodes rather than
+// just drawing the same crowd bigger. tools/smoke-test.mjs holds them honest:
+// no two discs may come within MIN_NODE_GAP of each other.
+const HOLE = 240;              // radius of ring 1 (clear space around the seed)
+const NODE_STEP = 104;         // radial distance between consecutive rings
 
 // --- how the tree is DRAWN -------------------------------------------------
 // A node's ring is bookkeeping. Position comes from a two-step layout that aims
@@ -106,16 +111,22 @@ const NODE_STEP = 96;          // radial distance between consecutive rings
 // size or the same length it never settles anywhere symmetrical. It is fully
 // deterministic — the tree must be pixel-identical on every load, because saves
 // name its nodes.
+//
+// Step 1 is what guarantees the tree can be READ: sibling wedges never overlap,
+// so no connection can ever be drawn across another. Step 2 has to preserve
+// that while it evens the density out, and it is the one that can quietly break
+// it — which is why tools/smoke-test.mjs checks both the crossings and the gap
+// between every pair of node discs on every run.
 const REST_LEN = NODE_STEP;        // how long a spring wants its edge to be
-const REPEL_RADIUS = NODE_STEP * 1.35;  // how far a node shoves its neighbours away
+const REPEL_RADIUS = NODE_STEP * 1.4;   // how far a node shoves its neighbours away
 const K_SPRING = 0.3;              // edge springs — hold a chain together
-const K_REPEL = 0.55;              // node repulsion — the thing that evens the density out
+const K_REPEL = 0.58;              // node repulsion — the thing that evens the density out
 const K_RADIAL = 0.05;             // pull back toward the node's own ring — weak, so angles are free to redistribute
 const K_RADIAL_KEY = 0.28;         // …but the twelve keys hold their ring firmly: they are the map's landmarks
-const RELAX_PASSES = 90;             // the layout is fully settled by ~60; this leaves margin
+const RELAX_PASSES = 120;          // the layout is fully settled by ~90; this leaves margin
 const MAX_NUDGE = 14;              // per-pass movement cap, so the relaxation can't explode
-const RELAX_CELLS = 34;            // repulsion lookup grid; RELAX_SPAN/RELAX_CELLS must stay >= REPEL_RADIUS
-const RELAX_SPAN = 5200;
+const RELAX_CELLS = 36;            // repulsion lookup grid; RELAX_SPAN/RELAX_CELLS must stay >= REPEL_RADIUS
+const RELAX_SPAN = 5600;           // …and RELAX_SPAN must still contain the whole tree
 
 // A node's effect grows gently with its ring — enough that a deep node is
 // clearly the better one, not so much that a single outer node saturates a
@@ -1165,7 +1176,11 @@ function nodeRadius(id) {
 }
 
 function initTreeView(resetSelection) {
-  const s = 0.62;                       // default zoom — shows the seed, every prelude, and all twelve keys
+  // Default zoom. Shows the seed, every prelude and most of the keys; the three
+  // deepest (Abwehr, Blitzschlag, Meteoritenschauer) sit outside it, which is
+  // fine — a beacon stays lit while you pan, and pulling this out far enough to
+  // frame all twelve would shrink every node past what a thumb can hit.
+  const s = 0.62;
   const c = TREE_VIEW / 2;              // viewBox centre
   const keep = (!resetSelection && state.tree) ? state.tree.selected : null;
   state.tree = { scale: s, tx: c - TREE_CENTER * s, ty: c - TREE_CENTER * s, selected: keep };
