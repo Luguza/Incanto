@@ -137,11 +137,11 @@ function hitPlayer(n) {
   if (state.heroHP <= 0 && state.runActive) {
     // The run is over the instant the hero falls — even if the fight was playing
     // out in the background while the player studied or shopped. Only pull them
-    // to the defeat screen if they're actually watching combat; otherwise leave
+    // to the reward screen if they're actually watching combat; otherwise leave
     // them where they are (the dead run simply won't resume, and the next trip to
     // combat starts fresh).
     state.runActive = false;
-    if (state.screen === "combat") state.screen = "defeat";
+    if (state.screen === "combat") state.screen = "reward";
   }
 }
 

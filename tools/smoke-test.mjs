@@ -424,6 +424,67 @@ try {
   check(inCombat.names.join(",") === inCombat.want.join(",") && inCombat.names.length === 2,
     "the combat book opens on the newly bound order (" + inCombat.names.join(" | ") + ")");
 
+  // 9. The reward bank. Kills charge a gold multiplier that must survive dying
+  //    and starting over — it is spent only by finishing a whole quiz, so a run
+  //    cut short is never wasted fighting.
+  const bank = await page.evaluate(() => {
+    state.rewardKills = 0; state.kills = 0;
+    creditKill(); creditKill(); creditKill();
+    const afterKills = { run: state.kills, bank: state.rewardKills, mult: rewardMult() };
+    startRun();                                   // a fresh run must not wipe the pile
+    const afterRestart = { run: state.kills, bank: state.rewardKills };
+    creditKill(); creditKill();
+    const stacked = state.rewardKills;
+    const saved = JSON.parse(localStorage.getItem("incanto.save.v1")).rewardKills;
+    state.rewardKills = 10 ** 6;
+    const capped = { mult: rewardMult(), flag: rewardMultCapped() };
+    return { afterKills, afterRestart, stacked, saved, capped,
+             cfg: { max: CONFIG.rewardMultMax, perCorrect: CONFIG.goldPerCorrect } };
+  });
+  check(bank.afterKills.bank === 3 && Math.abs(bank.afterKills.mult - 1.3) < 1e-9,
+    "three kills bank a ×1.3 reward multiplier");
+  check(bank.afterRestart.run === 0 && bank.afterRestart.bank === 3,
+    "a new run clears the run score but keeps the banked multiplier (bank " + bank.afterRestart.bank + ")");
+  check(bank.stacked === 5 && bank.saved === 5,
+    "the next run's kills add on top, and the bank is persisted (" + bank.saved + ")");
+  check(bank.capped.mult === bank.cfg.max && bank.capped.flag === true,
+    "the multiplier is capped at ×" + bank.capped.mult);
+
+  //    The quiz shows what it is worth, and only a completed session spends it.
+  const spend = await page.evaluate(() => {
+    state.rewardKills = 24;
+    goToQuiz();
+    render(performance.now());
+    const chip = document.querySelector(".quiz-mult");
+    const shown = chip ? chip.textContent.trim() : null;
+    const perAnswer = quizReward();
+    state.quizIndex = 2; advanceQuiz();
+    const midway = state.rewardKills;                 // bailing out mid-quiz keeps it
+    state.quizIndex = state.quizList.length - 1; advanceQuiz();
+    return { shown, perAnswer, midway, after: state.rewardKills, screen: state.screen,
+             saved: JSON.parse(localStorage.getItem("incanto.save.v1")).rewardKills };
+  });
+  check(spend.shown === "×3,4", "the quiz header shows the banked multiplier (" + spend.shown + ")");
+  check(spend.perAnswer === Math.round(bank.cfg.perCorrect * 3.4),
+    "each correct answer pays the multiplied reward (" + spend.perAnswer + ")");
+  check(spend.midway === 24, "an unfinished quiz leaves the bank standing (" + spend.midway + ")");
+  check(spend.after === 0 && spend.saved === 0 && spend.screen === "upgrade",
+    "finishing the whole quiz cashes the bank in");
+
+  //    And the run-over screen is a reward, not a defeat notice.
+  await page.evaluate(() => {
+    state.rewardKills = 12; state.runStartMs = performance.now();
+    state.screen = "reward"; state._structuralDirty = true;
+    render(performance.now());
+  });
+  const endScreen = await page.evaluate(() => ({
+    text: document.querySelector(".end-screen").textContent,
+    mult: (document.querySelector(".reward-mult-num") || {}).textContent,
+    study: !!document.querySelector(".study-btn"),
+  }));
+  check(!/Niederlage/.test(endScreen.text) && endScreen.mult === "×2,2" && endScreen.study,
+    "the run-over screen leads with the multiplier and a nudge to study (" + endScreen.mult + ")");
+
   check(errors.length === 0, "no console/page errors");
 
   console.log("\nSMOKE TEST PASSED");

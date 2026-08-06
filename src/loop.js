@@ -262,7 +262,7 @@ function updateEnemies(now, dt) {
               y: (scene.laneY[e.lane] ?? scene.feetY) - enemyArt(e).h - 3,
             });
           }
-          if (e.hp <= 0) { e.phase = "dying"; e.phaseAt = now; state.kills++; }
+          if (e.hp <= 0) { e.phase = "dying"; e.phaseAt = now; creditKill(); }
         }
       }
       limit = e.pos + laneSpacing(e, behind);  // next skeleton stays a gap behind this one

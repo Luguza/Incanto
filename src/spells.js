@@ -205,7 +205,7 @@ function applySpellHit(target, amount, at, opts = {}) {
     target.phase = "struck";
     target.phaseAt = at;
     target.struckUntil = at;
-    state.kills++;
+    creditKill();
   }
   return dealt;
 }
