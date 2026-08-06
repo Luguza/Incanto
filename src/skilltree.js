@@ -43,24 +43,27 @@
 // Themes — a node's colour and glyph come from WHAT IT DOES, not from which arm
 // it grew on, so a wall of orange chevrons reads as "damage" wherever you find
 // it and the six spell colours match their page in the book (CONFIG.colors.spell).
+// `label` is the theme's name in the player's language: the ledger screen groups
+// a build by theme (see stats.js), and that name belongs next to the colour it
+// is drawn in rather than in a second table somewhere else.
 // ---------------------------------------------------------------------------
 const TREE_THEMES = {
-  origin:    { color: "#eafffe", glow: "234,255,254" }, // the central seed
-  might:     { color: "#ff7043", glow: "255,112,67"  }, // flat + % damage
-  vigor:     { color: "#5ecf8f", glow: "94,207,143"  }, // flat + % HP
-  crit:      { color: "#f2c14e", glow: "242,193,78"  }, // crit chance + crit damage
-  sustain:   { color: "#e5679a", glow: "229,103,154" }, // regen + life leech
-  guard:     { color: "#4de3e0", glow: "77,227,224"  }, // shields + fail-protection
-  fortune:   { color: "#d9a441", glow: "217,164,65"  }, // gold + walk speed
-  focus:     { color: "#c08cff", glow: "192,140,255" }, // cast speed
-  thorn:     { color: "#ff3b30", glow: "255,59,48"   }, // the five unique thorn caches
+  origin:    { color: "#eafffe", glow: "234,255,254", label: "Ursprung"     }, // the central seed
+  might:     { color: "#ff7043", glow: "255,112,67",  label: "Macht"        }, // flat + % damage
+  vigor:     { color: "#5ecf8f", glow: "94,207,143",  label: "Lebenskraft"  }, // flat + % HP
+  crit:      { color: "#f2c14e", glow: "242,193,78",  label: "Präzision"    }, // crit chance + crit damage
+  sustain:   { color: "#e5679a", glow: "229,103,154", label: "Zehrung"      }, // regen + life leech
+  guard:     { color: "#4de3e0", glow: "77,227,224",  label: "Bewahrung"    }, // shields + fail-protection
+  fortune:   { color: "#d9a441", glow: "217,164,65",  label: "Fortuna"      }, // gold + walk speed
+  focus:     { color: "#c08cff", glow: "192,140,255", label: "Sammlung"     }, // cast speed
+  thorn:     { color: "#ff3b30", glow: "255,59,48",   label: "Dornen"       }, // the five unique thorn caches
   // One per page of the book — same colour the spell burns in on the canvas.
-  fireball:  { color: "#f2a83a", glow: "242,168,58"  },
-  lightning: { color: "#7fb8ff", glow: "127,184,255" },
-  frost:     { color: "#79d8ee", glow: "121,216,238" },
-  meteor:    { color: "#e5673a", glow: "229,103,58"  },
-  shield:    { color: "#9a8ff0", glow: "154,143,240" },
-  heal:      { color: "#6ed08a", glow: "110,208,138" },
+  fireball:  { color: "#f2a83a", glow: "242,168,58",  label: "Feuerball"    },
+  lightning: { color: "#7fb8ff", glow: "127,184,255", label: "Blitzschlag"  },
+  frost:     { color: "#79d8ee", glow: "121,216,238", label: "Frostkegel"   },
+  meteor:    { color: "#e5673a", glow: "229,103,58",  label: "Meteoriten"   },
+  shield:    { color: "#9a8ff0", glow: "154,143,240", label: "Bannschild"   },
+  heal:      { color: "#6ed08a", glow: "110,208,138", label: "Heilwort"     },
 };
 
 // Small runic line-glyphs in local coords (centred on 0,0, ~±13). Stroke is
@@ -923,6 +926,13 @@ function recomputeMods() {
   const flatDmg = softCap(sum.flatDmg, caps.flatDmg);
   const pctHp = softCap(sum.pctHp, caps.pctHp);
   const pctDmg = softCap(sum.pctDmg, caps.pctDmg);
+  // The RAW pools and the four derived ones, kept for the ledger screen (see
+  // stats.js). Nothing in combat reads them: they exist so the player can be
+  // shown what a soft cap is currently eating — the difference between what the
+  // tooltips promised and what the hero actually carries — instead of that loss
+  // living only inside this function.
+  state.mods.sums = sum;
+  state.mods.derived = { flatHp, flatDmg, pctHp, pctDmg };
   state.heroMaxHP = Math.round((CONFIG.heroBaseHP + flatHp) * (1 + pctHp));
   state.heroDmg = Math.max(1, Math.round((CONFIG.heroBaseDmg + flatDmg) * (1 + pctDmg)));
   if (state.heroShield == null) state.heroShield = 0;
@@ -1180,14 +1190,24 @@ function renderUpgradeFull() {
     <div class="screen tree-screen">
       <div class="tree-topbar">
         <div class="tree-title">Runenbaum</div>
-        <!-- The tree opens pages; this is where they're bound into an order
-             (see book-order.js). -->
-        <button class="bo-open" data-act="openBookOrder">
-          <svg class="bo-open-icon" viewBox="0 0 24 16" aria-hidden="true">
-            <path d="M12 3.4C9.6 1.6 6.6 1.2 3 1.9v11.4c3.6-.7 6.6-.3 9 1.5 2.4-1.8 5.4-2.2 9-1.5V1.9c-3.6-.7-6.6-.3-9 1.5Z"/>
-            <path class="bo-open-spine" d="M12 3.4v11.4"/>
-          </svg>Buch
-        </button>
+        <!-- The two things the forge does BESIDE buying nodes: bind the book
+             into an order (book-order.js), and read what the build now adds up
+             to (stats.js). -->
+        <div class="tree-tools">
+          <button class="bo-open" data-act="openStats">
+            <svg class="sv-open-icon" viewBox="0 0 16 16" aria-hidden="true">
+              <rect x="1.5" y="9" width="3" height="5.5" rx="0.7"/>
+              <rect x="6.5" y="5.5" width="3" height="9" rx="0.7"/>
+              <rect x="11.5" y="2" width="3" height="12.5" rx="0.7"/>
+            </svg>Werte
+          </button>
+          <button class="bo-open" data-act="openBookOrder">
+            <svg class="bo-open-icon" viewBox="0 0 24 16" aria-hidden="true">
+              <path d="M12 3.4C9.6 1.6 6.6 1.2 3 1.9v11.4c3.6-.7 6.6-.3 9 1.5 2.4-1.8 5.4-2.2 9-1.5V1.9c-3.6-.7-6.6-.3-9 1.5Z"/>
+              <path class="bo-open-spine" d="M12 3.4v11.4"/>
+            </svg>Buch
+          </button>
+        </div>
         <div class="tree-gold"><span class="coin">◈</span> ${state.gold}</div>
       </div>
       <svg class="tree-canvas" id="tree-canvas" viewBox="0 0 900 900" preserveAspectRatio="xMidYMid meet">

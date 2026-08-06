@@ -430,6 +430,12 @@ function render(now) {
       builtScreen = "bookorder";
       state._structuralDirty = false;
     }
+  } else if (state.screen === "stats") {
+    if (builtScreen !== "stats" || state._structuralDirty) {
+      renderStatsFull();
+      builtScreen = "stats";
+      state._structuralDirty = false;
+    }
   } else {
     if (builtScreen !== state.screen) {
       renderEndFull();

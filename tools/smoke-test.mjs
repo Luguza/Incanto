@@ -565,6 +565,76 @@ try {
   check(inCombat.names.join(",") === inCombat.want.join(",") && inCombat.names.length === 2,
     "the combat book opens on the newly bound order (" + inCombat.names.join(" | ") + ")");
 
+  // 9b. The ledger (see stats.js): the forge's other side door, where the build
+  //     is read rather than bought. Its whole reason to exist is that its
+  //     numbers are the FIGHT's numbers — so the guard here is not "a screen
+  //     rendered" but "the figures track the resolvers and the stat model".
+  await page.evaluate(() => {
+    state.nodeRanks = {}; state.gold = 999999; recomputeMods();
+    for (let i = 0; i < 3; i++) { treeBuy("migp0"); treeBuy("vigp0"); }
+    state.screen = "upgrade"; state._structuralDirty = true; render(performance.now());
+  });
+  await page.click('[data-act="openStats"]');
+  await page.waitForTimeout(180);
+  //     Read a row by its label, the way a player reads it off the screen.
+  const rowValue = (label) => page.evaluate((want) => {
+    const row = [...document.querySelectorAll(".sv-row")]
+      .find((r) => r.querySelector(".sv-label").textContent.trim() === want);
+    return row ? row.querySelector(".sv-value").textContent.trim() : null;
+  }, label);
+  const ledger = await page.evaluate(() => ({
+    screen: state.screen,
+    rows: document.querySelectorAll(".sv-row").length,
+    phase: (document.querySelector("#bottom-nav .nav-btn.active") || {}).dataset.phase,
+    dmg: state.heroDmg, hp: state.heroMaxHP,
+    headline: [...document.querySelectorAll(".sv-hero-tile b")].map((b) => b.textContent.trim()),
+  }));
+  check(ledger.screen === "stats" && ledger.rows > 15,
+    "the forge's Werte button opens the ledger (" + ledger.rows + " stat rows)");
+  check(ledger.phase === "upgrade", "the ledger sits inside the upgrade phase (nav=" + ledger.phase + ")");
+  check(ledger.headline[0] === String(ledger.dmg) && ledger.headline[1] === String(ledger.hp),
+    "its headline figures are the hero's own (" + ledger.headline.slice(0, 2).join(" / ") + ")");
+  check(await rowValue("Grundschaden") === String(ledger.dmg),
+    "a bought damage node moves the ledger's Grundschaden row (" + ledger.dmg + ")");
+
+  //     A stat sitting on its ceiling must SAY so — further nodes of that kind
+  //     are wasted gold, and that is the question a stat screen answers.
+  const flagged = await page.evaluate(() => {
+    state.mods.critChance = CONFIG.caps.critChance;
+    state._structuralDirty = true; render(performance.now());
+    const row = [...document.querySelectorAll(".sv-row")]
+      .find((r) => r.querySelector(".sv-label").textContent.trim() === "Krit-Chance");
+    return { flag: !!row.querySelector(".sv-flag"), bar: !!row.querySelector(".sv-bar.full") };
+  });
+  check(flagged.flag && flagged.bar, "a capped stat is flagged as at its Grenze, meter and all");
+
+  //     The spell tab: one card per page, in the order the book is BOUND, and
+  //     each card's signature figures re-derived from the same mods the
+  //     resolvers read — a chain that grew in the tree grows here too.
+  await page.click('[data-act="setStatsTab"][data-args=\'["spells"]\']');
+  await page.waitForTimeout(180);
+  const cards = await page.evaluate(() => ({
+    n: document.querySelectorAll(".sv-spell").length,
+    names: [...document.querySelectorAll(".sv-spell-name h3")].map((h) => h.textContent.trim()),
+    want: Incanto.spells.bookSpells().map((s) => s.name),
+  }));
+  check(cards.n === 6 && cards.names.join(",") === cards.want.join(","),
+    "the ledger lists all six pages in bound order (" + cards.names.join(" · ") + ")");
+  const grown = await page.evaluate(() => {
+    state.mods.spellParam.chainLightning = 4;   // what four "one more hop" nodes buy
+    state._structuralDirty = true; render(performance.now());
+    const row = [...document.querySelectorAll(".sv-row")]
+      .find((r) => r.querySelector(".sv-label").textContent.trim() === "Sprünge");
+    return { shown: row ? row.querySelector(".sv-value").textContent.trim() : null,
+             want: CONFIG.spells.lightning.chain + 4 };
+  });
+  check(grown.shown === grown.want + " Körper",
+    "a spell's own parameters are re-derived, not restated (Sprünge " + grown.shown + ")");
+  await page.click('[data-act="closeStats"]');
+  await page.waitForTimeout(150);
+  check(await page.evaluate(() => state.screen) === "upgrade", "leaving the ledger returns to the tree");
+  await page.evaluate(() => { recomputeMods(); });   // undo the two hand-set mods
+
   // 10. The reward bank. Kills charge a gold multiplier that must survive dying
   //     and starting over — it is spent only by finishing a whole quiz, so a run
   //     cut short is never wasted fighting.
