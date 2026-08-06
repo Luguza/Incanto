@@ -424,9 +424,9 @@ try {
   check(inCombat.names.join(",") === inCombat.want.join(",") && inCombat.names.length === 2,
     "the combat book opens on the newly bound order (" + inCombat.names.join(" | ") + ")");
 
-  // 9. The reward bank. Kills charge a gold multiplier that must survive dying
-  //    and starting over — it is spent only by finishing a whole quiz, so a run
-  //    cut short is never wasted fighting.
+  // 10. The reward bank. Kills charge a gold multiplier that must survive dying
+  //     and starting over — it is spent only by finishing a whole quiz, so a run
+  //     cut short is never wasted fighting.
   const bank = await page.evaluate(() => {
     state.rewardKills = 0; state.kills = 0;
     creditKill(); creditKill(); creditKill();
