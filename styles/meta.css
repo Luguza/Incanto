@@ -79,6 +79,70 @@
   .bo-open-icon { width: 20px; height: 14px; fill: #f2ead0; stroke: #10151a; stroke-width: 1.1; }
   .bo-open-icon .bo-open-spine { stroke: #8a7f63; fill: none; }
 
+  /* Dev tools (see skilltree.js) — the slider always sits in the topbar; the row
+     of tools under it only exists while the slider is on. Deliberately drab, so
+     nothing here reads as part of the game. */
+  .dev-switch {
+    display: inline-flex; align-items: center; gap: 6px; margin-left: auto;
+    background: none; border: 0; padding: 4px 2px; cursor: pointer; color: var(--ink-4);
+  }
+  .tree-topbar .dev-switch + .bo-open { margin-left: 10px; }
+  .dev-switch-text { font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; }
+  .dev-switch-track {
+    width: 26px; height: 14px; border-radius: var(--r-pill); position: relative;
+    background: var(--raised); border: 1px solid var(--edge);
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  }
+  .dev-switch-knob {
+    position: absolute; top: 1px; left: 1px; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--ink-4); transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
+  }
+  .dev-switch.on { color: var(--arcane-pale); }
+  .dev-switch.on .dev-switch-track { background: var(--arcane-3); border-color: var(--arcane); }
+  .dev-switch.on .dev-switch-knob { transform: translateX(12px); background: var(--arcane-lt); }
+
+  /* Stays UNDER the topbar's layer (a flex item's z-index counts even when it is
+     not positioned), so the gold field hanging off the purse is both drawn and
+     tappable over this row. */
+  .dev-bar {
+    display: flex; align-items: center; gap: 10px; flex: 0 0 auto; z-index: 1;
+    padding: 0 16px 6px;
+  }
+  .dev-btn {
+    font-size: 12px; letter-spacing: 0.4px; color: var(--ink-2); cursor: pointer;
+    background: rgba(24, 19, 36, 0.82); border: 1px solid var(--edge);
+    border-radius: var(--r-pill); padding: 5px 12px;
+  }
+  .dev-btn:active { background: var(--raised-hi); }
+  .dev-btn.armed { color: #ffb4b6; border-color: #7a3338; background: rgba(58, 20, 24, 0.8); }
+  .dev-note { font-size: 10px; letter-spacing: 0.4px; color: var(--ink-4); }
+
+  /* The purse while the tools are armed: tappable, and the amount is typed into
+     a field that hangs off it (below the topbar, where there is room for it). */
+  #tree-gold-slot { position: relative; }
+  .tree-gold.dev { cursor: pointer; font-family: inherit; }
+  .dev-gold-pop {
+    position: absolute; top: 100%; right: 0; margin-top: 6px; z-index: 4;
+    display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+    font-size: 13px; font-weight: 700; color: var(--gold);
+    background: rgba(24, 19, 36, 0.96); border: 1px solid var(--gold-2);
+    border-radius: var(--r-1); box-shadow: var(--shadow-2);
+  }
+  .dev-gold-input {
+    width: 84px; font: inherit; color: var(--gold-lt); text-align: right;
+    background: transparent; border: 0; border-bottom: 1px solid var(--gold-2); padding: 1px 2px;
+    appearance: textfield; -moz-appearance: textfield;
+  }
+  /* Desktop spinners would eat the field's width; the phone gets a numeric pad. */
+  .dev-gold-input::-webkit-outer-spin-button,
+  .dev-gold-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .dev-gold-ok {
+    font-size: 13px; line-height: 1; color: var(--gold-lt); cursor: pointer;
+    background: var(--gold-1); border: 1px solid var(--gold-2);
+    border-radius: var(--r-pill); padding: 4px 9px;
+  }
+  .dev-gold-ok:active { background: var(--raised-hi); }
+
   .tree-canvas {
     flex: 1 1 auto; min-height: 0; width: 100%; display: block;
     touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;

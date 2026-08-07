@@ -626,6 +626,69 @@ try {
   check(!/Niederlage/.test(endScreen.text) && endScreen.mult === "×2,2" && endScreen.study,
     "the run-over screen leads with the multiplier and a nudge to study (" + endScreen.mult + ")");
 
+  // 11. The dev tools on the tree screen (see skilltree.js). They are armed by a
+  //     slider and must be unreachable while it is off; armed, they wipe every
+  //     purchased rank (asking once first) and let the purse be typed into.
+  await page.evaluate(() => {
+    state.devMode = false;
+    state.gold = 500;
+    state.nodeRanks = {}; Incanto.skilltree.treeBuy("migp0"); Incanto.skilltree.treeBuy("migp0");
+    state.screen = "upgrade"; state.tree = null;
+    state._structuralDirty = true;
+    render(performance.now());
+  });
+  const devOff = await page.evaluate(() => ({
+    bar: document.querySelectorAll(".dev-bar").length,
+    purse: document.querySelectorAll(".tree-gold.dev").length,
+    slider: document.querySelectorAll(".dev-switch").length,
+  }));
+  check(devOff.slider === 1 && devOff.bar === 0 && devOff.purse === 0,
+    "the dev slider is the only dev thing on the tree until it is switched on");
+
+  await page.click(".dev-switch");
+  await page.waitForTimeout(120);
+  check(await page.evaluate(() => state.devMode === true && !!document.querySelector(".dev-bar")),
+    "the slider arms the tools and opens the dev row");
+
+  // Typing a gold amount: tap the purse, fill the field, tap ✓ (no Enter — see CLAUDE.md).
+  await page.click(".tree-gold.dev");
+  await page.fill(".dev-gold-input", "4321");
+  await page.click(".dev-gold-ok");
+  await page.waitForTimeout(120);
+  const purse = await page.evaluate(() => ({
+    gold: state.gold,
+    shown: document.querySelector("#tree-gold-slot").textContent.trim(),
+    saved: JSON.parse(localStorage.getItem("incanto.save.v1")).gold,
+  }));
+  check(purse.gold === 4321 && /4321/.test(purse.shown) && purse.saved === 4321,
+    "tapping the purse sets the gold and persists it (" + purse.shown + ")");
+  await page.click(".tree-gold.dev");
+  await page.fill(".dev-gold-input", "-40");
+  await page.click(".dev-gold-ok");
+  await page.waitForTimeout(120);
+  check(await page.evaluate(() => state.gold === 0), "a negative amount clamps to nothing");
+
+  // Wiping the tree: the first tap only arms the button.
+  await page.click(".dev-btn");
+  await page.waitForTimeout(120);
+  check(await page.evaluate(() => state.nodeRanks.migp0 === 2 && /Wirklich/.test(document.querySelector(".dev-btn").textContent)),
+    "the first tap on the wipe asks instead of wiping");
+  await page.click(".dev-btn");
+  await page.waitForTimeout(120);
+  const wiped = await page.evaluate(() => ({
+    ranks: Object.keys(state.nodeRanks).length,
+    baseDmg: state.heroDmg === CONFIG.heroBaseDmg,
+    spell: state.activeSpell,
+    saved: Object.keys(JSON.parse(localStorage.getItem("incanto.save.v1")).nodeRanks).length,
+  }));
+  check(wiped.ranks === 0 && wiped.saved === 0 && wiped.baseDmg && wiped.spell === "fireball",
+    "the second tap wipes every rank, re-derives the build and reseals the book");
+
+  await page.click(".dev-switch");
+  await page.waitForTimeout(120);
+  check(await page.evaluate(() => state.devMode === false && !document.querySelector(".dev-bar")),
+    "switching the slider back off puts the tools away");
+
   check(errors.length === 0, "no console/page errors");
 
   console.log("\nSMOKE TEST PASSED");
