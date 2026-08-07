@@ -134,8 +134,8 @@ const RELAX_CELLS = 34;            // repulsion lookup grid; RELAX_SPAN/RELAX_CE
 const RELAX_SPAN = 5200;
 
 // A node's effect grows gently with its ring — enough that a deep node is
-// clearly the better one, not so much that a single outer node saturates a
-// capped pool on its own (see CONFIG.caps and softCap).
+// clearly the better one, not so much that walking one arm to its tip is worth
+// more than everything else a build could reach with the same gold.
 const VAL_PER_RING = 0.14;
 // Cost grows SUB-linearly with the ring (ring^0.9). Deep nodes are still much
 // dearer per point than shallow ones, but the curve never runs away the way a
@@ -159,15 +159,73 @@ const COUNT_STATS = { chainLightning: 1, countMeteor: 1 };
 // these that it cycles through outward, so "this branch is about crit" is a
 // property of the branch, not of thirty hand-written nodes.
 // ---------------------------------------------------------------------------
-// FLAT vs PERCENT under the ×8 number scale (see CONFIG.heroBaseDmg): a flat
-// value moved with its pool's cap — damage ×2, HP ×3, regen and other HP rates
-// ×8 — so it still takes the same walk to fill a pool. The PERCENT bases below
-// were deliberately left alone even though their caps came down: at +4% a single
-// rank now moves heroDmg 24 → 25 where before it moved 3 → 3, and being able to
-// see one rank do something is the whole point of the rescale.
+// ---------------------------------------------------------------------------
+// CALIBRATION — where the balance lives now that nothing is capped.
+//
+// There are no soft caps and no hard caps anywhere in this game any more. Every
+// summed stat is used exactly as the nodes granted it, so the only thing that
+// bounds a build is WHAT THE TREE ACTUALLY CONTAINS. That makes the supply the
+// balance, and this table is how the supply is set.
+//
+// Why a table rather than 200 hand-tuned literals: the A entries and the
+// keystones below are authored as RELATIVE weights — "a Zähigkeit node is worth
+// about six Schneide nodes" — because that is the judgement a designer can make
+// while writing a thousand nodes. This turns those weights into the game's
+// units, ONCE, while the tree is built. A node then stores its final value, so
+// the tooltip, the ledger and the summed stat are all literally the same
+// number. Nothing is bent afterwards: this is not a layer over the stats, it is
+// what the stats are.
+//
+// Each factor is calibrated so that the whole tree's supply of that stat — what
+// you would carry if you owned every node granting it — lands on the figure in
+// the comment. The old ceilings are what those figures were chosen from, so a
+// build that commits to one thing arrives roughly where the capped game used to
+// stop, and a build that commits to it harder keeps going.
+//
+// Re-derive with tools/stat-supply.mjs after touching any value here.
+const STAT_SCALE = {
+  // Almost everything is 1: measured against the old game, the authored node
+  // values were already right — the ceilings only bit deep in a build, so
+  // removing them changes nothing about the first hours and simply lets the
+  // curve keep climbing afterwards. The exceptions are the pools whose SOFT cap
+  // bit from the very first purchase, and they are exactly the pools that were
+  // over-authored. Flat HP is the worst of them: the tree held 24.914 LP behind
+  // a cap of 190, which is not balance, it is a wall in front of a warehouse.
+  flatBase: 1,          // 10k: +24 Kernschaden
+  pctBase: 2.5,         // 10k: +19 % Kernschaden — a new, deliberately scarce stat
+  pctDmg: 0.85,         // 10k: ×1,28 Verstärkung
+  flatDmg: 1,           // 10k: +60 Schaden je Treffer
+  flatHp: 0.35,         // 10k: +394 LP  (was +1.125 authored, capped to +182)
+  pctHp: 0.6,           // 10k: +44 % LP
+  critChance: 1,        // 10k: 36 % — a probability stops at 100 %, because that
+  critMult: 1,          // 10k: ×2,45  is what a probability IS, not a balance call
+  armorPen: 1,          // the brute's plate is 5 points; the tree holds 11
+  leech: 1,             // 10k: 23 %
+  regen: 0.8,           // 10k: 17 LP/s
+  castHaste: 1,         // 10k: +6 % → 420 ms charge becomes 396 ms
+  walkMult: 1,          // 10k: +25 % (the march's own px/ms ceiling still applies)
+  coinMult: 1,          // 10k: +34 % Gold
+  shieldChance: 1,      // 10k: 30 %
+  shieldAmount: 1,      // 10k: 47 Absorption
+  shieldMax: 1,         // 10k: 79 Speicher
+  spellFailProt: 1,     // 10k: 9 %
+  thorns: 1,            // 50 % — five caches of 10 %
+  // — per-page damage: a build that commits to one page roughly doubles it
+  dmgFireball: 0.85, dmgLightning: 0.85, dmgFrost: 0.85,
+  dmgMeteor: 0.85, dmgShield: 0.85, dmgHeal: 0.85,
+  // — page SHAPE. These sit deepest of all, on a single branch, so their WHOLE
+  //   supply is what a build devoted to that page ends up with. The figures are
+  //   the spells' old maxima, which is where those shapes were designed to stop.
+  aoeFireball: 0.65,    // radius ×2,5 → 3,25 Felder
+  aoeMeteor: 0.62,      // crater ×2,5
+  coneFrost: 0.68,      // reach ×2 → 8 Felder, the corridor's own depth
+  freezeFrost: 0.47,    // +3,4 s → 6,0 s frozen
+  falloffLightning: 0.4, // +20 % carry → 0,92 per hop, still short of 1
+  chainLightning: 1, countMeteor: 1,   // whole bodies: a node grants one, and means it
+};
+
 const A = {
-  // THE THREE STAGES OF DAMAGE (see recomputeMods, and CONFIG.caps for what is
-  // bounded). A hit is built in this order and no other:
+  // THE THREE STAGES OF DAMAGE. A hit is built in this order and no other:
   //
   //   1. KERN        (heroBaseDmg + flatBase) × (1 + pctBase)
   //   2. VERSTÄRKUNG × (1 + pctDmg) × the page's own factor × its sigils
@@ -175,11 +233,7 @@ const A = {
   //
   // Stage 3 is why the split exists. A node that reads "+5 Schaden je Treffer"
   // puts exactly 5 on the number that pops over a skeleton — on every page of
-  // the book, at any depth of the tree, forever. It is uncapped, because a
-  // promise with a hidden ceiling is not a promise. Stage 1's flat pool is
-  // uncapped for the same reason; only the two PERCENT pools are bent by a soft
-  // cap, since a percentage of a growing base compounds and this tree holds
-  // +1400% of it (see CONFIG.caps).
+  // the book, at any depth of the tree, forever.
   dmgBaseFlat:{ stat: "flatBase",   theme: "might",   base: 1.5,   cost: 16, maxRank: 3, ringVal: 0.35,
                 title: "Kernschliff",   blurb: "Vertieft den Kern, aus dem jeder Zauber gerechnet wird — alles danach vervielfacht ihn." },
   dmgBasePct: { stat: "pctBase",    theme: "might",   base: 0.02,  cost: 22, maxRank: 3,
@@ -188,7 +242,7 @@ const A = {
                 title: "Schneide",      blurb: "Legt festen Schaden auf JEDEN Treffer — ganz zuletzt, nach allen Faktoren. Was hier steht, kommt genau so an." },
   dmgPct:     { stat: "pctDmg",     theme: "might",   base: 0.025, cost: 22, maxRank: 3,
                 title: "Zorn",          blurb: "Verstärkt allen Schaden prozentual." },
-  hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3,
+  hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3, ringVal: 0.4,
                 title: "Zähigkeit",     blurb: "Erhöht deine maximalen Lebenspunkte." },
   hpPct:      { stat: "pctHp",      theme: "vigor",   base: 0.04,  cost: 20, maxRank: 3,
                 title: "Lebenskraft",   blurb: "Mehr Lebenspunkte prozentual." },
@@ -281,9 +335,9 @@ function bDrain(L) {
 //   · a page of the book costs ~380 gold (four prelude nodes + the key) — about
 //     three runs, and each further page costs the same, so which spell you go
 //     and fetch first is a real choice and not a queue;
-//   · every % damage pool, every crit pool, every HP pool soft-caps on its own
-//     (CONFIG.caps), so the outward push is rewarded with BREADTH — more pages,
-//     more bodies hit, more keystones — rather than with a bigger single number;
+//   · nothing is capped, so the outward push pays in whatever it buys — but the
+//     tree only HOLDS so much of each stat (see STAT_SCALE), and breadth is
+//     where the pages, the extra bodies hit and the keystones live;
 //   · the whole-body nodes (an extra hop, an extra rock) and the keystones sit
 //     from ring 13 outward, which is where the run-away power would be if the
 //     caps didn't bound it.
@@ -743,6 +797,34 @@ function relaxTree(pos, nodes, edges) {
 }
 
 // One archetype, resolved at a ring: value scaled by the tier, cost by the ring.
+// Turn an authored weight into the value the node actually grants, and round it
+// the way that stat is read: whole numbers where the player counts them, one
+// decimal for a rate, three for a fraction. What comes out of here is final —
+// it is what the tooltip prints, what the ledger sums, and what combat uses.
+function calibrate(stat, raw) {
+  const v = raw * (STAT_SCALE[stat] == null ? 1 : STAT_SCALE[stat]);
+  if (WHOLE_STATS[stat]) return Math.max(1, Math.round(v));
+  if (stat === "regen") return Math.round(v * 10) / 10;
+  return Math.round(v * 1000) / 1000;
+}
+const WHOLE_STATS = {
+  flatDmg: 1, flatBase: 1, flatHp: 1, shieldAmount: 1, shieldMax: 1,
+  freezeFrost: 1, chainLightning: 1, countMeteor: 1,
+};
+
+// What the whole tree holds of each stat: the sum of every rank of every node
+// that grants it. With nothing capped this IS the game's balance — the most a
+// build could ever carry — so the ledger draws its meters against it and
+// tools/stat-supply.mjs prints it for tuning.
+function treeSupply() {
+  const total = {};
+  for (const id in TREE_NODES) {
+    const n = TREE_NODES[id];
+    for (const k in n.effect) total[k] = (total[k] || 0) + n.effect[k] * n.maxRank;
+  }
+  return total;
+}
+
 function archNode(arch, ring, path, maxRankOverride) {
   // `ringVal` scales how fast this archetype grows with depth. The two flat
   // DAMAGE pools use a gentler slope than everything else (see the A table):
@@ -752,17 +834,15 @@ function archNode(arch, ring, path, maxRankOverride) {
   const tier = 1 + VAL_PER_RING * (arch.ringVal == null ? 1 : arch.ringVal) * (ring - 1);
   let effect;
   if (arch.special === "shield") {
-    effect = { shieldChance: Math.min(0.12, 0.05 + 0.004 * ring),
-      shieldAmount: Math.round(8 * tier), shieldMax: Math.round(13 * tier) };
+    effect = {
+      shieldChance: calibrate("shieldChance", Math.min(0.12, 0.05 + 0.004 * ring)),
+      shieldAmount: calibrate("shieldAmount", 8 * tier),
+      shieldMax: calibrate("shieldMax", 13 * tier),
+    };
   } else if (COUNT_STATS[arch.stat]) {
     effect = { [arch.stat]: 1 };
   } else {
-    let v = arch.base * tier;
-    if (arch.stat === "flatDmg" || arch.stat === "flatBase" || arch.stat === "flatHp" ||
-        arch.stat === "freezeFrost") v = Math.max(1, Math.round(v));
-    else if (arch.stat === "regen") v = Math.round(v * 10) / 10;
-    else v = Math.round(v * 1000) / 1000;
-    effect = { [arch.stat]: v };
+    effect = { [arch.stat]: calibrate(arch.stat, arch.base * tier) };
   }
   return { title: arch.title, theme: arch.theme, ring, path, effect, blurb: arch.blurb,
     maxRank: maxRankOverride || arch.maxRank || 3,
@@ -770,8 +850,12 @@ function archNode(arch, ring, path, maxRankOverride) {
 }
 
 // A unique — its value is authored outright, only its price knows about depth.
+// It goes through the same calibration as an archetype, so a keystone keeps the
+// weight it was written with relative to the ordinary nodes around it.
 function uniqueNode(spec, ring, path) {
-  return { title: spec.title, theme: spec.theme, ring, path, effect: spec.effect, blurb: spec.blurb,
+  const effect = {};
+  for (const k in spec.effect) effect[k] = calibrate(k, spec.effect[k]);
+  return { title: spec.title, theme: spec.theme, ring, path, effect, blurb: spec.blurb,
     unique: true, maxRank: 1, growth: 1, cost: ringCost(spec.cost, ring) };
 }
 
@@ -850,23 +934,18 @@ function nodeCost(node, rank) {
 
 // ---------------------------------------------------------------------------
 // Stat model — sum every purchased rank's effect into `state.mods`, then derive
-// the two legacy fields (heroMaxHP / heroDmg) the rest of combat already reads.
-// The summed pools are run through CONFIG.caps so a deep, stacked tree hits
-// smooth diminishing returns instead of snowballing (see CONFIG.caps).
+// the two fields (heroMaxHP / heroDmg) the rest of combat reads.
+//
+// THAT IS THE WHOLE MODEL. There is no soft cap, no hard cap and no diminishing
+// return anywhere in it: what the nodes granted is what the hero carries. A
+// build is bounded by what the tree holds and what the player can afford, and
+// the node values are calibrated for exactly that (see STAT_SCALE).
+//
+// The only clamps left are the two that are arithmetic rather than balance, and
+// they are marked as such below: a probability cannot exceed 1, and a chain hop
+// cannot carry more than it received.
 // ---------------------------------------------------------------------------
-// Soft cap with a linear knee: the first half of the pool (up to `cap`/2) counts
-// at full value, so a few early upgrades land exactly as advertised and feel
-// strong; only the excess beyond the knee suffers diminishing returns, bending
-// the total over to asymptote at `cap` (it can never reach or exceed it). This
-// gives the shape the design wants — early points matter, deep stacking plateaus.
-function softCap(x, cap) {
-  if (cap <= 0) return 0;
-  if (x <= 0) return 0;
-  const knee = cap / 2;
-  if (x <= knee) return x;                 // full value while under the knee
-  const over = x - knee;                   // excess gets diminishing returns
-  return knee + (knee * over) / (over + knee);
-}
+const asChance = (x) => (x > 1 ? 1 : x < 0 ? 0 : x);   // a probability, by definition
 
 // Which summed stat feeds which spell's % damage / signature parameter. Split
 // out so recomputeMods stays a flat read of the pools rather than a per-spell
@@ -876,9 +955,9 @@ const SPELL_DMG_STATS = {
   fireball: "dmgFireball", lightning: "dmgLightning", frost: "dmgFrost",
   meteor: "dmgMeteor", shield: "dmgShield", heal: "dmgHeal",
 };
-// Whole-body counts are bounded by their spell's own maximum (CONFIG.spells),
-// so they pass through uncapped; the shape parameters (cone reach, blast and
-// crater size, chain falloff) are bounded here — see CONFIG.caps.
+// Every one of these passes through exactly as summed. What a page's shape can
+// grow to is set by how many of its nodes exist (see STAT_SCALE), not by a
+// ceiling in the resolver.
 const SPELL_PARAM_STATS = [
   "chainLightning", "countMeteor",
   "freezeFrost", "coneFrost", "aoeFireball", "aoeMeteor", "falloffLightning",
@@ -911,61 +990,40 @@ function recomputeMods() {
       }
     }
   }
-  const caps = CONFIG.caps;
-  // Each page's % damage soft-caps on its own, so dumping a whole arm into one
-  // spell plateaus there instead of making the other five pointless.
   const spellPct = {};
-  for (const id in SPELL_DMG_STATS) spellPct[id] = softCap(sum[SPELL_DMG_STATS[id]], caps.spellPct);
+  for (const id in SPELL_DMG_STATS) spellPct[id] = sum[SPELL_DMG_STATS[id]];
   const spellParam = {};
-  for (const k of SPELL_PARAM_STATS) {
-    spellParam[k] = caps[k] != null ? Math.min(caps[k], sum[k]) : sum[k];
-  }
+  for (const k of SPELL_PARAM_STATS) spellParam[k] = sum[k];
 
   state.mods = {
     // Stage 3 of the damage model: read by spellPower and added to every hit
     // after every multiplier, so what the node printed is what lands.
     flatDmg: sum.flatDmg,
-    critChance: Math.min(caps.critChance, sum.critChance),
-    critMult: 1.5 + Math.min(caps.critMult, sum.critMult),  // base ×1.5 on a crit
+    critChance: asChance(sum.critChance),
+    critMult: 1.5 + sum.critMult,           // base ×1.5 on a crit
     // Armour points shredded off whatever the target wears, before the mitigation
-    // curve is read (see armorReduction in combat.js).
-    armorPen: Math.min(caps.armorPen, sum.armorPen),
+    // curve is read (see armorReduction in combat.js). Shredding past what a body
+    // wears simply leaves it unarmoured — armorReduction floors at zero.
+    armorPen: sum.armorPen,
     spellsUnlocked: unlocked,
     spellPct,
     spellParam,
-    leech: Math.min(caps.leech, sum.leech),
-    regen: Math.min(caps.regen, sum.regen),
-    castHaste: Math.min(caps.castHaste, sum.castHaste),
-    // Gold and pace get soft caps too: Fortuna is a whole arm now, and neither
-    // stat is bounded by anything downstream the way damage is by the caps.
-    walkMult: 1 + softCap(sum.walkMult, caps.walkMult),
-    coinMult: 1 + softCap(sum.coinMult, caps.coinMult),
-    shieldChance: Math.min(caps.shieldChance, sum.shieldChance),
-    shieldAmount: Math.min(caps.shieldAmount, sum.shieldAmount),
-    shieldMax: Math.min(caps.shieldMax, sum.shieldMax),
-    // Uncapped on purpose: only five unique nodes grant thorns at all, so the
-    // sum can never exceed 5 × THORN_VALUE = 50%.
+    leech: sum.leech,
+    regen: sum.regen,
+    castHaste: sum.castHaste,
+    walkMult: 1 + sum.walkMult,
+    coinMult: 1 + sum.coinMult,
+    shieldChance: asChance(sum.shieldChance),
+    shieldAmount: sum.shieldAmount,
+    shieldMax: sum.shieldMax,
     thorns: sum.thorns,
-    spellFailProt: Math.min(caps.spellFailProt, sum.spellFailProt),
+    spellFailProt: asChance(sum.spellFailProt),
   };
-  // HP still soft-caps: it is one pool feeding one number, and a wall of stacked
-  // vitality nodes has to plateau or nothing in the hall can kill you.
-  const flatHp = softCap(sum.flatHp, caps.flatHp);
-  const pctHp = softCap(sum.pctHp, caps.pctHp);
-  // DAMAGE is built in three stages instead (see the A table). The two FLAT
-  // pools pass through untouched — a flat node's printed number is a promise,
-  // and it is kept at any depth — while the two PERCENT pools soft-cap, because
-  // they multiply a base that is itself growing and the tree holds +1400% of
-  // them (see CONFIG.caps).
-  const flatBase = sum.flatBase;
-  const pctBase = softCap(sum.pctBase, caps.pctBase);
-  const pctDmg = softCap(sum.pctDmg, caps.pctDmg);
-  const flatDmg = sum.flatDmg;
-  // The RAW pools and the four derived ones, kept for the ledger screen (see
-  // stats.js). Nothing in combat reads them: they exist so the player can be
-  // shown what a soft cap is currently eating — the difference between what the
-  // tooltips promised and what the hero actually carries — instead of that loss
-  // living only inside this function.
+  const flatHp = sum.flatHp, pctHp = sum.pctHp;
+  const flatBase = sum.flatBase, pctBase = sum.pctBase;
+  const pctDmg = sum.pctDmg, flatDmg = sum.flatDmg;
+  // Kept for the ledger (see stats.js), which shows each pool against what the
+  // whole tree holds of it rather than against a ceiling, since there isn't one.
   state.mods.sums = sum;
   state.mods.derived = { flatHp, pctHp, flatBase, pctBase, pctDmg, flatDmg };
   state.heroMaxHP = Math.round((CONFIG.heroBaseHP + flatHp) * (1 + pctHp));
@@ -1384,7 +1442,11 @@ function attachTreeInteractions() {
   }, { passive: false });
 }
 
+// Counted once — the tree never changes shape at runtime.
+const TREE_SUPPLY = treeSupply();
+
 window.Incanto.skilltree = {
-  TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, recomputeMods, treeBuy, treeZoom, treeReset,
+  TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, TREE_SUPPLY, STAT_SCALE,
+  recomputeMods, treeBuy, treeZoom, treeReset,
   renderUpgradeFull, nodeRevealed, nodeReachable, nodeCost, nodeRank,
 };

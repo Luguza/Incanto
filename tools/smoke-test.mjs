@@ -661,16 +661,25 @@ try {
     "it still pays face value deep in the pool (+" + promise.deepWant + " on a +" +
     Math.round(promise.pool) + " stack, Frostkegel included)");
 
-  //     A stat sitting on its ceiling must SAY so — further nodes of that kind
-  //     are wasted gold, and that is the question a stat screen answers.
-  const flagged = await page.evaluate(() => {
-    state.mods.critChance = CONFIG.caps.critChance;
-    state._structuralDirty = true; render(performance.now());
+  //     Nothing is capped any more, so a meter measures what the player owns
+  //     against what the TREE HOLDS — the only honest denominator left, and the
+  //     one that still answers "is another node of this worth walking to".
+  const meter = await page.evaluate(() => {
+    state._structuralDirty = true; render(performance.now());   // show what was just bought
+    const supply = Incanto.skilltree.TREE_SUPPLY;
     const row = [...document.querySelectorAll(".sv-row")]
-      .find((r) => r.querySelector(".sv-label").textContent.trim() === "Krit-Chance");
-    return { flag: !!row.querySelector(".sv-flag"), bar: !!row.querySelector(".sv-bar.full") };
+      .find((r) => r.querySelector(".sv-label").textContent.trim() === "③ Zuschlag je Treffer");
+    const fill = row.querySelector(".sv-bar > i");
+    return {
+      supply: supply.flatDmg, mine: state.mods.flatDmg,
+      width: parseFloat(fill.style.width),
+      note: row.querySelector(".sv-note").textContent.replace(/\s+/g, " ").trim(),
+    };
   });
-  check(flagged.flag && flagged.bar, "a capped stat is flagged as at its Grenze, meter and all");
+  check(Math.abs(meter.width - (meter.mine / meter.supply) * 100) < 0.2,
+    "a meter is drawn against what the whole tree holds of that stat (" +
+    meter.width.toFixed(1) + "% of " + Math.round(meter.supply) + ")");
+  check(/von .* im ganzen Baum/.test(meter.note), "…and the row says so in words (" + meter.note.slice(0, 48) + "…)");
 
   //     The spell tab: one card per page, in the order the book is BOUND, and
   //     each card's signature figures re-derived from the same mods the

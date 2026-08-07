@@ -161,8 +161,14 @@ function spellPower(id) {
 // Zauberhast nodes shave that wind-up down; the scene renderer reads the SAME
 // number for the charge/puff animation, so the rune never puffs out of step with
 // the bolt it launched.
+// Zaubertempo is a SPEED, so it divides rather than subtracts: +100% tempo
+// halves the wind-up, +200% thirds it. Written the old way (× (1 - haste)) the
+// stat had to be capped below 1 or a deep tree would have produced a zero or
+// negative charge — that ceiling was arithmetic leaking into balance. As a rate
+// it saturates on its own, approaching an instant cast without ever reaching it,
+// and no clamp is needed at any investment.
 function castChargeMs() {
-  return CONFIG.castChargeMs * (1 - (state.mods.castHaste || 0));
+  return CONFIG.castChargeMs / (1 + (state.mods.castHaste || 0));
 }
 
 // Living skeletons nearest the hero first — the order every targeted spell
@@ -289,7 +295,7 @@ const SPELL_RESOLVERS = {
     // that rate — the same rule the meteor's crater follows, and for the same
     // reason: a blast that swallowed every lane at once would erase the lanes.
     const aoe = state.mods.spellParam.aoeFireball || 0;
-    const radius = Math.min(cfg.maxRadiusTiles, cfg.radiusTiles * (1 + aoe));
+    const radius = cfg.radiusTiles * (1 + aoe);
     const laneRadius = cfg.laneRadius * (1 + aoe * 0.5);
     const ordered = spellTargets();
     if (!ordered.length) return 0;             // nothing to throw it at — no cast, no burst
@@ -320,10 +326,13 @@ const SPELL_RESOLVERS = {
   // arrives weaker with every body.
   lightning(ctx) {
     const cfg = CONFIG.spells.lightning;
-    const hops = Math.min(cfg.maxChain, cfg.chain + (state.mods.spellParam.chainLightning || 0));
+    const hops = cfg.chain + (state.mods.spellParam.chainLightning || 0);
     // Leitfähigkeit nodes soften the per-hop falloff, so a long chain arrives at
     // the back of the queue with something left in it.
-    const falloff = Math.min(0.94, cfg.falloff + (state.mods.spellParam.falloffLightning || 0));
+    // Clamped at 1 as ARITHMETIC, not as balance: a hop cannot carry more than it
+    // received, or the arc would grow as it travels. The tree only holds +20% of
+    // Leitfähigkeit, so a fully-invested chain lands at 0.92 and never meets it.
+    const falloff = Math.min(1, cfg.falloff + (state.mods.spellParam.falloffLightning || 0));
     const targets = ctx.pickTargets(hops);
     const points = [];
     let dealt = 0, amount = ctx.power;
@@ -351,13 +360,12 @@ const SPELL_RESOLVERS = {
   // shatter the frozen bodies (see primeActive / applySpellHit).
   frost(ctx) {
     const cfg = CONFIG.spells.frost;
-    const freeze = Math.min(cfg.maxFreezeMs, cfg.freezeMs + (state.mods.spellParam.freezeFrost || 0));
-    // Weiter Atem nodes push the cone further down the hall, up to `maxConeTiles`
-    // — the whole branch is worth four tiles of reach and no more (the drawn cone
-    // reads the same figure off the fx descriptor, so the art always matches the
-    // catch).
-    const reach = Math.min(cfg.maxConeTiles,
-      cfg.coneTiles * (1 + (state.mods.spellParam.coneFrost || 0)));
+    const freeze = cfg.freezeMs + (state.mods.spellParam.freezeFrost || 0);
+    // Weiter Atem nodes push the cone further down the hall. How far it can go is
+    // simply how many of those nodes exist (the whole branch is worth four more
+    // tiles); the drawn cone reads the same figure off the fx descriptor, so the
+    // art always matches the catch.
+    const reach = cfg.coneTiles * (1 + (state.mods.spellParam.coneFrost || 0));
     // The drawn wedge grows to its full length over the first 45% of the cast
     // (see SPELL_FX.cone), so its front passes a body at that fraction of the
     // sweep. Every body is hit — and starts moving — when the ice actually
@@ -405,7 +413,7 @@ const SPELL_RESOLVERS = {
   // spread down the corridor instead of deleting whichever rank is in front.
   meteor(ctx) {
     const cfg = CONFIG.spells.meteor;
-    const count = Math.min(cfg.maxCount, cfg.count + (state.mods.spellParam.countMeteor || 0));
+    const count = cfg.count + (state.mods.spellParam.countMeteor || 0);
     // Einschlagswucht nodes widen the crater. Depth grows at half the rate — a
     // rock that swallowed every lane at once would erase the point of lanes.
     const aoe = state.mods.spellParam.aoeMeteor || 0;

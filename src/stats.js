@@ -14,9 +14,10 @@
 // player's. Every figure here is derived from `state.mods` / `state.heroDmg` the
 // same way combat derives it — the spell rows re-run the very arithmetic the
 // resolvers in spells.js run (radius, hops, freeze, count), so the ledger and
-// the fight can't drift apart. Where a stat is bounded, the row draws its meter
-// against that bound (CONFIG.caps or the spell's own maximum) and says so, since
-// "how close am I to the ceiling" is the question a stat screen exists to answer.
+// the fight can't drift apart. Nothing in the game is capped any more, so a row's
+// meter is drawn against what the whole TREE holds of that stat — "38 of the 329
+// Kernschaden that exist" — which answers the question a cap bar used to answer
+// (is another node of this worth walking to?) without inventing a ceiling.
 //
 // Three tabs rather than one endless scroll — it is read with a thumb:
 //   Held    · the hero's own numbers, grouped attack / defence / sustain
@@ -26,6 +27,9 @@
 // Everything is a tap (`data-act`); no keyboard path exists here and none may be
 // added — see CLAUDE.md.
 // ==============================================================================
+
+// The denominator every meter here is drawn against is the global TREE_SUPPLY
+// that skilltree.js counts off the nodes at load (shared global — see CLAUDE.md).
 
 // ---------------------------------------------------------------------------
 // Formatting — German decimals throughout (comma, non-breaking space before %).
@@ -49,25 +53,20 @@ function svTiles(v, d = 2) { return svNum(v, d) + " Felder"; }
 function svClamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
 // ---------------------------------------------------------------------------
-// Row / meter primitives. A row is a label, a value, an optional meter drawn
-// against the stat's own ceiling, and an optional note under it explaining where
-// the number came from. The meter is the point: a bare "+38 % Schaden" doesn't
-// say whether the next node is worth buying, and a bar three quarters up its cap
-// does.
+// Row / meter primitives. A row is a label, a value, an optional meter showing
+// how much of what EXISTS you already carry, and a note under it explaining
+// where the number came from.
 // ---------------------------------------------------------------------------
-function svMeter(frac, color, capped) {
+function svMeter(frac, color) {
   const w = (svClamp01(frac) * 100).toFixed(1);
-  return `<div class="sv-bar${capped ? " full" : ""}">` +
-    `<i style="width:${w}%;background:${color}"></i></div>`;
+  return `<div class="sv-bar"><i style="width:${w}%;background:${color}"></i></div>`;
 }
 
-// o: { label, value, note, frac, cap, color, tone, flag }
+// o: { label, value, note, frac, color, tone, flag }
 function svRow(o) {
   const color = o.color || "var(--arcane)";
-  const capped = o.cap != null && o.frac != null && o.frac >= 0.999;
-  const meter = o.frac == null ? "" : svMeter(o.frac, color, capped);
-  const flag = capped ? `<span class="sv-flag">Grenze</span>`
-    : o.flag ? `<span class="sv-flag soft">${o.flag}</span>` : "";
+  const meter = o.frac == null ? "" : svMeter(o.frac, color);
+  const flag = o.flag ? `<span class="sv-flag soft">${o.flag}</span>` : "";
   return `<div class="sv-row">
       <div class="sv-line">
         <span class="sv-label">${o.label}</span>
@@ -94,13 +93,23 @@ function svSection(theme, title, subtitle, rows) {
     </section>`;
 }
 
-// The soft-capped pools (flat/percent HP and damage, gold, pace) are summed
-// BEFORE the cap bends them over, so a deep build is quietly losing part of
-// every node it buys. That loss is worth stating out loud rather than hiding in
-// a number that no longer matches the tooltips that were paid for.
-function svSoftNote(raw, effective, fmt) {
-  if (!(raw > effective + 1e-6)) return "";
-  return `gebündelt ${fmt(raw)} — die Sockelgrenze biegt es auf ${fmt(effective)}`;
+// WHAT A METER MEASURES, now that nothing is capped.
+//
+// A bar needs a denominator, and the game no longer has ceilings to offer one.
+// The honest denominator is the tree itself: "you carry 38 of the 329
+// Kernschaden that exist". It answers the same question a cap bar used to — is
+// another node of this worth walking to? — without inventing a limit, and it
+// cannot lie, because it is counted straight off the nodes (see
+// skilltree.treeSupply).
+function svOf(stat, mine, fmt, extra) {
+  const total = TREE_SUPPLY[stat] || 0;
+  const note = total > 0
+    ? `${fmt(mine)} von ${fmt(total)} im ganzen Baum`
+    : "";
+  return {
+    frac: total > 0 ? mine / total : 0,
+    note: [note, extra].filter(Boolean).join(" · "),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +117,6 @@ function svSoftNote(raw, effective, fmt) {
 // ---------------------------------------------------------------------------
 function svHeroTab() {
   const m = state.mods;
-  const caps = CONFIG.caps;
   const sums = m.sums || {};
   const der = m.derived || {};
   const out = [];
@@ -151,20 +159,17 @@ function svHeroTab() {
     }),
     svRow({
       label: "Fester Kern", value: svPlus(der.flatBase || 0, 0), color: TREE_THEMES.might.color,
-      flag: "ohne Grenze",
-      note: "Kernschliff-Zeichen · sie werden von allem danach vervielfacht",
+      ...svOf("flatBase", der.flatBase || 0, (v) => svPlus(v, 0),
+        "Kernschliff-Zeichen · alles danach vervielfacht sie"),
     }),
     svRow({
-      label: "Kern-Härtung", value: svPlusPct(der.pctBase || 0), frac: (der.pctBase || 0) / caps.pctBase,
-      cap: caps.pctBase, color: TREE_THEMES.might.color,
-      note: svSoftNote(sums.pctBase || 0, der.pctBase || 0, (v) => svPlusPct(v)) ||
-        `Sockelgrenze ${svPlusPct(caps.pctBase)}`,
+      label: "Kern-Härtung", value: svPlusPct(der.pctBase || 0), color: TREE_THEMES.might.color,
+      ...svOf("pctBase", der.pctBase || 0, (v) => svPlusPct(v)),
     }),
     svRow({
       label: "② Verstärkung", value: "×" + svNum(1 + (der.pctDmg || 0), 2),
-      frac: (der.pctDmg || 0) / caps.pctDmg, cap: caps.pctDmg, color: TREE_THEMES.might.color,
-      note: svSoftNote(sums.pctDmg || 0, der.pctDmg || 0, (v) => svPlusPct(v)) ||
-        `${svPlusPct(der.pctDmg || 0)} aus Zorn-Zeichen · Sockelgrenze ${svPlusPct(caps.pctDmg)}`,
+      color: TREE_THEMES.might.color,
+      ...svOf("pctDmg", der.pctDmg || 0, (v) => svPlusPct(v), "Zorn-Zeichen"),
     }),
     svRow({
       label: "Grundschaden", value: svNum(state.heroDmg), color: TREE_THEMES.might.color,
@@ -173,22 +178,22 @@ function svHeroTab() {
     }),
     svRow({
       label: "③ Zuschlag je Treffer", value: svPlus(flatLate, 0), tone: "gold",
-      color: TREE_THEMES.might.color, flag: "ohne Grenze",
-      note: flatLate > 0
-        ? `kommt ganz zuletzt auf JEDEN getroffenen Körper — nach deinen Faktoren und nach dem ` +
-          `Seitenfaktor. <b>${svPlus(flatLate, 0)}</b> auf dem Feuerball wie auf dem Frostkegel, ` +
-          `heute und nach hundert weiteren Zeichen. Heilwort und Bannschild bleiben außen vor.`
-        : "Schneide-Zeichen legen hier festen Schaden auf jeden Treffer — und zwar genau den, der auf ihnen steht",
+      color: TREE_THEMES.might.color,
+      ...svOf("flatDmg", flatLate, (v) => svPlus(v, 0),
+        flatLate > 0
+          ? `kommt ganz zuletzt auf JEDEN getroffenen Körper — nach deinen Faktoren und nach dem ` +
+            `Seitenfaktor. <b>${svPlus(flatLate, 0)}</b> auf dem Feuerball wie auf dem Frostkegel. ` +
+            `Heilwort und Bannschild bleiben außen vor.`
+          : "Schneide-Zeichen legen hier festen Schaden auf jeden Treffer — genau den, der auf ihnen steht"),
     }),
     svRow({
-      label: "Krit-Chance", value: svPct(m.critChance), frac: m.critChance / caps.critChance,
-      cap: caps.critChance, color: TREE_THEMES.crit.color,
-      note: `Höchstwert ${svPct(caps.critChance)}`,
+      label: "Krit-Chance", value: svPct(m.critChance), color: TREE_THEMES.crit.color,
+      ...svOf("critChance", m.critChance, (v) => svPct(v),
+        m.critChance >= 1 ? "jeder Treffer schlägt kritisch ein" : ""),
     }),
     svRow({
-      label: "Krit-Schaden", value: "×" + svNum(m.critMult, 2), frac: (m.critMult - 1.5) / caps.critMult,
-      cap: caps.critMult, color: TREE_THEMES.crit.color,
-      note: `Grundwucht ×1,5, aufgestockt bis ×${svNum(1.5 + caps.critMult, 2)}`,
+      label: "Krit-Schaden", value: "×" + svNum(m.critMult, 2), color: TREE_THEMES.crit.color,
+      ...svOf("critMult", m.critMult - 1.5, (v) => svPlusPct(v), "auf die Grundwucht ×1,5"),
     }),
     svRow({
       label: "Erwartete Ausbeute", value: "×" + svNum(critAvg, 2), color: TREE_THEMES.crit.color,
@@ -196,13 +201,13 @@ function svHeroTab() {
         `sind das ${svNum((state.heroDmg + flatLate) * critAvg, 1)} je Körper`,
     }),
     svRow({
-      label: "Rüstungsbruch", value: svNum(m.armorPen, 2) + " Punkte", frac: m.armorPen / caps.armorPen,
-      cap: caps.armorPen, color: TREE_THEMES.might.color, note: penNote,
+      label: "Rüstungsbruch", value: svNum(m.armorPen, 2) + " Punkte", color: TREE_THEMES.might.color,
+      ...svOf("armorPen", m.armorPen, (v) => svNum(v, 2), penNote),
     }),
     svRow({
-      label: "Zaubertempo", value: svPlusPct(m.castHaste), frac: m.castHaste / caps.castHaste,
-      cap: caps.castHaste, color: TREE_THEMES.focus.color,
-      note: `Ladezeit der fertigen Rune ${svNum(CONFIG.castChargeMs)} → <b>${svNum(charge)}&nbsp;ms</b>`,
+      label: "Zaubertempo", value: svPlusPct(m.castHaste), color: TREE_THEMES.focus.color,
+      ...svOf("castHaste", m.castHaste, (v) => svPlusPct(v),
+        `Ladezeit ${svNum(CONFIG.castChargeMs)} ÷ ${svNum(1 + m.castHaste, 2)} = <b>${svNum(charge)}&nbsp;ms</b>`),
     }),
   ]));
 
@@ -216,49 +221,43 @@ function svHeroTab() {
         `derzeit ${svNum(Math.max(0, Math.round(state.heroHP)))} im Vorrat`,
     }),
     svRow({
-      label: "Fester LP-Zuschlag", value: svPlus(der.flatHp || 0, 1), frac: (der.flatHp || 0) / caps.flatHp,
-      cap: caps.flatHp, color: TREE_THEMES.vigor.color,
-      note: svSoftNote(sums.flatHp || 0, der.flatHp || 0, (v) => svPlus(v, 1)) ||
-        `Sockelgrenze ${svPlus(caps.flatHp)}`,
+      label: "Fester LP-Zuschlag", value: svPlus(der.flatHp || 0, 0), color: TREE_THEMES.vigor.color,
+      ...svOf("flatHp", der.flatHp || 0, (v) => svPlus(v, 0)),
     }),
     svRow({
-      label: "Prozentualer LP-Zuschlag", value: svPlusPct(der.pctHp || 0), frac: (der.pctHp || 0) / caps.pctHp,
-      cap: caps.pctHp, color: TREE_THEMES.vigor.color,
-      note: svSoftNote(sums.pctHp || 0, der.pctHp || 0, (v) => svPlusPct(v)) ||
-        `Sockelgrenze ${svPlusPct(caps.pctHp)}`,
+      label: "Prozentualer LP-Zuschlag", value: svPlusPct(der.pctHp || 0), color: TREE_THEMES.vigor.color,
+      ...svOf("pctHp", der.pctHp || 0, (v) => svPlusPct(v)),
     }),
     svRow({
-      label: "Regeneration", value: svNum(m.regen, 1) + " LP/s", frac: m.regen / caps.regen,
-      cap: caps.regen, color: TREE_THEMES.sustain.color,
-      note: m.regen > 0
-        ? `füllt deinen ganzen Vorrat in ${svNum(regenFill, 0)}&nbsp;s — bewusst unter dem Schaden einer vollen Horde`
-        : "noch kein Zeichen der Genesung gesetzt",
+      label: "Regeneration", value: svNum(m.regen, 1) + " LP/s", color: TREE_THEMES.sustain.color,
+      ...svOf("regen", m.regen, (v) => svNum(v, 1) + " LP/s",
+        m.regen > 0
+          ? `füllt deinen ganzen Vorrat in ${svNum(regenFill, 0)}&nbsp;s`
+          : "noch kein Zeichen der Genesung gesetzt"),
     }),
     svRow({
-      label: "Schild-Chance", value: svPct(m.shieldChance), frac: m.shieldChance / caps.shieldChance,
-      cap: caps.shieldChance, color: TREE_THEMES.guard.color,
-      note: "Chance, dass ein Zauber nebenbei einen Schild wirkt",
+      label: "Schild-Chance", value: svPct(m.shieldChance), color: TREE_THEMES.guard.color,
+      ...svOf("shieldChance", m.shieldChance, (v) => svPct(v),
+        "Chance, dass ein Zauber nebenbei einen Schild wirkt"),
     }),
     svRow({
-      label: "Schild je Auslösung", value: svNum(m.shieldAmount), frac: m.shieldAmount / caps.shieldAmount,
-      cap: caps.shieldAmount, color: TREE_THEMES.guard.color,
-      note: `Höchstwert ${svNum(caps.shieldAmount)}`,
+      label: "Schild je Auslösung", value: svNum(m.shieldAmount), color: TREE_THEMES.guard.color,
+      ...svOf("shieldAmount", m.shieldAmount, (v) => svNum(v)),
     }),
     svRow({
-      label: "Schildspeicher", value: svNum(m.shieldMax), frac: m.shieldMax / caps.shieldMax,
-      cap: caps.shieldMax, color: TREE_THEMES.guard.color,
-      note: `derzeit ${svNum(Math.round(state.heroShield || 0))} gebannt · Höchstwert ${svNum(caps.shieldMax)}`,
+      label: "Schildspeicher", value: svNum(m.shieldMax), color: TREE_THEMES.guard.color,
+      ...svOf("shieldMax", m.shieldMax, (v) => svNum(v),
+        `derzeit ${svNum(Math.round(state.heroShield || 0))} gebannt`),
     }),
     svRow({
-      label: "Dornen", value: svPct(m.thorns), frac: m.thorns / (5 * 0.10),
-      cap: 0.5, color: TREE_THEMES.thorn.color,
-      note: "reflektierter Anteil jedes Schlags — nur die fünf Dornenkronen im Baum gewähren ihn, je 10&nbsp;%",
+      label: "Dornen", value: svPct(m.thorns), color: TREE_THEMES.thorn.color,
+      ...svOf("thorns", m.thorns, (v) => svPct(v),
+        "reflektierter Anteil jedes Schlags — nur die fünf Dornenkronen gewähren ihn, je 10&nbsp;%"),
     }),
     svRow({
-      label: "Fehlschutz", value: svPct(m.spellFailProt), frac: m.spellFailProt / caps.spellFailProt,
-      cap: caps.spellFailProt, color: TREE_THEMES.guard.color,
-      note: `Chance, den Rückschlag eines Fehlschlags ganz abzuwehren — er kostet sonst ` +
-        `${svPct(CONFIG.wrongPenaltyFraction)} deiner Lebenspunkte (${svNum(backfire)})`,
+      label: "Fehlschutz", value: svPct(m.spellFailProt), color: TREE_THEMES.guard.color,
+      ...svOf("spellFailProt", m.spellFailProt, (v) => svPct(v),
+        `ein Fehlschlag kostet sonst ${svPct(CONFIG.wrongPenaltyFraction)} deiner Lebenspunkte (${svNum(backfire)})`),
     }),
   ]));
 
@@ -270,28 +269,30 @@ function svHeroTab() {
   const gold = Math.round(CONFIG.goldPerCorrect * rewardMult() * m.coinMult);
   out.push(svSection("fortune", "Zehrung & Gang", "was der Lauf einbringt", [
     svRow({
-      label: "Lebensraub", value: svPct(m.leech), frac: m.leech / caps.leech,
-      cap: caps.leech, color: TREE_THEMES.sustain.color,
-      note: `Anteil des ausgeteilten Zauberschadens, der zu dir zurückkehrt · Höchstwert ${svPct(caps.leech)}`,
+      label: "Lebensraub", value: svPct(m.leech), color: TREE_THEMES.sustain.color,
+      ...svOf("leech", m.leech, (v) => svPct(v),
+        "Anteil des ausgeteilten Zauberschadens, der zu dir zurückkehrt"),
     }),
     svRow({
       label: "Schrittempo", value: svNum(tilesPerSec(pace), 2) + " Felder/s",
-      frac: (m.walkMult - 1) / caps.walkMult, cap: caps.walkMult, color: TREE_THEMES.fortune.color,
-      flag: paceCapped ? "Marschgrenze" : "",
-      note: `${svPlusPct(m.walkMult - 1)} auf den Grundgang von ${svNum(tilesPerSec(paceBase), 2)} Felder/s` +
-        (paceCapped ? ` — der Marsch deckelt bei ${svNum(tilesPerSec(CONFIG.heroWalkMaxPxPerMs), 2)} Felder/s` : ""),
+      color: TREE_THEMES.fortune.color, flag: paceCapped ? "Marschgrenze" : "",
+      ...svOf("walkMult", m.walkMult - 1, (v) => svPlusPct(v),
+        `auf den Grundgang von ${svNum(tilesPerSec(paceBase), 2)} Felder/s` +
+        (paceCapped
+          ? ` — der Marsch selbst deckelt bei ${svNum(tilesPerSec(CONFIG.heroWalkMaxPxPerMs), 2)} Felder/s, ` +
+            `sonst könnte ein einzelnes Bild über die Marke des nächsten Lagers tragen`
+          : "")),
     }),
     svRow({
-      label: "Goldsegen", value: svPlusPct(m.coinMult - 1), frac: (m.coinMult - 1) / caps.coinMult,
-      cap: caps.coinMult, color: TREE_THEMES.fortune.color,
-      note: svSoftNote(sums.coinMult || 0, m.coinMult - 1, (v) => svPlusPct(v)) ||
-        `Sockelgrenze ${svPlusPct(caps.coinMult)}`,
+      label: "Goldsegen", value: svPlusPct(m.coinMult - 1), color: TREE_THEMES.fortune.color,
+      ...svOf("coinMult", m.coinMult - 1, (v) => svPlusPct(v)),
     }),
     svRow({
-      label: "Belohnungsbank", value: "×" + svNum(rewardMult(), 1),
-      frac: rewardMult() / CONFIG.rewardMultMax, cap: CONFIG.rewardMultMax, color: "var(--gold)",
-      note: `${svNum(state.rewardKills || 0)} erschlagene Skelette gebankt (${svPlusPct(CONFIG.rewardPerKill)} je Stück) — ` +
-        `wird erst beim Abschluss eines ganzen Quiz eingelöst`,
+      label: "Belohnungsbank", value: "×" + svNum(rewardMult(), 1), color: "var(--gold)",
+      frac: rewardMult() / CONFIG.rewardMultMax,
+      note: `${svNum(state.rewardKills || 0)} erschlagene Skelette gebankt (${svPlusPct(CONFIG.rewardPerKill)} je Stück, ` +
+        `bis ×${svNum(CONFIG.rewardMultMax)}) — wird erst beim Abschluss eines ganzen Quiz eingelöst. ` +
+        `Das ist kein Zeichen im Baum, sondern der Kerbholz-Bonus fürs Kämpfen.`,
     }),
     svRow({
       label: "Gold je richtige Antwort", value: svNum(gold), tone: "gold", color: "var(--gold)",
@@ -323,25 +324,27 @@ function svUnlockNode(spellId) {
 // spell takes before crits and armour.
 function svSpellDetail(spell, power) {
   const m = state.mods;
-  const caps = CONFIG.caps;
   const cfg = CONFIG.spells[spell.id];
   const p = m.spellParam || {};
   const c = TREE_THEMES[spell.theme].color;
   const rows = [];
+  // What the shape would be if this page's whole branch were bought out — the
+  // honest "how far can this go", counted off the nodes rather than declared.
+  const full = (stat) => TREE_SUPPLY[stat] || 0;
 
   if (spell.id === "fireball") {
     const aoe = p.aoeFireball || 0;
-    const radius = Math.min(cfg.maxRadiusTiles, cfg.radiusTiles * (1 + aoe));
+    const radius = cfg.radiusTiles * (1 + aoe);
     const laneRadius = cfg.laneRadius * (1 + aoe * 0.5);
     rows.push(
       svRow({
-        label: "Explosionsradius", value: svTiles(radius), frac: radius / cfg.maxRadiusTiles,
-        cap: cfg.maxRadiusTiles, color: c,
-        note: `${svTiles(cfg.radiusTiles)} Grundweite · ${svPlusPct(aoe)} aus dem Glutkern · Ende bei ${svTiles(cfg.maxRadiusTiles)}`,
+        label: "Explosionsradius", value: svTiles(radius), color: c,
+        ...svOf("aoeFireball", aoe, (v) => svPlusPct(v),
+          `${svTiles(cfg.radiusTiles)} Grundweite · der ganze Glutkern trüge sie auf ` +
+          `${svTiles(cfg.radiusTiles * (1 + full("aoeFireball")))}`),
       }),
       svRow({
-        label: "Breite über die Bahnen", value: "±" + svNum(laneRadius, 2),
-        frac: aoe > 0 ? (aoe * 0.5) / (caps.aoeFireball * 0.5) : 0, cap: caps.aoeFireball, color: c,
+        label: "Breite über die Bahnen", value: "±" + svNum(laneRadius, 2), color: c,
         note: `von ${CONFIG.enemyLanes} Bahnen — quer wächst die Glut nur halb so schnell wie längs`,
       }),
       svRow({
@@ -350,19 +353,20 @@ function svSpellDetail(spell, power) {
       }),
     );
   } else if (spell.id === "lightning") {
-    const hops = Math.min(cfg.maxChain, cfg.chain + (p.chainLightning || 0));
-    const falloff = Math.min(0.94, cfg.falloff + (p.falloffLightning || 0));
+    const hops = cfg.chain + (p.chainLightning || 0);
+    const falloff = Math.min(1, cfg.falloff + (p.falloffLightning || 0));
     let chainTotal = 0, amount = power;
     for (let i = 0; i < hops; i++) { chainTotal += amount; amount *= falloff; }
     rows.push(
       svRow({
-        label: "Sprünge", value: svNum(hops) + " Körper", frac: hops / cfg.maxChain,
-        cap: cfg.maxChain, color: c,
-        note: `${svNum(cfg.chain)} vom Bogen selbst · ${svPlus(p.chainLightning || 0)} aus dem Baum · Ende bei ${svNum(cfg.maxChain)}`,
+        label: "Sprünge", value: svNum(hops) + " Körper", color: c,
+        ...svOf("chainLightning", p.chainLightning || 0, (v) => svPlus(v, 0),
+          `${svNum(cfg.chain)} vom Bogen selbst · der Baum hält ${svNum(full("chainLightning"))} weitere`),
       }),
       svRow({
-        label: "Sprungkraft", value: svPct(falloff), frac: falloff / 0.94, cap: 0.94, color: c,
-        note: `so viel trägt jeder Sprung vom vorigen weiter — ${svPct(cfg.falloff)} roh · ${svPlusPct(p.falloffLightning || 0)} aus der Leitfähigkeit`,
+        label: "Sprungkraft", value: svPct(falloff), color: c,
+        ...svOf("falloffLightning", p.falloffLightning || 0, (v) => svPlusPct(v),
+          `so viel trägt jeder Sprung vom vorigen weiter — ${svPct(cfg.falloff)} roh`),
       }),
       svRow({
         label: "Letzter Sprung", value: svNum(power * Math.pow(falloff, hops - 1), 1), color: c,
@@ -374,19 +378,19 @@ function svSpellDetail(spell, power) {
       }),
     );
   } else if (spell.id === "frost") {
-    const freeze = Math.min(cfg.maxFreezeMs, cfg.freezeMs + (p.freezeFrost || 0));
-    const reach = Math.min(cfg.maxConeTiles, cfg.coneTiles * (1 + (p.coneFrost || 0)));
+    const freeze = cfg.freezeMs + (p.freezeFrost || 0);
+    const reach = cfg.coneTiles * (1 + (p.coneFrost || 0));
     rows.push(
       svRow({
-        label: "Kegelweite", value: svTiles(reach, 2), frac: reach / cfg.maxConeTiles,
-        cap: cfg.maxConeTiles, color: c,
-        note: `${svTiles(cfg.coneTiles, 0)} Grundreichweite · ${svPlusPct(p.coneFrost || 0)} aus Weitem Atem · Ende bei ${svTiles(cfg.maxConeTiles, 0)}`,
+        label: "Kegelweite", value: svTiles(reach, 2), color: c,
+        ...svOf("coneFrost", p.coneFrost || 0, (v) => svPlusPct(v),
+          `${svTiles(cfg.coneTiles, 0)} Grundreichweite · Weiter Atem trüge sie ganz auf ` +
+          `${svTiles(cfg.coneTiles * (1 + full("coneFrost")), 0)}`),
       }),
       svRow({
-        label: "Frostdauer", value: svSec(freeze), frac: freeze / cfg.maxFreezeMs,
-        cap: cfg.maxFreezeMs, color: c,
-        note: `${svSec(cfg.freezeMs)} roh · ${svPlus((p.freezeFrost || 0) / 1000, 1)}&nbsp;s aus dem Baum · ` +
-          `der Schwung des Getroffenen setzt erst nach dem Auftauen wieder ein`,
+        label: "Frostdauer", value: svSec(freeze), color: c,
+        ...svOf("freezeFrost", p.freezeFrost || 0, (v) => svPlus(v / 1000, 1) + "&nbsp;s",
+          `${svSec(cfg.freezeMs)} roh · der Schwung des Getroffenen setzt erst nach dem Auftauen wieder ein`),
       }),
       svRow({
         label: "Rückstoß", value: svTiles(cfg.pushTiles, 1), color: c,
@@ -399,20 +403,20 @@ function svSpellDetail(spell, power) {
       }),
     );
   } else if (spell.id === "meteor") {
-    const count = Math.min(cfg.maxCount, cfg.count + (p.countMeteor || 0));
+    const count = cfg.count + (p.countMeteor || 0);
     const aoe = p.aoeMeteor || 0;
     const radius = cfg.radiusTiles * (1 + aoe);
     const laneRadius = cfg.laneRadius * (1 + aoe * 0.5);
     rows.push(
       svRow({
-        label: "Brocken je Zauber", value: svNum(count), frac: count / cfg.maxCount,
-        cap: cfg.maxCount, color: c,
-        note: `${svNum(cfg.count)} vom Schauer selbst · ${svPlus(p.countMeteor || 0)} aus dem Baum · Ende bei ${svNum(cfg.maxCount)}`,
+        label: "Brocken je Zauber", value: svNum(count), color: c,
+        ...svOf("countMeteor", p.countMeteor || 0, (v) => svPlus(v, 0),
+          `${svNum(cfg.count)} vom Schauer selbst · der Baum hält ${svNum(full("countMeteor"))} weitere`),
       }),
       svRow({
-        label: "Einschlagradius", value: svTiles(radius), frac: aoe / caps.aoeMeteor,
-        cap: caps.aoeMeteor, color: c,
-        note: `${svTiles(cfg.radiusTiles)} Grundkrater · ${svPlusPct(aoe)} aus der Einschlagswucht · quer ±${svNum(laneRadius, 2)} Bahnen`,
+        label: "Einschlagradius", value: svTiles(radius), color: c,
+        ...svOf("aoeMeteor", aoe, (v) => svPlusPct(v),
+          `${svTiles(cfg.radiusTiles)} Grundkrater · quer ±${svNum(laneRadius, 2)} Bahnen`),
       }),
       svRow({
         label: "Ausbeute des Schauers", value: svNum(power * count, 1), color: c,
@@ -435,7 +439,7 @@ function svSpellDetail(spell, power) {
       }),
       svRow({
         label: "Anteil deines Vorrats", value: svPct(amount / Math.max(1, state.heroMaxHP)),
-        frac: amount / Math.max(1, state.heroMaxHP), color: c,
+        frac: svClamp01(amount / Math.max(1, state.heroMaxHP)), color: c,
         note: `ein Zauber deckt so viel wie dieser Teil deiner ${svNum(state.heroMaxHP)} Lebenspunkte`,
       }),
     );
@@ -449,7 +453,7 @@ function svSpellDetail(spell, power) {
       }),
       svRow({
         label: "Anteil deines Vorrats", value: svPct(amount / Math.max(1, state.heroMaxHP)),
-        frac: amount / Math.max(1, state.heroMaxHP), color: c,
+        frac: svClamp01(amount / Math.max(1, state.heroMaxHP)), color: c,
         note: `von ${svNum(state.heroMaxHP)} Lebenspunkten — der feste Anteil hält das Wort auch auf einem großen Helden lohnend`,
       }),
     );
@@ -466,7 +470,6 @@ function svSpellCard(spell) {
   const slot = bookSlot(spell.id);
   const power = spellPower(spell.id);
   const pct = (m.spellPct && m.spellPct[spell.id]) || 0;
-  const rawPct = (m.sums && m.sums[spell.dmgKey]) || 0;
   // The headline number is what the page DOES: damage for the four offensive
   // pages, the pool it banks for the two support ones.
   const head = spell.id === "shield" ? { label: "Absorption je Zauber", value: svNum(Math.max(1, Math.round(power))) }
@@ -482,10 +485,8 @@ function svSpellCard(spell) {
 
   const rows = [
     svRow({
-      label: "Zeichenbonus dieser Seite", value: svPlusPct(pct), frac: pct / CONFIG.caps.spellPct,
-      cap: CONFIG.caps.spellPct, color: theme.color,
-      note: svSoftNote(rawPct, pct, (v) => svPlusPct(v)) ||
-        `eigene Sockelgrenze ${svPlusPct(CONFIG.caps.spellPct)} — jede Seite deckelt für sich`,
+      label: "Zeichenbonus dieser Seite", value: svPlusPct(pct), color: theme.color,
+      ...svOf(spell.dmgKey, pct, (v) => svPlusPct(v), "aus den Zeichen dieser Seite"),
     }),
     svRow({
       label: "Zauberkraft", value: svNum(power, 1), color: theme.color,
