@@ -377,6 +377,13 @@ const CONFIG = {
     aoeMeteor: 1.0,        // meteor crater size, as a fraction of radiusTiles
     falloffLightning: 0.2, // added to lightning's per-hop falloff (0.72 → at most 0.92)
   },
+  // Testing tools on the upgrade screen (see skilltree.js). A slider in the tree
+  // topbar arms them; while it is off nothing they touch can be reached, so the
+  // ordinary game is unchanged. `goldMax` bounds what the tappable purse accepts
+  // — high enough to buy anything, low enough that the pill still fits a phone.
+  dev: {
+    goldMax: 999999,
+  },
   circleCenter: { x: 300, y: 300 },
   circleRadius: 215,
   runeRadius: 48,

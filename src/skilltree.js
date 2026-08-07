@@ -1154,6 +1154,99 @@ function renderTreeInfo() {
     ${buy}</div>`;
 }
 
+// ---------------------------------------------------------------------------
+// Dev tools — the slider in the tree topbar arms two testing shortcuts: wipe
+// every purchased rank, and type an amount straight into the purse, so a build
+// can be tried without first playing the runs that would pay for it. While the
+// slider is off none of it is reachable (every handler bails on state.devMode),
+// so all a player ever sees is the slider itself. The flag is persisted, so a
+// tester keeps the tools armed across reloads.
+// ---------------------------------------------------------------------------
+let devResetArmed = false;   // the wipe asks once first — thumb-sized button, no undo
+
+function devSwitchMarkup() {
+  const on = !!state.devMode;
+  return `<button class="dev-switch${on ? " on" : ""}" role="switch" aria-checked="${on}" ` +
+    `data-act="devToggle" aria-label="Testmodus"><span class="dev-switch-text">Dev</span>` +
+    `<span class="dev-switch-track"><span class="dev-switch-knob"></span></span></button>`;
+}
+
+// The purse. Plain text normally; a button that opens the amount for editing
+// once the dev slider is on.
+function treeGoldMarkup() {
+  const coin = `<span class="coin">◈</span> ${state.gold}`;
+  return state.devMode
+    ? `<button class="tree-gold dev" data-act="devEditGold" aria-label="Gold setzen">${coin}</button>`
+    : `<div class="tree-gold">${coin}</div>`;
+}
+
+// The row under the topbar, present only while the tools are armed.
+function devBarMarkup() {
+  if (!state.devMode) return "";
+  return `<div class="dev-bar">
+    <button class="dev-btn${devResetArmed ? " armed" : ""}" data-act="devResetTree">
+      ${devResetArmed ? "Wirklich? Nochmal tippen" : "Baum zurücksetzen"}</button>
+    <span class="dev-note">Gold antippen zum Setzen</span>
+  </div>`;
+}
+
+function devToggle() {
+  state.devMode = !state.devMode;
+  devResetArmed = false;
+  saveProgress();
+  state._structuralDirty = true;
+}
+
+// Wipe every purchased rank. Gold is NOT refunded — the purse is editable right
+// next to the button, so handing coins back would only get in the way.
+function devResetTree() {
+  if (!state.devMode) return;
+  if (!devResetArmed) { devResetArmed = true; state._structuralDirty = true; return; }
+  devResetArmed = false;
+  state.nodeRanks = {};
+  // Every spell but the starter is sealed again along with the node that opened
+  // it, so the book has to be put back on a page the hero can still cast.
+  state.activeSpell = STARTER_SPELL;
+  const slot = (typeof bookSlot === "function") ? bookSlot(STARTER_SPELL) : -1;
+  if (slot >= 0) state.bookSpread = Math.floor(slot / 2);
+  recomputeMods();
+  state.heroHP = Math.min(state.heroHP, state.heroMaxHP);
+  if (state.tree) state.tree.selected = null;
+  saveProgress();
+  state._structuralDirty = true;
+}
+
+// Tap the purse: a small field with a ✓ drops out of it. It hangs BELOW the
+// topbar rather than replacing the pill, so a six-digit amount can't squeeze
+// the title and the Buch button out of a phone-width row. Patched into the DOM
+// instead of re-rendered, so the field keeps focus (and the phone keyboard
+// stays up) while the amount is typed. There is deliberately no Enter handling
+// — the confirm is a tap, like everything else (see CLAUDE.md). Tapping the
+// purse again puts the field away.
+function devEditGold() {
+  if (!state.devMode) return;
+  const slot = document.getElementById("tree-gold-slot");
+  if (!slot) return;
+  const open = slot.querySelector(".dev-gold-pop");
+  if (open) { open.remove(); return; }
+  slot.insertAdjacentHTML("beforeend",
+    `<div class="dev-gold-pop"><span class="coin">◈</span>` +
+    `<input class="dev-gold-input" type="number" inputmode="numeric" min="0" ` +
+    `max="${CONFIG.dev.goldMax}" value="${state.gold}">` +
+    `<button class="dev-gold-ok" data-act="devGoldCommit" aria-label="Gold übernehmen">✓</button></div>`);
+  const input = slot.querySelector(".dev-gold-input");
+  if (input) { input.focus(); input.select(); }
+}
+
+function devGoldCommit() {
+  const input = document.querySelector(".dev-gold-input");
+  if (!input) return;
+  const n = Math.floor(Number(input.value));
+  if (Number.isFinite(n)) state.gold = treeClamp(n, 0, CONFIG.dev.goldMax);
+  saveProgress();
+  state._structuralDirty = true;   // redraws the purse and re-prices every Kaufen button
+}
+
 function selRingSvg() {
   const id = state.tree && state.tree.selected;
   const p = id && NODE_POS[id] ? NODE_POS[id] : null;
@@ -1180,6 +1273,7 @@ function renderUpgradeFull() {
     <div class="screen tree-screen">
       <div class="tree-topbar">
         <div class="tree-title">Runenbaum</div>
+        ${devSwitchMarkup()}
         <!-- The tree opens pages; this is where they're bound into an order
              (see book-order.js). -->
         <button class="bo-open" data-act="openBookOrder">
@@ -1188,8 +1282,9 @@ function renderUpgradeFull() {
             <path class="bo-open-spine" d="M12 3.4v11.4"/>
           </svg>Buch
         </button>
-        <div class="tree-gold"><span class="coin">◈</span> ${state.gold}</div>
+        <div id="tree-gold-slot">${treeGoldMarkup()}</div>
       </div>
+      ${devBarMarkup()}
       <svg class="tree-canvas" id="tree-canvas" viewBox="0 0 900 900" preserveAspectRatio="xMidYMid meet">
         <g id="tree-cam" transform="${cam}">
           <g class="tree-edges">${edges}</g>
@@ -1323,4 +1418,5 @@ function attachTreeInteractions() {
 window.Incanto.skilltree = {
   TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, recomputeMods, treeBuy, treeZoom, treeReset,
   renderUpgradeFull, nodeRevealed, nodeReachable, nodeCost, nodeRank,
+  devToggle, devResetTree, devEditGold, devGoldCommit,
 };
