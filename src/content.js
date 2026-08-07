@@ -26,6 +26,24 @@
 // below carries. Everything beyond the 486 is extra the game already had (more
 // animals, body parts, colours, numbers); it is kept, not pruned.
 //
+// …and the practical layer on top of it
+// -------------------------------------
+// A syllabus list is not the same as what people say. So the pool also carries
+// everyday phrases ("come stai?", "quanto costa?", "mi dispiace"), the discourse
+// glue that joins spoken sentences (allora, quindi, però, magari, purtroppo),
+// the high-frequency verbs the A1 list skips (chiedere, credere, riuscire,
+// conoscere) and the abstractions that fill ordinary talk (la gente, la volta,
+// il modo). These were checked against the *Nuovo vocabolario di base della
+// lingua italiana* (De Mauro & Chiari 2016) through dizionario.internazionale.it:
+// all but a few carry the FO mark — the ~2000 lemmas that make up 86% of
+// everything written or spoken in Italian.
+//
+// Two things to respect when adding a phrase. `normAnswer` in quiz.js turns an
+// apostrophe into a space, so a German gloss must not contain one ("wie geht es
+// dir?", never "wie geht's?") or nobody can type it. And the rune circle draws
+// each word as one un-wrapped SVG <text> in a 48px-radius bubble, so anything
+// much past ~16 characters starts to hang over the edge.
+//
 // To re-check coverage after editing, diff the `it` fields (minus their article)
 // against that page's numbered list.
 // ---------------------------------------------------------------------------
@@ -52,6 +70,28 @@ const WORD_POOL = [
   { it: "aiuto", de: "Hilfe" },
   { it: "cin cin", de: "Prost" },
   { it: "salute", de: "Gesundheit" },
+
+  // Everyday phrases — the chunks a beginner actually says out loud
+  { it: "come stai?", de: "wie geht es dir?" },
+  { it: "come va?", de: "wie läuft es?" },
+  { it: "va bene", de: "in Ordnung" },
+  { it: "d'accordo", de: "einverstanden" },
+  { it: "mi dispiace", de: "es tut mir leid" },
+  { it: "non capisco", de: "ich verstehe nicht" },
+  { it: "non lo so", de: "ich weiß es nicht" },
+  { it: "quanto costa?", de: "was kostet das?" },
+  { it: "quanti anni hai?", de: "wie alt bist du?" },
+  { it: "mi chiamo", de: "ich heiße" },
+  { it: "di niente", de: "keine Ursache" },
+  { it: "a presto", de: "bis bald" },
+  { it: "a domani", de: "bis morgen" },
+  { it: "buon appetito", de: "guten Appetit" },
+  { it: "buona fortuna", de: "viel Glück" },
+  { it: "che peccato", de: "wie schade" },
+  { it: "posso?", de: "darf ich?" },
+  { it: "vorrei", de: "ich hätte gern" },
+  { it: "ecco", de: "hier ist" },
+  { it: "basta", de: "genug" },
 
   // People & family
   { it: "la famiglia", de: "die Familie" },
@@ -449,6 +489,28 @@ const WORD_POOL = [
   { it: "vedersi", de: "sich sehen" },
   { it: "piacere", de: "gefallen" },
 
+  // More of the verbs that carry ordinary talk
+  { it: "chiedere", de: "bitten" },
+  { it: "credere", de: "glauben" },
+  { it: "sperare", de: "hoffen" },
+  { it: "ricordare", de: "erinnern" },
+  { it: "dimenticare", de: "vergessen" },
+  { it: "provare", de: "versuchen" },
+  { it: "usare", de: "benutzen" },
+  { it: "aiutare", de: "helfen" },
+  { it: "lasciare", de: "lassen" },
+  { it: "tenere", de: "halten" },
+  { it: "perdere", de: "verlieren" },
+  { it: "vincere", de: "gewinnen" },
+  { it: "succedere", de: "geschehen" },
+  { it: "funzionare", de: "funktionieren" },
+  { it: "diventare", de: "werden" },
+  { it: "sembrare", de: "scheinen" },
+  { it: "restare", de: "übrig bleiben" },
+  { it: "servire", de: "dienen" },
+  { it: "riuscire", de: "schaffen" },
+  { it: "conoscere", de: "kennen" },
+
   // Places
   { it: "la città", de: "die Stadt" },
   { it: "il paese", de: "das Land" },
@@ -580,6 +642,24 @@ const WORD_POOL = [
   { it: "l'appuntamento", de: "der Termin" },
   { it: "il momento", de: "der Moment" },
 
+  // Everyday abstractions
+  { it: "la gente", de: "die Leute" },
+  { it: "la volta", de: "das Mal" },
+  { it: "il modo", de: "die Art" },
+  { it: "la parte", de: "der Teil" },
+  { it: "il fatto", de: "die Tatsache" },
+  { it: "il caso", de: "der Fall" },
+  { it: "il motivo", de: "der Grund" },
+  { it: "il bisogno", de: "das Bedürfnis" },
+  { it: "il pezzo", de: "das Stück" },
+  { it: "il gruppo", de: "die Gruppe" },
+  { it: "il punto", de: "der Punkt" },
+  { it: "la ragione", de: "das Recht" },
+  { it: "l'esempio", de: "das Beispiel" },
+  { it: "la paura", de: "die Angst" },
+  { it: "la fretta", de: "die Eile" },
+  { it: "la fine", de: "das Ende" },
+
   // Question & function words
   { it: "chi", de: "wer" },
   { it: "che", de: "was" },
@@ -649,6 +729,30 @@ const WORD_POOL = [
   { it: "ci", de: "uns" },
   { it: "nessuno", de: "niemand" },
   { it: "quale", de: "welcher" },
+
+  // Discourse glue — the little words that join spoken sentences up
+  { it: "allora", de: "also" },
+  { it: "quindi", de: "deshalb" },
+  { it: "però", de: "jedoch" },
+  { it: "invece", de: "stattdessen" },
+  { it: "anzi", de: "im Gegenteil" },
+  { it: "almeno", de: "wenigstens" },
+  { it: "soprattutto", de: "vor allem" },
+  { it: "abbastanza", de: "ziemlich" },
+  { it: "circa", de: "ungefähr" },
+  { it: "insomma", de: "kurz gesagt" },
+  { it: "comunque", de: "jedenfalls" },
+  { it: "naturalmente", de: "natürlich" },
+  { it: "volentieri", de: "gerne" },
+  { it: "purtroppo", de: "leider" },
+  { it: "davvero", de: "wirklich" },
+  { it: "subito", de: "sofort" },
+  { it: "insieme", de: "zusammen" },
+  { it: "ancora", de: "noch" },
+  { it: "già", de: "schon" },
+  { it: "appena", de: "gerade eben" },
+  { it: "forse", de: "vielleicht" },
+  { it: "magari", de: "hoffentlich" },
 ];
 
 // ---------------------------------------------------------------------------

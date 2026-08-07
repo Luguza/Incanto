@@ -461,13 +461,24 @@ function renderCombatFull() {
     )
     .join("");
 
+  // A rune's word is one un-wrapped SVG <text> centred in a fixed bubble, so a
+  // long one (die Staatsangehörigkeit, quanti anni hai?) would hang over the
+  // edge at the stylesheet's 19px. Shrink the type just enough to keep it
+  // inside: at this font a glyph averages ~0.38em, so ~215/len px fits the
+  // ~92px of usable width. Floored at 10px so it stays readable on a phone,
+  // and never enlarged past the CSS size, which short words keep.
+  const runeTextStyle = (word) => {
+    const size = Math.min(19, Math.max(10, 215 / word.length));
+    return size < 19 ? ` style="font-size:${size.toFixed(1)}px"` : "";
+  };
+
   const runesHtml = state.runes
     .map(
       (r) => `
     <g class="rune ${r.matchState}" data-id="${r.id}">
       <circle class="halo" cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius + 7}" filter="url(#glow)"></circle>
       <circle class="body" cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius}"></circle>
-      <text x="${r.x}" y="${r.y}">${r.word}</text>
+      <text x="${r.x}" y="${r.y}"${runeTextStyle(r.word)}>${r.word}</text>
     </g>`
     )
     .join("");
