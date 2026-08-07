@@ -350,32 +350,58 @@ const CONFIG = {
   // curve under it. `node tools/stat-supply.mjs` prints target vs. achieved
   // total next to what a build carries at 1k–100k gold — run it after any edit
   // here.
+  // What the WHOLE skill tree costs — every rank of every node, end to end.
+  // Each rank's price is a share of this, weighted by how deep the node sits,
+  // how much of a node it is, and how many of its ranks you already own (see
+  // skilltree.js applyTreeGold). Nothing is priced in gold by hand.
+  //
+  // It is set against the INCOME so that an endgame player really does walk most
+  // of the tree and really does arrive at the ceilings in treeTotals — which is
+  // what makes those ceilings mean something. A quiz session pays roughly
+  // goldPerCorrect × the banked multiplier × the gold bonus, over ten questions
+  // and two conjugation drills: about 350 gold early, ~1.000 in the middle and
+  // ~2.800 once Fortuna is walked. Reaching 90 % of the NODES costs ~300.000
+  // (the cheap ranks go first, so the last tenth of the gold buys keystones),
+  // which is on the order of 250–300 finished sessions.
+  //
+  // Lower it and the tree opens faster; raise it and every total below becomes a
+  // more distant horizon. Nothing else needs touching either way — the prices
+  // redistribute themselves.
+  treeGold: 400000,
   treeTotals: {
+    // Every figure is what the WHOLE tree holds, and roughly 1/0,9 of what an
+    // endgame build actually ends up carrying. Read them as "this is the most
+    // this stat is ever worth", because now that is what they are.
+    //
     // — damage, in the three stages it is built in (see skilltree.js)
-    flatBase: 330,        // ① +330 Kernschaden, before any factor
-    pctBase: 4.1,         // ① +410 % on that core
-    pctDmg: 17.4,         // ② ×18,4 all told
-    flatDmg: 1300,        // ③ +1.300 on every single body hit, after everything
+    flatBase: 150,        // ① +150 Kernschaden, before any factor
+    pctBase: 0.4,         // ① +40 % on that core
+    pctDmg: 0.6,          // ② ×1,6 all told
+    flatDmg: 250,         // ③ +250 on every single body hit, after everything
+    // …which lands an endgame Feuerball around 700 per body: a skeleton (80 LP)
+    // and a brute (160) both die to one, which is what an endgame ought to feel
+    // like. The two flat stages cannot go much below this: they are counted in
+    // whole points, and 143 / 231 ranks of the tree grant them, so a smaller
+    // total would only mean every one of those nodes printing "+1".
     // — the hero
-    flatHp: 6000,
-    pctHp: 11,
-    critChance: 13,       // a probability still stops at 100 %: the tree holds
-    critMult: 43,         //   more crit than one can be spent on, deliberately,
-                          //   so crit is worth walking to from several arms
-    armorPen: 11.3,       // the brute wears 5, so a committed build strips it
-    leech: 11.4,
-    regen: 650,           // LP/s
-    castHaste: 4.15,      // as a rate: 420 ms ÷ (1 + haste)
-    walkMult: 9.6,
-    coinMult: 11,
-    shieldChance: 11.7,
-    shieldAmount: 2420,
-    shieldMax: 4020,
-    spellFailProt: 4.5,
+    flatHp: 600,          // with pctHp: ~1.240 LP at the end, ~25 skeleton blows
+    pctHp: 1,
+    critChance: 0.6,      // 60 % — and it is a probability, so it could not be more
+    critMult: 1.5,        // a crit lands at ×3,0
+    armorPen: 5,          // exactly the brute's plate: commit fully and it is gone
+    leech: 0.4,
+    regen: 25,            // LP/s — ~2 % of the endgame pool per second
+    castHaste: 1.2,       // as a rate: 420 ms ÷ 2,2 ≈ 190 ms
+    walkMult: 1,          // pace 0,057 px/ms, still under the march's own 0,12
+    coinMult: 2.5,
+    shieldChance: 0.5,
+    shieldAmount: 350,
+    shieldMax: 800,       // a banked shield worth about half the endgame pool
+    spellFailProt: 0.6,
     thorns: 0.5,          // five Dornenkronen, 10 % each — the one already-exact total
-    // — per page of the book
-    dmgFireball: 8, dmgLightning: 8, dmgFrost: 8,
-    dmgMeteor: 8, dmgShield: 8, dmgHeal: 8,
+    // — per page of the book: a page's own sigils are worth ~+50 % to it
+    dmgFireball: 0.5, dmgLightning: 0.5, dmgFrost: 0.5,
+    dmgMeteor: 0.5, dmgShield: 0.5, dmgHeal: 0.5,
     // — page SHAPE, where the totals are the shapes' own design limits
     aoeFireball: 1.5,     // blast radius ×2,5 → 3,25 Felder
     aoeMeteor: 1.5,       // crater ×2,5

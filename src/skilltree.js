@@ -515,7 +515,12 @@ const ARMS = [
 // looking drafted.
 // ---------------------------------------------------------------------------
 function ringRadius(ring) { return HOLE + (ring - 1) * NODE_STEP; }
-function ringCost(base, ring) { return Math.max(5, Math.round(base * Math.pow(ring, COST_RING_POW))); }
+// A node's price WEIGHT — not gold yet. Two things make one node dearer than
+// another: how deep it sits (ring^COST_RING_POW) and how much of a node it is
+// (the authored base — a keystone is worth several ordinary nodes). The weights
+// are turned into gold in one pass once the tree is finished, so that the whole
+// tree comes to exactly CONFIG.treeGold (see applyTreeGold).
+function ringWeight(base, ring) { return base * Math.pow(ring, COST_RING_POW); }
 
 // Small seeded PRNG. It decides which offshoots exist and how long twigs run,
 // and saves name the nodes on them, so the layout never touches Math.random.
@@ -622,6 +627,7 @@ function buildSkillTree() {
   // Weights in, game units out: the totals are divided across the finished tree
   // (see applyTreeTotals). Nothing downstream ever sees a raw weight.
   const scale = applyTreeTotals(nodes);
+  applyTreeGold(nodes);
 
   const pos = radialSlices(nodes, kids);
   relaxTree(pos, nodes, edges);
@@ -813,6 +819,33 @@ function applyTreeTotals(nodes) {
   return scale;
 }
 
+// ---------------------------------------------------------------------------
+// THE PRICE PASS — the same idea as applyTreeTotals, for gold.
+//
+// CONFIG.treeGold says what the WHOLE tree costs: every rank of every node, end
+// to end. Each rank's share of that is its weight — how deep the node sits, how
+// much of a node it is, and how many ranks of it you have already bought (each
+// further rank of the same node is dearer by `growth`). So a price is never
+// authored in gold; it is a fraction of the one number that says how long the
+// tree should take.
+//
+// That is what makes the stat totals in CONFIG.treeTotals honest ceilings: gold
+// income and tree price are set against each other, so an endgame build really
+// does walk ~90 % of the nodes and really does arrive at the totals.
+function applyTreeGold(nodes) {
+  let weight = 0;
+  for (const id in nodes) {
+    const n = nodes[id];
+    const growth = n.growth || RANK_GROWTH;
+    for (let r = 0; r < n.maxRank; r++) weight += n.cost * Math.pow(growth, r);
+  }
+  const k = weight > 0 ? CONFIG.treeGold / weight : 1;
+  for (const id in nodes) {
+    if (id === "root") continue;
+    nodes[id].cost = Math.max(5, Math.round(nodes[id].cost * k));
+  }
+}
+
 // One archetype, resolved at a ring: weight scaled by the tier, cost by the ring.
 function archNode(arch, ring, path, maxRankOverride) {
   // `ringVal` scales how fast this archetype grows with depth. The two flat
@@ -835,7 +868,7 @@ function archNode(arch, ring, path, maxRankOverride) {
   }
   return { title: arch.title, theme: arch.theme, ring, path, effect, blurb: arch.blurb,
     maxRank: maxRankOverride || arch.maxRank || 3,
-    cost: ringCost(arch.cost, ring), growth: arch.growth || RANK_GROWTH };
+    cost: ringWeight(arch.cost, ring), growth: arch.growth || RANK_GROWTH };
 }
 
 // A unique — its weight is authored outright, only its price knows about depth.
@@ -843,7 +876,7 @@ function archNode(arch, ring, path, maxRankOverride) {
 // it was written with relative to the ordinary nodes around it.
 function uniqueNode(spec, ring, path) {
   return { title: spec.title, theme: spec.theme, ring, path, effect: { ...spec.effect }, blurb: spec.blurb,
-    unique: true, maxRank: 1, growth: 1, cost: ringCost(spec.cost, ring) };
+    unique: true, maxRank: 1, growth: 1, cost: ringWeight(spec.cost, ring) };
 }
 
 // The node at ring 5. On a spell arm that carries a sealed page it is the seal
@@ -858,7 +891,7 @@ function keyNode(arm) {
   if (spell && spell.unlock) {
     return { title: spell.name, theme: arm.theme, ring: KEY_RING, path: arm.title, beacon: true,
       maxRank: 1, unique: true, unlocks: spell.id, growth: 1, effect: {},
-      cost: ringCost(UNLOCK_COST, KEY_RING),
+      cost: ringWeight(UNLOCK_COST, KEY_RING),
       blurb: `Ein versiegeltes Zeichen. Heb es, und der Zauber schlägt eine neue Seite in deinem Buch auf. ${spell.blurb}` };
   }
   const node = arm.notable

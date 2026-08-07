@@ -600,6 +600,12 @@ function svTreeTab() {
 
   const rows = [
     svRow({
+      label: "Baum erschlossen", value: svPct(t.ranks / t.ranksTotal), color: TREE_THEMES.origin.color,
+      frac: t.ranks / t.ranksTotal,
+      note: "der Baum ist darauf ausgelegt, am Ende zu etwa neun Zehnteln begehbar zu sein — " +
+        "die Höchstwerte im Reiter „Held“ sind das, was dich dort erwartet",
+    }),
+    svRow({
       label: "Zeichen im Besitz", value: `${svNum(t.nodes)} <span class="sv-of">von ${svNum(t.nodesTotal)}</span>`,
       frac: t.nodes / t.nodesTotal, color: TREE_THEMES.origin.color,
       note: `der Baum trägt ${svNum(t.nodesTotal)} Zeichen — er ist zum Wählen da, nicht zum Leerräumen`,
@@ -621,7 +627,8 @@ function svTreeTab() {
     }),
     svRow({
       label: "Gold im Baum verbaut", value: svNum(t.gold), tone: "gold", color: "var(--gold)",
-      note: `${svNum(state.gold)} liegen noch in der Börse`,
+      frac: t.gold / CONFIG.treeGold,
+      note: `von ${svNum(CONFIG.treeGold)}, die der ganze Baum kostet · ${svNum(state.gold)} liegen noch in der Börse`,
     }),
   ];
 
