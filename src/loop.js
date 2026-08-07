@@ -358,7 +358,7 @@ function rafLoop(now) {
       const effectiveDt = getEffectiveDt(rawDt);
       state.clockMs += effectiveDt;
       // Sustain: trickle HP back while the run is live, all the way to full.
-      // Regen is uncapped now (see skilltree.js STAT_SCALE): how much of it a build
+      // Regen is never clipped (see CONFIG.treeTotals): how much of it a build
       // carries is how many Genesung nodes it walked to. At the pace the tree
       // supplies it, an early build still cannot out-heal a full mob, so regen still
       // reads as a between-fights safety net rather than an autopilot.

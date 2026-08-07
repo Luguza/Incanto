@@ -160,70 +160,23 @@ const COUNT_STATS = { chainLightning: 1, countMeteor: 1 };
 // property of the branch, not of thirty hand-written nodes.
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// CALIBRATION — where the balance lives now that nothing is capped.
+// Where the balance lives: CONFIG.treeTotals.
 //
-// There are no soft caps and no hard caps anywhere in this game any more. Every
-// summed stat is used exactly as the nodes granted it, so the only thing that
-// bounds a build is WHAT THE TREE ACTUALLY CONTAINS. That makes the supply the
-// balance, and this table is how the supply is set.
+// The A entries below, and the keystones further down, are authored as RELATIVE
+// weights — "a Zähigkeit node is worth about six Schneide nodes" — because that
+// is the judgement a designer can make while writing a thousand nodes. How much
+// the whole tree comes to is a different question, and it is answered in one
+// place: CONFIG.treeTotals says the tree contains exactly +1.200 LP, exactly
+// +60 % Krit-Chance, and so on. applyTreeTotals divides each of those across the
+// nodes that carry it, in proportion to their weights, while the tree is built.
 //
-// Why a table rather than 200 hand-tuned literals: the A entries and the
-// keystones below are authored as RELATIVE weights — "a Zähigkeit node is worth
-// about six Schneide nodes" — because that is the judgement a designer can make
-// while writing a thousand nodes. This turns those weights into the game's
-// units, ONCE, while the tree is built. A node then stores its final value, so
-// the tooltip, the ledger and the summed stat are all literally the same
-// number. Nothing is bent afterwards: this is not a layer over the stats, it is
-// what the stats are.
+// So every stat has a maximum again — but it bounds what EXISTS instead of
+// clipping what you carry, which is why nothing has to be bent at runtime: a
+// node always pays exactly what it prints, and the ceiling is simply the end of
+// the supply. Being additive, the pools slow down by themselves — the tenth
+// +30 LP is the same +30 and a much smaller share of the pool it joins.
 //
-// Each factor is calibrated so that the whole tree's supply of that stat — what
-// you would carry if you owned every node granting it — lands on the figure in
-// the comment. The old ceilings are what those figures were chosen from, so a
-// build that commits to one thing arrives roughly where the capped game used to
-// stop, and a build that commits to it harder keeps going.
-//
-// Re-derive with tools/stat-supply.mjs after touching any value here.
-const STAT_SCALE = {
-  // Almost everything is 1: measured against the old game, the authored node
-  // values were already right — the ceilings only bit deep in a build, so
-  // removing them changes nothing about the first hours and simply lets the
-  // curve keep climbing afterwards. The exceptions are the pools whose SOFT cap
-  // bit from the very first purchase, and they are exactly the pools that were
-  // over-authored. Flat HP is the worst of them: the tree held 24.914 LP behind
-  // a cap of 190, which is not balance, it is a wall in front of a warehouse.
-  flatBase: 1,          // 10k: +24 Kernschaden
-  pctBase: 2.5,         // 10k: +19 % Kernschaden — a new, deliberately scarce stat
-  pctDmg: 0.85,         // 10k: ×1,28 Verstärkung
-  flatDmg: 1,           // 10k: +60 Schaden je Treffer
-  flatHp: 0.35,         // 10k: +394 LP  (was +1.125 authored, capped to +182)
-  pctHp: 0.6,           // 10k: +44 % LP
-  critChance: 1,        // 10k: 36 % — a probability stops at 100 %, because that
-  critMult: 1,          // 10k: ×2,45  is what a probability IS, not a balance call
-  armorPen: 1,          // the brute's plate is 5 points; the tree holds 11
-  leech: 1,             // 10k: 23 %
-  regen: 0.8,           // 10k: 17 LP/s
-  castHaste: 1,         // 10k: +6 % → 420 ms charge becomes 396 ms
-  walkMult: 1,          // 10k: +25 % (the march's own px/ms ceiling still applies)
-  coinMult: 1,          // 10k: +34 % Gold
-  shieldChance: 1,      // 10k: 30 %
-  shieldAmount: 1,      // 10k: 47 Absorption
-  shieldMax: 1,         // 10k: 79 Speicher
-  spellFailProt: 1,     // 10k: 9 %
-  thorns: 1,            // 50 % — five caches of 10 %
-  // — per-page damage: a build that commits to one page roughly doubles it
-  dmgFireball: 0.85, dmgLightning: 0.85, dmgFrost: 0.85,
-  dmgMeteor: 0.85, dmgShield: 0.85, dmgHeal: 0.85,
-  // — page SHAPE. These sit deepest of all, on a single branch, so their WHOLE
-  //   supply is what a build devoted to that page ends up with. The figures are
-  //   the spells' old maxima, which is where those shapes were designed to stop.
-  aoeFireball: 0.65,    // radius ×2,5 → 3,25 Felder
-  aoeMeteor: 0.62,      // crater ×2,5
-  coneFrost: 0.68,      // reach ×2 → 8 Felder, the corridor's own depth
-  freezeFrost: 0.47,    // +3,4 s → 6,0 s frozen
-  falloffLightning: 0.4, // +20 % carry → 0,92 per hop, still short of 1
-  chainLightning: 1, countMeteor: 1,   // whole bodies: a node grants one, and means it
-};
-
+// To rebalance: edit CONFIG.treeTotals, run `node tools/stat-supply.mjs`.
 const A = {
   // THE THREE STAGES OF DAMAGE. A hit is built in this order and no other:
   //
@@ -336,7 +289,7 @@ function bDrain(L) {
 //     three runs, and each further page costs the same, so which spell you go
 //     and fetch first is a real choice and not a queue;
 //   · nothing is capped, so the outward push pays in whatever it buys — but the
-//     tree only HOLDS so much of each stat (see STAT_SCALE), and breadth is
+//     tree only HOLDS so much of each stat (see CONFIG.treeTotals), and breadth is
 //     where the pages, the extra bodies hit and the keystones live;
 //   · the whole-body nodes (an extra hop, an extra rock) and the keystones sit
 //     from ring 13 outward, which is where the run-away power would be if the
@@ -666,9 +619,13 @@ function buildSkillTree() {
     });
   });
 
+  // Weights in, game units out: the totals are divided across the finished tree
+  // (see applyTreeTotals). Nothing downstream ever sees a raw weight.
+  const scale = applyTreeTotals(nodes);
+
   const pos = radialSlices(nodes, kids);
   relaxTree(pos, nodes, edges);
-  return { nodes, pos, edges };
+  return { nodes, pos, edges, scale };
 }
 
 // Step one: every subtree gets a wedge of the circle sized by how many
@@ -796,35 +753,67 @@ function relaxTree(pos, nodes, edges) {
   ids.forEach((id, i) => { pos[id].x = px[i]; pos[id].y = py[i]; });
 }
 
-// One archetype, resolved at a ring: value scaled by the tier, cost by the ring.
-// Turn an authored weight into the value the node actually grants, and round it
-// the way that stat is read: whole numbers where the player counts them, one
-// decimal for a rate, three for a fraction. What comes out of here is final —
-// it is what the tooltip prints, what the ledger sums, and what combat uses.
-function calibrate(stat, raw) {
-  const v = raw * (STAT_SCALE[stat] == null ? 1 : STAT_SCALE[stat]);
-  if (WHOLE_STATS[stat]) return Math.max(1, Math.round(v));
-  if (stat === "regen") return Math.round(v * 10) / 10;
-  return Math.round(v * 1000) / 1000;
-}
+// Stats the player counts in whole units — a node granting 2.6 LP would be
+// noise, and "+3 LP" is what a tooltip should be able to say.
 const WHOLE_STATS = {
   flatDmg: 1, flatBase: 1, flatHp: 1, shieldAmount: 1, shieldMax: 1,
   freezeFrost: 1, chainLightning: 1, countMeteor: 1,
 };
 
-// What the whole tree holds of each stat: the sum of every rank of every node
-// that grants it. With nothing capped this IS the game's balance — the most a
-// build could ever carry — so the ledger draws its meters against it and
-// tools/stat-supply.mjs prints it for tuning.
-function treeSupply() {
+// What every rank of every node adds up to, per stat.
+function supplyOf(nodes) {
   const total = {};
-  for (const id in TREE_NODES) {
-    const n = TREE_NODES[id];
+  for (const id in nodes) {
+    const n = nodes[id];
     for (const k in n.effect) total[k] = (total[k] || 0) + n.effect[k] * n.maxRank;
   }
   return total;
 }
 
+// ---------------------------------------------------------------------------
+// THE SECOND PASS — where the balance is actually decided.
+//
+// The tree is grown first with the RAW authored weights: the A table and the
+// keystones say how much a node is worth RELATIVE to its neighbours, which is
+// the judgement a designer can make while writing a thousand nodes. What none
+// of them can say is how much the whole thing should come to.
+//
+// So that is stated separately, once, in CONFIG.treeTotals — "the tree contains
+// exactly +1.200 LP" — and this pass divides that total across the nodes in
+// proportion to their weights. Tuning the game is then editing one number per
+// stat and re-running tools/stat-supply.mjs, instead of guessing at a multiplier
+// and measuring what fell out.
+//
+// This is also where the ceilings went. Every stat HAS a maximum again — its
+// total — but it is a ceiling of a different kind: it bounds what EXISTS rather
+// than clipping what you carry. You can own all of it, and every node on the way
+// pays exactly what it printed. And because these pools are additive, they slow
+// down on their own: the tenth +30 LP is the same +30, but it is a far smaller
+// share of the pool it lands in than the first was. The diminishing return is in
+// the arithmetic, not bolted on top of it.
+//
+// Rounding drifts the achieved total a little off the target (a node worth 0.4
+// LP still has to print +1). tools/stat-supply.mjs shows both figures.
+function applyTreeTotals(nodes) {
+  const raw = supplyOf(nodes);
+  const scale = {};
+  for (const stat in raw) {
+    const want = CONFIG.treeTotals[stat];
+    scale[stat] = (want == null || raw[stat] <= 0) ? 1 : want / raw[stat];
+  }
+  for (const id in nodes) {
+    const effect = nodes[id].effect;
+    for (const k in effect) {
+      const v = effect[k] * scale[k];
+      effect[k] = WHOLE_STATS[k] ? Math.max(1, Math.round(v))
+        : k === "regen" ? Math.round(v * 10) / 10
+        : Math.round(v * 1000) / 1000;
+    }
+  }
+  return scale;
+}
+
+// One archetype, resolved at a ring: weight scaled by the tier, cost by the ring.
 function archNode(arch, ring, path, maxRankOverride) {
   // `ringVal` scales how fast this archetype grows with depth. The two flat
   // DAMAGE pools use a gentler slope than everything else (see the A table):
@@ -835,27 +824,25 @@ function archNode(arch, ring, path, maxRankOverride) {
   let effect;
   if (arch.special === "shield") {
     effect = {
-      shieldChance: calibrate("shieldChance", Math.min(0.12, 0.05 + 0.004 * ring)),
-      shieldAmount: calibrate("shieldAmount", 8 * tier),
-      shieldMax: calibrate("shieldMax", 13 * tier),
+      shieldChance: Math.min(0.12, 0.05 + 0.004 * ring),
+      shieldAmount: 8 * tier,
+      shieldMax: 13 * tier,
     };
   } else if (COUNT_STATS[arch.stat]) {
     effect = { [arch.stat]: 1 };
   } else {
-    effect = { [arch.stat]: calibrate(arch.stat, arch.base * tier) };
+    effect = { [arch.stat]: arch.base * tier };
   }
   return { title: arch.title, theme: arch.theme, ring, path, effect, blurb: arch.blurb,
     maxRank: maxRankOverride || arch.maxRank || 3,
     cost: ringCost(arch.cost, ring), growth: arch.growth || RANK_GROWTH };
 }
 
-// A unique — its value is authored outright, only its price knows about depth.
-// It goes through the same calibration as an archetype, so a keystone keeps the
-// weight it was written with relative to the ordinary nodes around it.
+// A unique — its weight is authored outright, only its price knows about depth.
+// It rides the same second pass as an archetype, so a keystone keeps the weight
+// it was written with relative to the ordinary nodes around it.
 function uniqueNode(spec, ring, path) {
-  const effect = {};
-  for (const k in spec.effect) effect[k] = calibrate(k, spec.effect[k]);
-  return { title: spec.title, theme: spec.theme, ring, path, effect, blurb: spec.blurb,
+  return { title: spec.title, theme: spec.theme, ring, path, effect: { ...spec.effect }, blurb: spec.blurb,
     unique: true, maxRank: 1, growth: 1, cost: ringCost(spec.cost, ring) };
 }
 
@@ -939,7 +926,7 @@ function nodeCost(node, rank) {
 // THAT IS THE WHOLE MODEL. There is no soft cap, no hard cap and no diminishing
 // return anywhere in it: what the nodes granted is what the hero carries. A
 // build is bounded by what the tree holds and what the player can afford, and
-// the node values are calibrated for exactly that (see STAT_SCALE).
+// the node values are derived from exactly that (see CONFIG.treeTotals).
 //
 // The only clamps left are the two that are arithmetic rather than balance, and
 // they are marked as such below: a probability cannot exceed 1, and a chain hop
@@ -956,7 +943,7 @@ const SPELL_DMG_STATS = {
   meteor: "dmgMeteor", shield: "dmgShield", heal: "dmgHeal",
 };
 // Every one of these passes through exactly as summed. What a page's shape can
-// grow to is set by how many of its nodes exist (see STAT_SCALE), not by a
+// grow to is set by its total in CONFIG.treeTotals, not by a
 // ceiling in the resolver.
 const SPELL_PARAM_STATS = [
   "chainLightning", "countMeteor",
@@ -1442,11 +1429,14 @@ function attachTreeInteractions() {
   }, { passive: false });
 }
 
-// Counted once — the tree never changes shape at runtime.
-const TREE_SUPPLY = treeSupply();
+// What the tree ACTUALLY holds of each stat, counted off the finished nodes —
+// the targets in CONFIG.treeTotals as they came out after rounding. This is the
+// figure the ledger measures a build against, so the screen can never quote a
+// total the nodes don't really add up to.
+const TREE_SUPPLY = supplyOf(TREE_NODES);
 
 window.Incanto.skilltree = {
-  TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, TREE_SUPPLY, STAT_SCALE,
+  TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, TREE_SUPPLY, supplyOf,
   recomputeMods, treeBuy, treeZoom, treeReset,
   renderUpgradeFull, nodeRevealed, nodeReachable, nodeCost, nodeRank,
 };

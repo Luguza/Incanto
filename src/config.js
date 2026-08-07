@@ -272,7 +272,7 @@ const CONFIG = {
     // ACROSS the lanes and starts under 1: a fresh Feuerball burns one lane, and
     // reaching into the neighbouring ones is what the Glutkern branch sells.
     // How far the blast can grow is now just how much Glutkern the tree holds
-    // (see skilltree.js STAT_SCALE — bought out, it reaches ~3,25 tiles).
+    // (see treeTotals.aoeFireball below — bought out, it reaches ~3,25 tiles).
     fireball: { dmgMult: 1.0, radiusTiles: 1.3,
                 laneRadius: 0.85, flightMs: 450, blastMs: 560 },
     // Blitzschlag — arcs from body to body, each hop weaker than the last. Far
@@ -323,20 +323,69 @@ const CONFIG = {
   // Floating damage numbers that pop over a fighter on each hit, then rise + fade
   dmgFloatMs: 850,      // how long a damage number lingers before it's culled
   dmgFloatRisePx: 16,   // art pixels it drifts upward across its life
-  // NO BALANCE CEILINGS. There are none anywhere in this game: no soft caps, no
-  // hard ceilings, no diminishing returns. A node grants what it says it grants,
-  // at every depth, forever — see skilltree.js STAT_SCALE, where the balance now
-  // lives. A build is bounded by two honest things instead: how much of each
-  // stat the tree actually HOLDS, and how much gold the player can spend.
+  // ===========================================================================
+  // THE BALANCE TABLE — how much of each stat the whole skill tree CONTAINS.
   //
-  // What that gives up, stated plainly: enemies never scale (see enemyTypes), so
-  // a player who keeps investing does eventually outgrow the hall. The old caps
-  // were what held that off, and holding it off properly means scaling the
-  // encounters — a design job, not a clamp on the stat sheet.
+  // This is the one place the game's power curve is tuned. Every figure is a
+  // total: "walk every node that grants Zähigkeit and you will have +1.200 LP,
+  // and not one point more". skilltree.js grows the tree from relative weights
+  // and then divides these totals across it (applyTreeTotals), so a node's
+  // printed value is derived from the number below rather than guessed at.
   //
-  // The two clamps that remain are arithmetic, not balance, and both are marked
-  // where they sit: a probability cannot exceed 1 (recomputeMods), and a chain
-  // hop cannot carry more than it received (the lightning resolver).
+  // WHY THIS IS A CAP AND ALSO ISN'T. Every stat is bounded again — you cannot
+  // carry more than the tree holds — but the bound is on what EXISTS, not on
+  // what you may keep. Nothing is clipped, nothing suffers diminishing returns,
+  // and a node always pays exactly what its tooltip says, at ring 1 and ring 19
+  // alike. The ceiling is just the end of the supply.
+  //
+  // And the pools slow themselves down without any help: they are ADDITIVE, so
+  // the tenth +30 LP is the same +30 as the first while being a far smaller
+  // share of the pool it lands in. That is where the diminishing return comes
+  // from now — the arithmetic, not a curve laid over it.
+  //
+  // WHAT A REAL BUILD SEES. Nobody owns the tree: it costs a couple of million
+  // gold. On the cheapest-first curve a player holds roughly 5–8 % of each total
+  // after 10.000 gold and 10–15 % after 30.000, so these figures are ceilings
+  // that a build approaches from far below, and raising one lifts the whole
+  // curve under it. `node tools/stat-supply.mjs` prints target vs. achieved
+  // total next to what a build carries at 1k–100k gold — run it after any edit
+  // here.
+  treeTotals: {
+    // — damage, in the three stages it is built in (see skilltree.js)
+    flatBase: 330,        // ① +330 Kernschaden, before any factor
+    pctBase: 4.1,         // ① +410 % on that core
+    pctDmg: 17.4,         // ② ×18,4 all told
+    flatDmg: 1300,        // ③ +1.300 on every single body hit, after everything
+    // — the hero
+    flatHp: 6000,
+    pctHp: 11,
+    critChance: 13,       // a probability still stops at 100 %: the tree holds
+    critMult: 43,         //   more crit than one can be spent on, deliberately,
+                          //   so crit is worth walking to from several arms
+    armorPen: 11.3,       // the brute wears 5, so a committed build strips it
+    leech: 11.4,
+    regen: 650,           // LP/s
+    castHaste: 4.15,      // as a rate: 420 ms ÷ (1 + haste)
+    walkMult: 9.6,
+    coinMult: 11,
+    shieldChance: 11.7,
+    shieldAmount: 2420,
+    shieldMax: 4020,
+    spellFailProt: 4.5,
+    thorns: 0.5,          // five Dornenkronen, 10 % each — the one already-exact total
+    // — per page of the book
+    dmgFireball: 8, dmgLightning: 8, dmgFrost: 8,
+    dmgMeteor: 8, dmgShield: 8, dmgHeal: 8,
+    // — page SHAPE, where the totals are the shapes' own design limits
+    aoeFireball: 1.5,     // blast radius ×2,5 → 3,25 Felder
+    aoeMeteor: 1.5,       // crater ×2,5
+    coneFrost: 1,         // cone reach ×2 → 8 Felder, the corridor's own depth
+    freezeFrost: 3400,    // +3,4 s → 6,0 s frozen
+    falloffLightning: 0.2, // +20 % carried per hop → 0,92, still short of 1
+    // chainLightning / countMeteor are absent on purpose: they are whole bodies.
+    // A node grants one more hop or one more rock and cannot grant 0,7 of one,
+    // so their total is simply how many such nodes the tree has (12 and 13).
+  },
   circleCenter: { x: 300, y: 300 },
   circleRadius: 215,
   runeRadius: 48,

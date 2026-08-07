@@ -1,10 +1,13 @@
 // What the tree HOLDS of every stat, and what a build carries at a given spend.
 //
-// This is the tuning instrument for skilltree.js STAT_SCALE. Nothing in the game
-// is capped: a build is bounded by what the tree contains and what the player can
-// afford, so those two numbers ARE the balance. "supply" is what you would carry
-// owning every node granting that stat; the gold columns are what a
-// cheapest-reachable-first player has after spending that much.
+// This is the tuning instrument for CONFIG.treeTotals, which is where the game's
+// power curve is set. "target" is what that table asks for; "actual" is what the
+// finished nodes add up to once each one's share has been rounded to something a
+// tooltip can print. The gold columns are what a player who always buys the
+// cheapest reachable rank carries after spending that much — nobody owns the
+// whole tree, so those are the numbers that decide how the game plays.
+//
+// Edit CONFIG.treeTotals, run this, read the two columns.
 //
 //   node tools/stat-supply.mjs
 //
@@ -68,20 +71,25 @@ const data = await page.evaluate((budgets) => {
       _charge: Math.round(castChargeMs()),
     };
   }
-  return { supply: TREE_SUPPLY, rows };
+  return { supply: TREE_SUPPLY, target: CONFIG.treeTotals, rows };
 }, BUDGETS);
 
 const pad = (s, n) => String(s).padStart(n);
 console.log("\nWhat the tree holds, and what a build carries at each spend\n");
-console.log("stat".padEnd(18) + pad("supply", 10) + BUDGETS.map((b) => pad(b / 1000 + "k", 9)).join(""));
-console.log("-".repeat(18 + 10 + 9 * BUDGETS.length));
+const WIDTH = 18 + 11 + 11 + 9 * BUDGETS.length;
+console.log("stat".padEnd(18) + pad("target", 11) + pad("actual", 11) +
+  BUDGETS.map((b) => pad(b / 1000 + "k", 9)).join(""));
+console.log("-".repeat(WIDTH));
 for (const k of Object.keys(data.supply).sort()) {
-  console.log(k.padEnd(18) + pad(data.supply[k].toFixed(2), 10) +
-    BUDGETS.map((b) => pad((data.rows[b][k] ?? 0).toFixed(2), 9)).join(""));
+  const want = data.target[k];
+  const got = data.supply[k];
+  const off = want == null ? "" : Math.abs(got - want) / Math.max(1e-9, want) > 0.08 ? "  <- off" : "";
+  console.log(k.padEnd(18) + pad(want == null ? "—" : want, 11) + pad(got.toFixed(2), 11) +
+    BUDGETS.map((b) => pad((data.rows[b][k] ?? 0).toFixed(2), 9)).join("") + off);
 }
-console.log("-".repeat(18 + 10 + 9 * BUDGETS.length));
+console.log("-".repeat(WIDTH));
 for (const [label, key] of [["ranks bought", "_ranks"], ["Feuerball hit", "_hit"], ["max HP", "_hp"], ["cast charge ms", "_charge"]]) {
-  console.log(label.padEnd(28) + BUDGETS.map((b) => pad(data.rows[b][key], 9)).join(""));
+  console.log(label.padEnd(40) + BUDGETS.map((b) => pad(data.rows[b][key], 9)).join(""));
 }
 console.log();
 await browser.close();
