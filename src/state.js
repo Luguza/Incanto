@@ -104,6 +104,10 @@ function freshState() {
     // learner who has earned the whole-table drill keeps it across runs.
     conjLevel: 0,
     conjStreak: 0,
+    // Testing tools on the upgrade screen (see skilltree.js: devToggle). Off by
+    // default and persisted, so a tester keeps them armed across reloads while a
+    // player never sees more than the slider itself.
+    devMode: false,
     quizWordMisses: [],      // WORD_POOL indices fumbled on the current question (see vocab-history.js)
     quizAnsweredAt: 0,
     clockMs: 0,               // internal clock warped by mode+selection, drives windup + instrumentation
@@ -172,6 +176,7 @@ function saveProgress() {
       spellOrder: state.spellOrder,
       conjLevel: state.conjLevel,
       conjStreak: state.conjStreak,
+      devMode: state.devMode,
     }));
   } catch (e) { /* storage unavailable (private mode/quota) — play without saving */ }
 }
@@ -217,6 +222,7 @@ function applySavedProgress() {
     const rungs = (CONFIG.conjugation && CONFIG.conjugation.levels.length) || 1;
     state.conjLevel = Math.min(asCount(data.conjLevel), rungs - 1);
     state.conjStreak = Number.isFinite(data.conjStreak) ? Math.trunc(data.conjStreak) : 0;
+    state.devMode = data.devMode === true;
     if (data.nodeRanks && typeof data.nodeRanks === "object") {
       const ranks = {};
       const nodes = (typeof TREE_NODES !== "undefined") ? TREE_NODES : {};

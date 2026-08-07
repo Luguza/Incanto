@@ -412,6 +412,13 @@ const CONFIG = {
     // A node grants one more hop or one more rock and cannot grant 0,7 of one,
     // so their total is simply how many such nodes the tree has (12 and 13).
   },
+  // Testing tools on the upgrade screen (see skilltree.js). A slider in the tree
+  // topbar arms them; while it is off nothing they touch can be reached, so the
+  // ordinary game is unchanged. `goldMax` bounds what the tappable purse accepts
+  // — high enough to buy anything, low enough that the pill still fits a phone.
+  dev: {
+    goldMax: 999999,
+  },
   circleCenter: { x: 300, y: 300 },
   circleRadius: 215,
   runeRadius: 48,
