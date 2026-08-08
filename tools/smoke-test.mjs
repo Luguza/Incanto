@@ -488,14 +488,14 @@ try {
   check(kept.saved === 2 && kept.level === 2 && kept.streak === 1,
     "the rung the learner reached survives a reload (Stufe " + (kept.level + 1) + ")");
 
-  // 8c. Every node has to be worth a tap. The tree divides CONFIG.treeTotals
-  //     across a thousand-odd nodes, and left alone that arithmetic ends in
-  //     nodes selling "+0 % Krit-Chance" for real gold — every total on target,
-  //     every node worthless. Two things stop it, and this guards both: the
-  //     grain pass thins ranks until a slice is big enough to feel (STAT_GRAIN),
-  //     and the tooltip prints small numbers with the decimals they need instead
-  //     of rounding them away. So: read what ONE rank of every node in the tree
-  //     would say, and let no zero through.
+  // 8c. Every node has to print a real number. The tree divides
+  //     CONFIG.treeTotals across a thousand-odd nodes and three thousand ranks,
+  //     so the smallest slices are genuinely tiny — and rounded to whole percent
+  //     they came out as "+0 % Krit-Chance" on a node costing real gold. Two
+  //     things keep that from happening and this guards both: the floors in
+  //     applyTreeTotals, under which no node's share may fall, and the tooltip's
+  //     decimal place (treeNum). So: read what ONE rank of every node in the
+  //     tree would say, and let no zero through.
   const worthless = await page.evaluate(() => {
     const { TREE_NODES: N, effectText } = Incanto.skilltree;
     const bad = [];
@@ -929,8 +929,8 @@ try {
   await page.evaluate(() => {
     state.devMode = false;
     state.gold = 500;
-    // Two nodes rather than two ranks of one: how deep a node ranks is set by
-    // the grain pass now (see STAT_GRAIN), so a test must not assume it.
+    // Two nodes rather than two ranks of one, so the check doesn't depend on
+    // how deep a particular archetype happens to rank.
     state.nodeRanks = {}; Incanto.skilltree.treeBuy("migp0"); Incanto.skilltree.treeBuy("vigp0");
     state.screen = "upgrade"; state.tree = null;
     state._structuralDirty = true;

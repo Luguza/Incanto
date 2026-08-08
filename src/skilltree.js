@@ -178,6 +178,14 @@ const COUNT_STATS = { chainLightning: 1, countMeteor: 1 };
 //
 // To rebalance: edit CONFIG.treeTotals, run `node tools/stat-supply.mjs`.
 const A = {
+  // A `blurb` is for what the effect line CANNOT say. "Verstärkt allen Schaden
+  // prozentual" under a line reading "+0,6 % Schaden" is the tooltip talking to
+  // itself, and on a phone it pushes the number and the price further down the
+  // card for nothing. So most archetypes carry no blurb at all — the ones that
+  // do are the ones where the stat's name is not the whole story: where in the
+  // three stages a node lands, what a fraction is a fraction OF, what a chance
+  // is a chance AGAINST.
+  //
   // THE THREE STAGES OF DAMAGE. A hit is built in this order and no other:
   //
   //   1. KERN        (heroBaseDmg + flatBase) × (1 + pctBase)
@@ -186,40 +194,41 @@ const A = {
   //
   // Stage 3 is why the split exists. A node that reads "+5 Schaden je Treffer"
   // puts exactly 5 on the number that pops over a skeleton — on every page of
-  // the book, at any depth of the tree, forever.
+  // the book, at any depth of the tree, forever. Which stage a node feeds is the
+  // one thing its number can't tell you, so these three keep a blurb.
   dmgBaseFlat:{ stat: "flatBase",   theme: "might",   base: 1.5,   cost: 16, maxRank: 3, ringVal: 0.35,
                 title: "Kernschliff",   blurb: "Vertieft den Kern, aus dem jeder Zauber gerechnet wird — alles danach vervielfacht ihn." },
   dmgBasePct: { stat: "pctBase",    theme: "might",   base: 0.02,  cost: 22, maxRank: 3,
-                title: "Härtung",       blurb: "Hebt deinen Kernschaden prozentual, bevor irgendein Faktor darauf greift." },
+                title: "Härtung",       blurb: "Wächst den Kern, bevor irgendein Faktor darauf greift." },
   dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 2.5,   cost: 15, maxRank: 3, ringVal: 0.35,
-                title: "Schneide",      blurb: "Legt festen Schaden auf JEDEN Treffer — ganz zuletzt, nach allen Faktoren. Was hier steht, kommt genau so an." },
+                title: "Schneide",      blurb: "Kommt ganz zuletzt obendrauf, nach allen Faktoren." },
   dmgPct:     { stat: "pctDmg",     theme: "might",   base: 0.025, cost: 22, maxRank: 3,
-                title: "Zorn",          blurb: "Verstärkt allen Schaden prozentual." },
+                title: "Zorn" },
   hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3, ringVal: 0.4,
-                title: "Zähigkeit",     blurb: "Erhöht deine maximalen Lebenspunkte." },
+                title: "Zähigkeit" },
   hpPct:      { stat: "pctHp",      theme: "vigor",   base: 0.04,  cost: 20, maxRank: 3,
-                title: "Lebenskraft",   blurb: "Mehr Lebenspunkte prozentual." },
+                title: "Lebenskraft" },
   critChance: { stat: "critChance", theme: "crit",    base: 0.02,  cost: 22, maxRank: 3,
-                title: "Präzision",     blurb: "Chance, dass ein Treffer kritisch einschlägt." },
+                title: "Präzision" },
   critMult:   { stat: "critMult",   theme: "crit",    base: 0.09,  cost: 24, maxRank: 3,
-                title: "Wucht",         blurb: "Kritische Treffer schlagen härter zu." },
+                title: "Wucht" },
   // Armour penetration — the counter-stat to CONFIG.armorK. Its supply is
   // deliberately narrow (the Macht arm's Zermalmen branch, two keystones and
   // Falkenauge), so shredding plate is a detour a build chooses, like Dornen.
   armorPen:   { stat: "armorPen",   theme: "might",   base: 0.25,  cost: 24, maxRank: 3,
-                title: "Durchschlag",   blurb: "Deine Zauber durchschlagen einen Teil der Panzerung des Getroffenen." },
+                title: "Durchschlag",   blurb: "Zieht von der Panzerung des Getroffenen ab." },
   regen:      { stat: "regen",      theme: "sustain", base: 1.6,   cost: 20, maxRank: 3,
-                title: "Genesung",      blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
+                title: "Genesung" },
   leech:      { stat: "leech",      theme: "sustain", base: 0.025, cost: 26, maxRank: 3,
-                title: "Aderlass",      blurb: "Heilt dich für einen Teil des Zauberschadens." },
+                title: "Aderlass",      blurb: "Ein Anteil deines Zauberschadens, der dich heilt." },
   coin:       { stat: "coinMult",   theme: "fortune", base: 0.05,  cost: 20, maxRank: 3,
-                title: "Glückssträhne", blurb: "Mehr Gold für richtig gelöste Vokabeln." },
+                title: "Glückssträhne", blurb: "Gilt für richtig gelöste Vokabeln." },
   walk:       { stat: "walkMult",   theme: "fortune", base: 0.04,  cost: 22, maxRank: 3,
-                title: "Flinkheit",     blurb: "Der Held schreitet zügiger durch den Gang." },
+                title: "Flinkheit" },
   failProt:   { stat: "spellFailProt", theme: "guard", base: 0.035, cost: 28, maxRank: 2, growth: 1.6,
                 title: "Schutzzauber",  blurb: "Chance, den Rückschlag eines Fehlschlags ganz abzuwehren." },
   haste:      { stat: "castHaste",  theme: "focus",   base: 0.015, cost: 26, maxRank: 2, growth: 1.6,
-                title: "Zauberhast",    blurb: "Der fertige Zauber löst sich schneller vom Stab." },
+                title: "Zauberhast" },
   shield:     { special: "shield",  theme: "guard",   cost: 26, maxRank: 3,
                 title: "Schildzauber",  blurb: "Manche Zauber gewähren einen absorbierenden Schild." },
 };
@@ -625,10 +634,7 @@ function buildSkillTree() {
   });
 
   // Weights in, game units out: the totals are divided across the finished tree
-  // (see applyTreeTotals). Nothing downstream ever sees a raw weight. The grain
-  // pass runs first and settles how many ways each total is about to be cut, so
-  // that no node ends up printing a number too small to be a reward.
-  applyRankGrain(nodes);
+  // (see applyTreeTotals). Nothing downstream ever sees a raw weight.
   const scale = applyTreeTotals(nodes);
   applyTreeGold(nodes);
 
@@ -779,94 +785,6 @@ function supplyOf(nodes) {
   return total;
 }
 
-// ---------------------------------------------------------------------------
-// THE GRAIN PASS — how finely a total may be sliced before a node stops reading
-// as a reward.
-//
-// CONFIG.treeTotals says what the tree HOLDS. The arms, as authored, grow about
-// a thousand nodes, and at three ranks apiece that is some three thousand ranks
-// to divide those totals across. Nothing in that is broken, but the arithmetic
-// has an end: +60 % Krit-Chance cut 258 ways is +0,23 % a rank, which no tooltip
-// can print and no thumb can feel. A node that pays what it prints is worthless
-// anyway if what it prints rounds to nothing.
-//
-// So a stat says two things now — how much of it exists (CONFIG.treeTotals) and
-// the smallest slice of it still worth a tap (STAT_GRAIN below). This pass
-// reconciles them the only way that leaves the tree alone: it takes RANKS away.
-// Every node, every edge and every branch stays exactly where the arms put them;
-// a node that used to want three taps wants one, and that one tap is worth all
-// three. The total is untouched, so the balance table still means what it says,
-// and applyTreeGold then hands the freed gold back to the ranks that remain, so
-// the tree still costs CONFIG.treeGold end to end.
-//
-// Raise a grain and that stat's nodes get chunkier and quicker to max out; lower
-// it and the stat spreads thin again. Check the result in the "je Rang" column
-// of tools/stat-supply.mjs — that column is this table's whole purpose.
-// ---------------------------------------------------------------------------
-const STAT_GRAIN = {
-  // The percentage pools. Half a percent is about where a number stops looking
-  // like a rounding error on a tooltip; the pools deep enough to afford it ask
-  // for a full percent.
-  pctDmg: 0.005,     pctBase: 0.01,     pctHp: 0.01,
-  critChance: 0.005, critMult: 0.01,    leech: 0.006,
-  coinMult: 0.01,    walkMult: 0.01,    castHaste: 0.01,
-  spellFailProt: 0.01, shieldChance: 0.005,
-  // Per-page damage and the shapes a page throws — a page's own nodes are read
-  // against that page, so they may be a touch coarser.
-  dmgFireball: 0.01, dmgLightning: 0.01, dmgFrost: 0.01,
-  dmgMeteor: 0.01,   dmgShield: 0.01,    dmgHeal: 0.01,
-  aoeFireball: 0.02, aoeMeteor: 0.02,    coneFrost: 0.02, falloffLightning: 0.02,
-  // Counted in units the player sees land: points of damage, LP, milliseconds.
-  // These are the stats that were being clamped up to "+1" wholesale, which is
-  // why the achieved totals used to drift off target — with a grain they land
-  // on a printable number by themselves.
-  flatBase: 3, flatDmg: 3, flatHp: 5,
-  shieldAmount: 4, shieldMax: 8, freezeFrost: 200, regen: 0.4,
-  armorPen: 0.2,
-};
-
-function applyRankGrain(nodes) {
-  // Split each stat's weight into the ranks this pass may thin — the archetype
-  // nodes — and the ones it may not: a keystone is one-of-a-kind by definition,
-  // and a spell's seal is lifted once.
-  const one = {}, ranked = {}, fixedSupply = {}, count = {};
-  for (const id in nodes) {
-    const n = nodes[id];
-    for (const k in n.effect) {
-      const v = n.effect[k];
-      if (n.unique || n.maxRank <= 1) { fixedSupply[k] = (fixedSupply[k] || 0) + v * n.maxRank; continue; }
-      one[k] = (one[k] || 0) + v;
-      ranked[k] = (ranked[k] || 0) + v * n.maxRank;
-      count[k] = (count[k] || 0) + 1;
-    }
-  }
-
-  // How much of its rank depth each stat may keep. A node's printed value is its
-  // weight times the scale applyTreeTotals is about to work out, and that scale
-  // is total/supply — so the supply a grain allows follows straight from the
-  // average node's weight, and from there the fraction of the removable ranks
-  // that still fits underneath it.
-  const keep = {};
-  for (const k in one) {
-    const total = CONFIG.treeTotals[k], grain = STAT_GRAIN[k];
-    if (total == null || !grain) { keep[k] = 1; continue; }
-    const cap = (one[k] / count[k]) * total / grain;       // the largest supply the grain tolerates
-    const removable = ranked[k] - one[k];                  // every rank past the first
-    keep[k] = removable <= 0 ? 1
-      : treeClamp((cap - (fixedSupply[k] || 0) - one[k]) / removable, 0, 1);
-  }
-
-  // Every node keeps its first rank — thinning is never deletion — and of the
-  // rest as many as the tightest of its stats allows (the Schildzauber nodes
-  // carry three at once).
-  for (const id in nodes) {
-    const n = nodes[id];
-    if (n.unique || n.maxRank <= 1) continue;
-    let f = 1;
-    for (const k in n.effect) if (keep[k] != null) f = Math.min(f, keep[k]);
-    n.maxRank = 1 + Math.round((n.maxRank - 1) * f);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // THE SECOND PASS — where the balance is actually decided.
@@ -892,6 +810,13 @@ function applyRankGrain(nodes) {
 //
 // Rounding drifts the achieved total a little off the target (a node worth 0.4
 // LP still has to print +1). tools/stat-supply.mjs shows both figures.
+//
+// Every rounding here has a FLOOR, and the floor is the point: a thousand nodes
+// dividing these totals leaves the smallest of them holding very little, and
+// whatever it holds it still has to be a number the player can read. So a whole
+// stat never lands under +1, a rate never under 0,1/s, and a fraction never
+// under 0,001 — one tenth of a percent, which is exactly what the tooltip's last
+// decimal place can print (see treeNum). Nothing in the tree is ever nothing.
 function applyTreeTotals(nodes) {
   const raw = supplyOf(nodes);
   const scale = {};
@@ -904,8 +829,8 @@ function applyTreeTotals(nodes) {
     for (const k in effect) {
       const v = effect[k] * scale[k];
       effect[k] = WHOLE_STATS[k] ? Math.max(1, Math.round(v))
-        : k === "regen" ? Math.round(v * 10) / 10
-        : Math.round(v * 1000) / 1000;
+        : k === "regen" ? Math.max(0.1, Math.round(v * 10) / 10)
+        : Math.max(0.001, Math.round(v * 1000) / 1000);
     }
   }
   return scale;
@@ -1175,14 +1100,14 @@ function treeBuy(id) {
 // Effect wording (single-click info)
 // ---------------------------------------------------------------------------
 // A number the tooltip can always tell the truth about. Rounding to whole
-// percent is what turned a real +0,4 % into "+0 %", so the precision follows the
-// size of the number instead: big values stay clean, small ones keep just enough
-// decimals to be a number rather than a zero. German comma, as everywhere else
-// on screen (cf. svNum in stats.js).
+// percent is what turned a real +0,4 % into "+0 %"; one decimal place is all it
+// takes for every figure in the tree to be a number instead of a zero, and the
+// tree is built so nothing lands under it (see the floors in applyTreeTotals).
+// A trailing ",0" is dropped — "+15 %" reads better than "+15,0 %" and says the
+// same thing. German comma, as everywhere else on screen (cf. svNum in stats.js).
 function treeNum(v) {
-  const a = Math.abs(v);
-  let s = a >= 10 ? v.toFixed(0) : a >= 1 ? v.toFixed(1) : v.toFixed(2);
-  if (s.includes(".")) s = s.replace(/0+$/, "").replace(/\.$/, "");
+  let s = v.toFixed(1);
+  if (s.endsWith(".0")) s = s.slice(0, -2);
   return s.replace(".", ",");
 }
 function treePct(v) { return treeNum(v * 100) + "%"; }
@@ -1353,10 +1278,9 @@ function renderTreeInfo() {
   const theme = TREE_THEMES[node.theme];
   const rank = nodeRank(id);
   const maxed = rank >= node.maxRank;
+  // One rank, because one rank is what the price below buys. How many there are
+  // is the dots' job, not a second sentence's.
   const per = effectText(node.effect, 1);
-  // What the node is worth WALKED, not what you happen to own of it — a single
-  // rank is the price you are being quoted, and the sum is the reason to pay it.
-  const total = node.maxRank > 1 ? effectText(node.effect, node.maxRank) : null;
 
   let dots = "";
   for (let i = 0; i < node.maxRank; i++) dots += `<i class="dot${i < rank ? " on" : ""}"></i>`;
@@ -1381,15 +1305,13 @@ function renderTreeInfo() {
     <div class="ti-head">
       <span class="ti-rune">${runeGlyphSvg(node.theme, 24)}</span>
       <span class="ti-name" style="color:${theme.color}">${node.title}</span>
-      <span class="ti-tier">Stufe ${node.ring}</span>
       ${node.unique ? `<span class="ti-unique" style="color:${theme.color}">${node.unlocks ? "Zauber" : "Einzigartig"}</span>`
         : node.maxRank ? `<span class="ti-dots" style="color:${theme.color}">${dots}</span>` : ""}
     </div>
     ${node.path && node.path !== node.title ? `<div class="ti-path">${node.path}</div>` : ""}
-    <div class="ti-blurb">${node.blurb}</div>
+    ${node.blurb ? `<div class="ti-blurb">${node.blurb}</div>` : ""}
     ${node.unlocks ? `<div class="ti-effect">Schaltet frei: <b>${SPELL_BY_ID[node.unlocks].name}</b></div>` : ""}
-    ${per ? `<div class="ti-effect">${node.maxRank > 1 ? "Pro Stufe" : "Einmalig"}: <b>${per}</b>` +
-      `${total ? ` &middot; Alle ${node.maxRank}: <b>${total}</b>` : ""}</div>` : ""}
+    ${per ? `<div class="ti-effect">${node.maxRank > 1 ? "Pro Stufe" : "Einmalig"}: <b>${per}</b></div>` : ""}
     ${buy}</div>`;
 }
 
@@ -1672,7 +1594,7 @@ const TREE_SUPPLY = supplyOf(TREE_NODES);
 
 window.Incanto.skilltree = {
   TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, TREE_SUPPLY, supplyOf,
-  STAT_GRAIN, effectText,
+  effectText,
   recomputeMods, treeBuy, treeZoom, treeReset,
   renderUpgradeFull, nodeRevealed, nodeReachable, nodeCost, nodeRank,
   devToggle, devResetTree, devEditGold, devGoldCommit,

@@ -257,10 +257,9 @@ function applySavedProgress() {
         const mapped = nodes[id] ? id : legacy[id];
         const node = mapped ? nodes[mapped] : null;
         if (!node) { orphanedRanks += r; continue; }
-        // A node the grain pass has since thinned (see STAT_GRAIN in
-        // skilltree.js) holds fewer ranks than the save bought — its remaining
-        // ranks are worth more each, but the ones that no longer exist are still
-        // ranks that were paid for, so they refund like any other orphan.
+        // A node reshaped since the save was written can hold fewer ranks than
+        // the save bought. Those ranks were paid for, so they refund like any
+        // other rank the current tree has nowhere to put.
         const want = (ranks[mapped] || 0) + r;
         ranks[mapped] = Math.min(want, node.maxRank);
         orphanedRanks += want - ranks[mapped];
