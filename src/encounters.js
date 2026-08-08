@@ -62,9 +62,14 @@ const PACKS = {
   // then two, then three — the head count is the whole escalation, because
   // nothing in here can actually hurt anyone (see the slime variants in
   // CONFIG.enemyTypes).
+  //
+  // The third is a WEDGE rather than a line, and that is about the splitting:
+  // three big slimes abreast at one mark stand shoulder to shoulder, and the
+  // moment each divides the lane fills up and the whole camp reads as one green
+  // smear. Staggered in depth they stay countable however often they come apart.
   schleim:     pack("Schleim", "solo", ["slime"]),
   schleimspur: pack("Schleimspur", "paar", ["slime"]),
-  schleimnest: pack("Schleimnest", "drei", [["slime", "slimeBlue", "slime"]]),
+  schleimnest: pack("Schleimnest", "keil", [["slimeBlue"], ["slime", "slime"]]),
 
   // --- Ch. 2 · Knochen. The opening language of the hall, and the first camps
   // that can actually kill anyone.
@@ -308,13 +313,21 @@ const CHAPTERS = [
     // A player opening the game for the first time has never traced a rune, and
     // the hall used to answer that with a skeleton that hits for 48 out of 112.
     // These three cost nothing to get wrong — one slime, then two, then a cold
-    // one between two of them — so the opening minute is spent learning the
-    // circle rather than learning the death screen.
+    // one leading a pair — so the opening minute is spent learning the circle
+    // rather than learning the death screen.
+    //
+    // It is also where the hall's one trick body is taught, and taught in
+    // order. A slime DIVIDES when it is hurt (see CONFIG.slimeTiers): camp one
+    // is a single big one, so the very first cast of the game turns one body
+    // into two smaller ones with nothing else on screen to confuse the lesson.
+    // Camp two is the same thing twice over. Only camp three brings the
+    // Tropfling, which carries enough HP to divide down the whole ladder —
+    // big, then two middling, then small — instead of straight to the bottom.
     //
     // The chapter breaks the "one new body alone first" rule on the Tropfling,
     // and deliberately: the rule exists so a body that can kill you is legible
-    // before it arrives escorted, and neither of these can. Showing it alone
-    // would have bought a fourth camp of nothing happening.
+    // before it arrives escorted, and neither of these can. It leads the wedge
+    // instead, which is legible enough for something that hits for 7.
     packs: ["schleim", "schleimspur", "schleimnest"],
   },
   {

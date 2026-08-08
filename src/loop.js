@@ -104,6 +104,17 @@ function updateEnemies(now, dt) {
       e.phaseAt = now;
     }
   }
+  // …and a slime that survived one comes apart on the same beat, for the same
+  // reason: hitEnemy marked it when the blow was booked, and this is the moment
+  // the blow actually arrives. Walked over a snapshot because the halves are
+  // pushed onto state.enemies as they appear, and a body born this instant has
+  // nothing of its own to resolve yet.
+  for (const e of state.enemies.slice()) {
+    if (e.splitAt && now >= e.splitAt) {
+      e.splitAt = 0;
+      splitOrShrink(e, now);
+    }
+  }
   const lanes = new Map();
   for (const e of state.enemies) {
     if (!lanes.has(e.lane)) lanes.set(e.lane, []);
@@ -291,7 +302,7 @@ function enemyMeleeStrike(now, e) {
   if (state.mods.thorns > 0) {
     // Reflected through the same funnel as a spell, so an armoured body
     // shrugs part of it off too (hitEnemy returns what actually landed).
-    const refl = hitEnemy(e, e.dmg * state.mods.thorns);
+    const refl = hitEnemy(e, e.dmg * state.mods.thorns, now);
     if (onScreen) {
       spawnDmgFloat({
         value: refl,

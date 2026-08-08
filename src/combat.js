@@ -166,9 +166,23 @@ function armorReduction(enemy) {
 // what actually landed, so whoever called it can pop that number, feed leech
 // with it and decide the kill from the same figure the HP bar lost. Floored at 1
 // after mitigation: armour makes a hit small, never nothing.
-function hitEnemy(enemy, n) {
+function hitEnemy(enemy, n, at = performance.now()) {
   const dealt = Math.max(1, Math.round(n * (1 - armorReduction(enemy))));
   enemy.hp = Math.max(0, enemy.hp - dealt);
+  // Some bodies do more than lose a bar when they are hurt: a slime that
+  // survives the hit divides in two, and one too small to divide shrinks a size
+  // instead. This hangs off hitEnemy rather than off the spell resolvers because
+  // hitEnemy is the single funnel every point of damage in the game passes
+  // through — a meteor rock, a fifth chain hop and a Dornen reflection all have
+  // to divide a slime the same way, and none of them should have to know that
+  // slimes exist.
+  //
+  // It is only MARKED here, for the same reason a killing blow only marks its
+  // target `struck`: `at` is when the effect actually arrives, and a spell's
+  // damage is booked the moment it is cast rather than when its bolt lands. Done
+  // on the spot, a slime would come apart while the Feuerball that split it was
+  // still visibly in the air. updateEnemies carries it out on the beat.
+  if (enemy.hp > 0) enemy.splitAt = at;
   return dealt;
 }
 

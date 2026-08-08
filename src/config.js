@@ -199,30 +199,37 @@ const CONFIG = {
       hpMult: 2.2, dmgMult: 1.2, attackSpeedMult: 0.85, armor: 9,
       scale: 1.15, walkMult: 0.75, filter: "sepia(1) saturate(1.8) hue-rotate(175deg) brightness(0.95)" },
 
-    // --- Schleim. What the hall opens with, ahead of the bone: vermin that are
-    // not a fight. Both die to a single fresh Feuerball (24 damage against 12
-    // and 20 HP) and both nibble for 6-7 against a 112 HP hero, so the first
-    // three camps cost a new player nothing while they learn where the rune
-    // circle is, trace a shape wrong, and try again. They are the ramp's bottom
-    // step, and nothing later in the hall ever sends them again — a body the
-    // player has outgrown by metre 8 has no business coming back.
+    // --- Schleim. What the hall opens with, ahead of the bone, and the one
+    // family in the game that DIVIDES when you hurt it (`split` — the ladder it
+    // walks down is `slimeTiers` below). A slime walks in big, comes apart into
+    // two middling ones, and those come apart into small ones, so the opening
+    // camps teach "hit the thing" with a body that answers back visibly and
+    // cannot punish a slow answer: even the big one nibbles for 6 against a
+    // 112 HP hero, and its fragments for 2.
+    //
+    // Their HP is set so a FRESH hero — 24 damage, one Feuerball, no tree —
+    // walks the whole ladder: 44 splits into two 10s, and 76 into two 26s, which
+    // are middling ones that then shrink to small rather than dividing again.
+    // Nothing later in the hall ever sends a slime, which is the point of them.
     //
     // ART: these two are the only bodies in the hall that are NOT cut from the
     // tileset. The sheet's smallest creatures are the tiny zombie and the
     // goblin, and shrinking either one to vermin height turns a drawn character
     // into a smudge with feet, so the slimes are drawn at the size they are
     // meant to be seen — 12x10 against a skeleton's 16x16 — in sprite-art.js,
-    // to the sheet's own rules and out of the sheet's own palette. No `filter`
-    // on either: they are two colourways of one drawing, which is exactly how
-    // the tileset itself ships `muddy` and `swampy`.
+    // to the sheet's own rules and out of the sheet's own palette. That is also
+    // why the size ladder only ever scales UP from the drawing: enlarging keeps
+    // every pixel of the face, shrinking is what loses it. No `filter` on
+    // either: they are two colourways of one drawing, which is exactly how the
+    // tileset itself ships `muddy` and `swampy`.
     //
     // (Written here rather than at the head of the table because the FIRST entry
     // is the fallback an unknown variant id resolves to — see enemyTypeById —
     // and that has to stay the plain skeleton.)
-    { id: "slime", name: "SCHLEIM", sprite: "slime",
-      hpMult: 0.15, dmgMult: 0.12, attackSpeedMult: 0.7, armor: 0, scale: 1, walkMult: 1.1 },
-    { id: "slimeBlue", name: "TROPFLING", sprite: "slimeBlue",
-      hpMult: 0.25, dmgMult: 0.15, attackSpeedMult: 0.6, armor: 0, scale: 1, walkMult: 0.9 },
+    { id: "slime", name: "SCHLEIM", sprite: "slime", split: true,
+      hpMult: 0.55, dmgMult: 0.12, attackSpeedMult: 0.7, armor: 0, scale: 1, walkMult: 1.1 },
+    { id: "slimeBlue", name: "TROPFLING", sprite: "slimeBlue", split: true,
+      hpMult: 0.95, dmgMult: 0.15, attackSpeedMult: 0.6, armor: 0, scale: 1, walkMult: 0.9 },
 
     // --- Goblins. Small, fast, in numbers: the swarm chapter.
     { id: "goblin", name: "KOBOLD", sprite: "goblin",
@@ -376,6 +383,41 @@ const CONFIG = {
       standoff: 2.6, range: 5,
       summon: { type: "chort", count: 1, everyMs: 7000, firstMs: 4000, max: 6 },
       filter: "hue-rotate(265deg) saturate(1.3) brightness(1.1)" },
+  ],
+  // ===========================================================================
+  // SPLITTING, AND THE SIZE LADDER IT WALKS DOWN (variants with `split: true` —
+  // today that is the two slimes). A slime is not a body with a fixed size. It
+  // is a POOL OF HP that keeps coming apart: hit one and it divides in two, each
+  // half carrying half of what the hit left behind, and hit those and they
+  // divide again.
+  //
+  // WHAT A SLIME *IS* IS READ OFF WHAT IT HAS LEFT. These rungs are HP bands
+  // rather than variants — a body sitting on 44 HP is drawn as the big one, and
+  // that same body worn down to 26 is drawn as the middle one, with nothing
+  // anywhere having to remember which it started as. It follows that a slime
+  // visibly SHRINKS as it is chewed on, which is most of the pleasure of
+  // fighting one.
+  //
+  // `scale` multiplies the variant's own drawn size and `dmgMult` its own
+  // damage, and the second of those is what keeps the mechanic honest: a slime
+  // the size of a fist must not hit like one the size of a barrel, or a floor
+  // covered in fragments would add up to more danger than the single body they
+  // came off. Split all the way down, a camp hits for LESS than it did intact.
+  //
+  // THE BOTTOM RUNG IS THE FLOOR, AND IT IS THE WHOLE RULE. A slime divides only
+  // while BOTH halves would still land on the ladder — at twice the bottom
+  // rung's HP or more. Below that the hit lands and the body just shrinks a
+  // size: a 24 HP slime taking 10 is one 14 HP slime, not two 7 HP ones. Without
+  // that floor a slime camp ends as a corridor of 1 HP specks, each still owed
+  // its own cast.
+  //
+  // No HP is created by any of it. Two halves always add up to exactly what was
+  // left after the hit, so a slime camp is a fixed pool however often it
+  // divides — splitting buys the player more targets, never more health.
+  slimeTiers: [
+    { minHP: 10, scale: 1,   dmgMult: 0.35, prefix: "KLEINER " },  // 10–20
+    { minHP: 21, scale: 1.3, dmgMult: 0.6,  prefix: "" },          // 21–40
+    { minHP: 41, scale: 1.6, dmgMult: 1,    prefix: "GROSSER " },  // 41–100, the top of the ladder
   ],
   // ARMOUR. A body's armour turns aside a FRACTION of every hit that lands on
   // it, never a flat amount:
