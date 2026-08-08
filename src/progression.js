@@ -200,11 +200,11 @@ function spawnEnemy(now, lane, pos, typeId) {
     slot: id,                     // per-enemy constant, only used to de-sync the idle animation
     lane,
     pos,
-    phase: "walk",                // walk | idle | attack | struck | dying
+    phase: "walk",                // walk | idle | attack | frozen | dying
     phaseAt: now,
     attackAt: 0,                  // next time this body lands a hit
     attackAnimAt: 0,              // start of the current forward-jab animation
-    struckUntil: 0,               // while `struck`: when the bolt lands and it collapses
+    deathAt: 0,                   // >0: already killed, but only collapses when the blow ARRIVES
     frozenUntil: 0,               // held fast by a Frostkegel until this moment (see updateEnemies)
     actAt: 0,                     // next summon/mend (0 = hasn't planted yet — see updateSupport)
     actFxAt: 0,                   // when the rune/beam of that act was thrown, for the draw

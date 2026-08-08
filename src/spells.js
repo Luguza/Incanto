@@ -187,8 +187,8 @@ function primeActive(now) {
 // Damage application — one funnel so every spell rolls crits, is mitigated by
 // the target's armour, pops its damage number at the right moment, counts the
 // kill and feeds leech identically. `at` is when the hit visually LANDS: the
-// number pops then, and a fatal target stands `struck` until that moment before
-// it collapses.
+// number pops then, the body flashes then, and a fatal target goes on living —
+// marching, swinging, sliding on a shove — right up until that moment.
 // ---------------------------------------------------------------------------
 function applySpellHit(target, amount, at, opts = {}) {
   const m = state.mods;
@@ -215,13 +215,19 @@ function applySpellHit(target, amount, at, opts = {}) {
     x: scene ? scene.enemyLineX + target.pos * TILE : 0,
     y: scene ? (scene.laneY[target.lane] ?? scene.feetY) - enemyArt(target).h - 3 : 0,
   });
-  if (target.hp <= 0 && target.phase !== "struck" && target.phase !== "dying") {
-    // Killed, but it keeps its feet until the effect actually reaches it (see
-    // updateEnemies) — the kill is already decided, so it's counted now.
-    target.phase = "struck";
-    target.phaseAt = at;
-    target.struckUntil = at;
-    creditKill();
+  if (target.hp <= 0 && target.phase !== "dying") {
+    // Killed — but the blow is still in the air. Only the MOMENT of its death is
+    // booked here; until then the body behaves exactly as it did before the cast
+    // (see updateEnemies), because a spell that hasn't arrived hasn't happened.
+    // Nothing about its phase is touched, so it keeps running its run cycle
+    // instead of stopping dead the instant the shape was drawn and dissolving
+    // while its fireball is still crossing the hall.
+    //
+    // The kill itself is already decided, so it's counted the first time through
+    // — and only then. A second hit from the same cast can still pull the death
+    // EARLIER (a meteor barrage lands its rocks out of order), never later.
+    if (!target.deathAt) { target.deathAt = at; creditKill(); }
+    else target.deathAt = Math.min(target.deathAt, at);
   }
   return dealt;
 }
@@ -379,12 +385,11 @@ const SPELL_RESOLVERS = {
       dealt += applySpellHit(e, ctx.power, land, {
         noCrit: true, color: CONFIG.colors.spell.frost.rgb,
       });
-      // A body the cone KILLED is left alone from here: applySpellHit has put it
-      // in `struck`, where it stands until the ice lands and then collapses.
-      // Shoving or freezing it would overwrite that phase, and a skeleton whose
-      // kill was decided but whose phase says "walk" never dies at all — it just
-      // marches on at 0 HP.
-      if (e.phase === "struck" || e.phase === "dying") continue;
+      // A body the cone KILLED is left alone from here: it walks on until the
+      // ice reaches it and then collapses on the spot. Booking a shove and a
+      // freeze for a body that is dissolving by the time they start would only
+      // lay rime over a corpse — the ice has nothing left to hold.
+      if (doomed(e)) continue;
       // Shoved back toward the far end — as a slide across `pushMs`, not a jump.
       // Only the timing is booked here; updateEnemies reads the body's position
       // at the moment the shove actually starts (it may still be walking during
