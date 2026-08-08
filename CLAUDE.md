@@ -40,7 +40,7 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 |------|------|
 | `src/core.js` | `window.Incanto` root namespace (loads first) |
 | `src/config.js` | `CONFIG` — all gameplay numbers, flags, colours, **the bestiary** (`enemyTypes`, where a variant's sprite, colour filter, size, stats and ROLE — melee / ranged / summoner / healer — are defined), and the two numbers the whole balance hangs off: **`treeGold`** (what the entire tree costs, end to end — every node's price is a share of it, by depth and by how many of its ranks you already own) and **`treeTotals`** (how much of each stat the whole tree contains). They are set against each other so an endgame build walks ~90 % of the nodes and actually reaches the totals. No runtime caps, soft caps or diminishing returns exist anywhere; a stat's total is its ceiling because it bounds the supply, and every node pays exactly what it prints. Damage is built in three stages (Kern → Verstärkung → Zuschlag) |
-| `src/content.js` | vocab, sentences + verb paradigms: `WORD_POOL`, `SENTENCE_POOL`, `CONJ_POOL` (present tense, regular forms generated from `CONJ_ENDINGS`, irregulars written out), `CONJ_PERSONS`, … |
+| `src/content.js` | vocab, sentences + verb paradigms: `WORD_POOL`, `SENTENCE_POOL` (~350 sentences — three questions of every quiz come out of it, so it has to be deep; house rules for a new one are written above the pool and enforced by `node tools/check-sentences.mjs`, which also fails on a word the game never teaches), `CONJ_POOL` (present tense, regular forms generated from `CONJ_ENDINGS`, irregulars written out), `CONJ_PERSONS`, … |
 | `src/encounters.js` | **where the hall is designed**: `SHAPES` (bare formations), `PACKS` (a shape filled with variants), `CHAPTERS` (15 of them, each introducing one new body alone before using it in force), the derived `ENCOUNTER_PLAN` (160 camps on a fixed 2.5 m cadence) and `HALL_END_METRES` — the corridor is FINITE and ends at a door. Deterministic — no randomness. `previewPlan()` / `previewBestiary()` dump it to the console |
 | `src/vocab-history.js` | the learning record: per-word tallies (seen / correct / wrong, split quiz vs. rune circle) in `state.vocab` + its own save key, the per-day buckets behind "struggled with lately", the `struggleDrawPool` weighting `drawLoadout` deals review words from, and `renderHistoryFull` (the Lernverlauf screen) |
 | `src/state.js` | `state`, `freshState`, save/load/clear (persistence), and the **reward bank**: `creditKill` / `rewardMult` — kills charge a gold multiplier that banks across runs (persisted) and is only spent by finishing a whole quiz |
@@ -109,6 +109,14 @@ errors, confirms the scene renders, and exercises the delegated UI dispatch:
 
 ```bash
 node tools/smoke-test.mjs        # exits non-zero on any failure
+```
+
+When you touch `SENTENCE_POOL`, also run the sentence audit — it is the one
+place hand-written Italian lives, so a typo or a word outside `WORD_POOL` has
+nothing else to catch it:
+
+```bash
+node tools/check-sentences.mjs   # structure, blanks, vocabulary coverage
 ```
 
 For scene/visual changes, don't rely on code-reading alone. Drive the game
