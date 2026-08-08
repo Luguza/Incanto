@@ -247,7 +247,17 @@ const PACKS = {
 // penetration erodes, and healers that mend faster than a small spell chews.
 // A hero who has not grown his damage stalls, is ground down, and dies a
 // chapter or two short of where he'd like to be. Which chapter that is, is the
-// design intent recorded below:
+// design intent recorded below.
+//
+// THE POOLS BELOW ARE OWED A PASS. They were set against the damage curve as it
+// stood before the tree was repriced from one total (CONFIG.treeGold /
+// treeTotals) and the stat ceilings were removed. Under the new curve a
+// Feuerball hit runs ~199 at a quarter of the tree and ~749 at nearly all of it
+// — the endgame hero is some 4.6× harder-hitting than the one these HP pools
+// were sized for, so the last chapters land softer than the table claims and the
+// door is reachable earlier than the ~95% it is written for. `node
+// tools/stat-supply.mjs` prints that curve against tree completion, which is the
+// figure to re-tune the deep variants against.
 //
 //     chapter  camps      metres    the hero it is written for
 //     -------  ---------  --------  ---------------------------------------

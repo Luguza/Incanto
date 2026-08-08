@@ -11,7 +11,8 @@ let state = null;
 
 function freshState() {
   return {
-    screen: "combat",       // combat | quiz | upgrade | reward
+    screen: "combat",       // combat | quiz | history | upgrade | bookorder | stats | reward
+    statsTab: "hero",       // which tab the ledger screen shows (see stats.js) — pure UI, not persisted
     runActive: false,       // a combat run is live (used by the bottom nav to resume vs. restart)
     runes: [],               // {id, pairId, lang, word, x, y, matchState}
     selectedRuneId: null,
@@ -34,6 +35,7 @@ function freshState() {
     // Derived combat modifiers (see skilltree.recomputeMods). Safe defaults so
     // combat never touches an undefined field before the first recompute.
     mods: {
+      flatDmg: 0,
       critChance: 0, critMult: 1.5, leech: 0, regen: 0, castHaste: 0,
       walkMult: 1, coinMult: 1, shieldChance: 0, shieldAmount: 0, shieldMax: 0,
       thorns: 0, spellFailProt: 0,
@@ -114,6 +116,10 @@ function freshState() {
     // learner who has earned the whole-table drill keeps it across runs.
     conjLevel: 0,
     conjStreak: 0,
+    // Testing tools on the upgrade screen (see skilltree.js: devToggle). Off by
+    // default and persisted, so a tester keeps them armed across reloads while a
+    // player never sees more than the slider itself.
+    devMode: false,
     quizWordMisses: [],      // WORD_POOL indices fumbled on the current question (see vocab-history.js)
     quizAnsweredAt: 0,
     clockMs: 0,               // internal clock warped by mode+selection, drives windup + instrumentation
@@ -184,6 +190,7 @@ function saveProgress() {
       conjStreak: state.conjStreak,
       deepest: state.deepest,
       hallClearedEver: state.hallClearedEver,
+      devMode: state.devMode,
     }));
   } catch (e) { /* storage unavailable (private mode/quota) — play without saving */ }
 }
@@ -237,6 +244,7 @@ function applySavedProgress() {
       typeof HALL_END_METRES !== "undefined" ? HALL_END_METRES : Infinity
     );
     state.hallClearedEver = !!data.hallClearedEver;
+    state.devMode = data.devMode === true;
     if (data.nodeRanks && typeof data.nodeRanks === "object") {
       const ranks = {};
       const nodes = (typeof TREE_NODES !== "undefined") ? TREE_NODES : {};

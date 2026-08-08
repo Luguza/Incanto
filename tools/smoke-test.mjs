@@ -565,6 +565,149 @@ try {
   check(inCombat.names.join(",") === inCombat.want.join(",") && inCombat.names.length === 2,
     "the combat book opens on the newly bound order (" + inCombat.names.join(" | ") + ")");
 
+  // 9b. The ledger (see stats.js): the forge's other side door, where the build
+  //     is read rather than bought. Its whole reason to exist is that its
+  //     numbers are the FIGHT's numbers — so the guard here is not "a screen
+  //     rendered" but "the figures track the resolvers and the stat model".
+  await page.evaluate(() => {
+    state.nodeRanks = {}; state.gold = 999999; recomputeMods();
+    for (let i = 0; i < 3; i++) { treeBuy("migp0"); treeBuy("vigp0"); }
+    state.screen = "upgrade"; state._structuralDirty = true; render(performance.now());
+  });
+  await page.click('[data-act="openStats"]');
+  await page.waitForTimeout(180);
+  //     Read a row by its label, the way a player reads it off the screen.
+  const rowValue = (label) => page.evaluate((want) => {
+    const row = [...document.querySelectorAll(".sv-row")]
+      .find((r) => r.querySelector(".sv-label").textContent.trim() === want);
+    return row ? row.querySelector(".sv-value").textContent.trim() : null;
+  }, label);
+  const ledger = await page.evaluate(() => ({
+    screen: state.screen,
+    rows: document.querySelectorAll(".sv-row").length,
+    phase: (document.querySelector("#bottom-nav .nav-btn.active") || {}).dataset.phase,
+    dmg: state.heroDmg, hp: state.heroMaxHP,
+    headline: [...document.querySelectorAll(".sv-hero-tile b")].map((b) => b.textContent.trim()),
+  }));
+  check(ledger.screen === "stats" && ledger.rows > 15,
+    "the forge's Werte button opens the ledger (" + ledger.rows + " stat rows)");
+  check(ledger.phase === "upgrade", "the ledger sits inside the upgrade phase (nav=" + ledger.phase + ")");
+  check(ledger.headline[0] === String(ledger.dmg) && ledger.headline[1] === String(ledger.hp),
+    "its headline figures are the hero's own (" + ledger.headline.slice(0, 2).join(" / ") + ")");
+  check(await rowValue("Grundschaden") === String(ledger.dmg),
+    "a bought damage node moves the ledger's Grundschaden row (" + ledger.dmg + ")");
+
+  //     THE PROMISE. Damage is built in three stages (see skilltree.js), and the
+  //     last one exists so that a node reading "+N Schaden je Treffer" puts
+  //     exactly N on every body it touches — on the ×1.00 Feuerball and the
+  //     ×0.35 Frostkegel alike, on the first rank and after the pool is already
+  //     hundreds deep. It is uncapped precisely so that stays true, and this is
+  //     the guard on it. Support pages are the one exception: a damage node must
+  //     not inflate a heal.
+  const promise = await page.evaluate(() => {
+    const { TREE_NODES: N, treeBuy } = Incanto.skilltree;
+    const { SPELLS, spellPower } = Incanto.spells;
+    state.nodeRanks = {}; state.gold = 10 ** 7; recomputeMods();
+    const ids = SPELLS.map((s) => s.id);
+    const snap = () => Object.fromEntries(ids.map((id) => [id, spellPower(id)]));
+    // The Macht prelude runs Kernschliff · Schneide · Härtung · Schneide, so
+    // migp1 and migp3 are flat "je Treffer" nodes with a reachable path.
+    const deltas = [];
+    const measureRanks = (id) => {
+      const want = N[id].effect.flatDmg;
+      for (let r = 0; r < N[id].maxRank; r++) {
+        const before = snap();
+        treeBuy(id);
+        const after = snap();
+        deltas.push({ id, want, got: Object.fromEntries(ids.map((s) => [s, +(after[s] - before[s]).toFixed(6)])) });
+      }
+    };
+    treeBuy("migp0");                                   // reach the first Schneide
+    measureRanks("migp1");
+    for (let r = 0; r < N.migp2.maxRank; r++) treeBuy("migp2");   // walk on past the Härtung
+    measureRanks("migp3");
+    // …and once more from deep inside the pool: buy out the Macht arm until the
+    // stack is dozens of points deep, then buy one more rank and check it still
+    // pays its full face.
+    const adj = {};
+    for (const [a, b] of Incanto.skilltree.TREE_EDGES) { (adj[a] = adj[a] || []).push(b); (adj[b] = adj[b] || []).push(a); }
+    const reachable = (id) => (adj[id] || []).some((x) => x === "root" || (state.nodeRanks[x] || 0) > 0);
+    for (let guard = 0; guard < 400 && state.mods.flatDmg < 60; guard++) {
+      const next = Object.keys(N).find((id) =>
+        id.startsWith("mig") && (state.nodeRanks[id] || 0) < N[id].maxRank && reachable(id));
+      if (!next) break;
+      treeBuy(next);
+    }
+    const deepBefore = snap();
+    const deepId = Object.keys(N).find((id) =>
+      N[id].effect.flatDmg && (state.nodeRanks[id] || 0) < N[id].maxRank && reachable(id));
+    const deepWant = N[deepId].effect.flatDmg;
+    treeBuy(deepId);
+    const deepAfter = snap();
+    return {
+      deltas, pool: state.mods.flatDmg,
+      deepWant, deepGot: +(deepAfter.fireball - deepBefore.fireball).toFixed(6),
+      deepFrost: +(deepAfter.frost - deepBefore.frost).toFixed(6),
+      support: +(deepAfter.heal - deepBefore.heal).toFixed(6),
+    };
+  });
+  const paysFace = promise.deltas.every((d) =>
+    ["fireball", "lightning", "frost", "meteor"].every((s) => d.got[s] === d.want) &&
+    ["shield", "heal"].every((s) => d.got[s] === 0));
+  check(paysFace,
+    "every rank of a flat node pays its printed value on all four damage pages, and none of it on the support pages");
+  check(promise.deepGot === promise.deepWant && promise.deepFrost === promise.deepWant &&
+    promise.support === 0 && promise.pool > 40,
+    "it still pays face value deep in the pool (+" + promise.deepWant + " on a +" +
+    Math.round(promise.pool) + " stack, Frostkegel included)");
+
+  //     Nothing is capped any more, so a meter measures what the player owns
+  //     against what the TREE HOLDS — the only honest denominator left, and the
+  //     one that still answers "is another node of this worth walking to".
+  const meter = await page.evaluate(() => {
+    state._structuralDirty = true; render(performance.now());   // show what was just bought
+    const supply = Incanto.skilltree.TREE_SUPPLY;
+    const row = [...document.querySelectorAll(".sv-row")]
+      .find((r) => r.querySelector(".sv-label").textContent.trim() === "③ Zuschlag je Treffer");
+    const fill = row.querySelector(".sv-bar > i");
+    return {
+      supply: supply.flatDmg, mine: state.mods.flatDmg,
+      width: parseFloat(fill.style.width),
+      note: row.querySelector(".sv-note").textContent.replace(/\s+/g, " ").trim(),
+    };
+  });
+  check(Math.abs(meter.width - (meter.mine / meter.supply) * 100) < 0.2,
+    "a meter is drawn against what the whole tree holds of that stat (" +
+    meter.width.toFixed(1) + "% of " + Math.round(meter.supply) + ")");
+  check(/von .* im ganzen Baum/.test(meter.note), "…and the row says so in words (" + meter.note.slice(0, 48) + "…)");
+
+  //     The spell tab: one card per page, in the order the book is BOUND, and
+  //     each card's signature figures re-derived from the same mods the
+  //     resolvers read — a chain that grew in the tree grows here too.
+  await page.click('[data-act="setStatsTab"][data-args=\'["spells"]\']');
+  await page.waitForTimeout(180);
+  const cards = await page.evaluate(() => ({
+    n: document.querySelectorAll(".sv-spell").length,
+    names: [...document.querySelectorAll(".sv-spell-name h3")].map((h) => h.textContent.trim()),
+    want: Incanto.spells.bookSpells().map((s) => s.name),
+  }));
+  check(cards.n === 6 && cards.names.join(",") === cards.want.join(","),
+    "the ledger lists all six pages in bound order (" + cards.names.join(" · ") + ")");
+  const grown = await page.evaluate(() => {
+    state.mods.spellParam.chainLightning = 4;   // what four "one more hop" nodes buy
+    state._structuralDirty = true; render(performance.now());
+    const row = [...document.querySelectorAll(".sv-row")]
+      .find((r) => r.querySelector(".sv-label").textContent.trim() === "Sprünge");
+    return { shown: row ? row.querySelector(".sv-value").textContent.trim() : null,
+             want: CONFIG.spells.lightning.chain + 4 };
+  });
+  check(grown.shown === grown.want + " Körper",
+    "a spell's own parameters are re-derived, not restated (Sprünge " + grown.shown + ")");
+  await page.click('[data-act="closeStats"]');
+  await page.waitForTimeout(150);
+  check(await page.evaluate(() => state.screen) === "upgrade", "leaving the ledger returns to the tree");
+  await page.evaluate(() => { recomputeMods(); });   // undo the two hand-set mods
+
   // 10. The reward bank. Kills charge a gold multiplier that must survive dying
   //     and starting over — it is spent only by finishing a whole quiz, so a run
   //     cut short is never wasted fighting.
@@ -753,6 +896,68 @@ try {
     "reaching the door ends the run and is remembered");
   check(/Ende des Ganges/.test(cleared.title || ""),
     `the end screen says so rather than reading as a death ("${cleared.title}")`);
+  // 12. The dev tools on the tree screen (see skilltree.js). They are armed by a
+  //     slider and must be unreachable while it is off; armed, they wipe every
+  //     purchased rank (asking once first) and let the purse be typed into.
+  await page.evaluate(() => {
+    state.devMode = false;
+    state.gold = 500;
+    state.nodeRanks = {}; Incanto.skilltree.treeBuy("migp0"); Incanto.skilltree.treeBuy("migp0");
+    state.screen = "upgrade"; state.tree = null;
+    state._structuralDirty = true;
+    render(performance.now());
+  });
+  const devOff = await page.evaluate(() => ({
+    bar: document.querySelectorAll(".dev-bar").length,
+    purse: document.querySelectorAll(".tree-gold.dev").length,
+    slider: document.querySelectorAll(".dev-switch").length,
+  }));
+  check(devOff.slider === 1 && devOff.bar === 0 && devOff.purse === 0,
+    "the dev slider is the only dev thing on the tree until it is switched on");
+
+  await page.click(".dev-switch");
+  await page.waitForTimeout(120);
+  check(await page.evaluate(() => state.devMode === true && !!document.querySelector(".dev-bar")),
+    "the slider arms the tools and opens the dev row");
+
+  // Typing a gold amount: tap the purse, fill the field, tap ✓ (no Enter — see CLAUDE.md).
+  await page.click(".tree-gold.dev");
+  await page.fill(".dev-gold-input", "4321");
+  await page.click(".dev-gold-ok");
+  await page.waitForTimeout(120);
+  const purse = await page.evaluate(() => ({
+    gold: state.gold,
+    shown: document.querySelector("#tree-gold-slot").textContent.trim(),
+    saved: JSON.parse(localStorage.getItem("incanto.save.v1")).gold,
+  }));
+  check(purse.gold === 4321 && /4321/.test(purse.shown) && purse.saved === 4321,
+    "tapping the purse sets the gold and persists it (" + purse.shown + ")");
+  await page.click(".tree-gold.dev");
+  await page.fill(".dev-gold-input", "-40");
+  await page.click(".dev-gold-ok");
+  await page.waitForTimeout(120);
+  check(await page.evaluate(() => state.gold === 0), "a negative amount clamps to nothing");
+
+  // Wiping the tree: the first tap only arms the button.
+  await page.click(".dev-btn");
+  await page.waitForTimeout(120);
+  check(await page.evaluate(() => state.nodeRanks.migp0 === 2 && /Wirklich/.test(document.querySelector(".dev-btn").textContent)),
+    "the first tap on the wipe asks instead of wiping");
+  await page.click(".dev-btn");
+  await page.waitForTimeout(120);
+  const wiped = await page.evaluate(() => ({
+    ranks: Object.keys(state.nodeRanks).length,
+    baseDmg: state.heroDmg === CONFIG.heroBaseDmg,
+    spell: state.activeSpell,
+    saved: Object.keys(JSON.parse(localStorage.getItem("incanto.save.v1")).nodeRanks).length,
+  }));
+  check(wiped.ranks === 0 && wiped.saved === 0 && wiped.baseDmg && wiped.spell === "fireball",
+    "the second tap wipes every rank, re-derives the build and reseals the book");
+
+  await page.click(".dev-switch");
+  await page.waitForTimeout(120);
+  check(await page.evaluate(() => state.devMode === false && !document.querySelector(".dev-bar")),
+    "switching the slider back off puts the tools away");
 
   check(errors.length === 0, "no console/page errors");
 

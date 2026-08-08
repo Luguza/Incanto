@@ -10,7 +10,21 @@ const CONFIG = {
   // Hero: small HP pool, starts weak, upgrades bought with gold. Base survives a
   // couple of skeleton blows so the very first upgradeless run is a real fight
   // (not an instant death) — a few cheap early nodes then tip a lone skeleton in
-  // the hero's favour; see CONFIG.caps for why stacking past that plateaus.
+  // the hero's favour, and stacking further keeps paying — nothing plateaus.
+  // DAMAGE IS BUILT IN THREE STAGES (see skilltree.js: the A table, and
+  // recomputeMods). Kern → Verstärkung → Zuschlag: a flat node adds to the core
+  // that everything else multiplies, or — the Schneide nodes — lands last of
+  // all, after the page's own factor, so its printed number is exactly what
+  // arrives on every body.
+  //
+  // Nothing about it is capped, and nothing about any other stat is either (see
+  // the note where the caps used to live, below). On the cheapest-first curve a
+  // Feuerball hit runs ~58 at 1.000 gold spent, ~88 at 3.000, ~133 at 10.000 and
+  // ~330 at 30.000, and keeps climbing from there. Four-digit numbers therefore
+  // do appear on a deeply invested tree — the old "never four digits" rule was
+  // a consequence of the ceilings, and it went with them. Run
+  // tools/stat-supply.mjs to see the whole curve.
+  //
   // NUMBER SCALE. Every damage and HP figure in the game is carried at ×8 the
   // scale it reads at naturally, for one reason: a PERCENTAGE needs resolution
   // to express itself. At the old scale a fresh hero's frost cone hit for 1 and
@@ -345,10 +359,11 @@ const CONFIG = {
   //   eff       = max(0, armor - mods.armorPen)
   //
   // Percentage rather than subtraction, for two reasons rooted in this game:
-  //  · `state.heroDmg` runs from 3 to ~48 across a fully-grown tree (heroBaseDmg
-  //    plus caps.flatDmg / caps.pctDmg), so any flat deduction big enough to
-  //    matter at 3 damage is a wall, and any small enough to be fair at 3 is
-  //    invisible at 48. A fraction holds its meaning across that whole span.
+  //  · a hit runs from 24 on a fresh hero into the hundreds on a deep tree, and
+  //    with the flat damage stage uncapped (see caps) there is no top end at all
+  //    any more — so any flat deduction big enough to matter at 24 is a wall,
+  //    and any small enough to be fair at 24 is invisible at 300. A fraction
+  //    holds its meaning across the whole span, however far it now runs.
   //  · most pages of the book deal their damage in many small hits (a meteor
   //    rock at 0.5x, a fifth lightning hop at 0.27x, a frost cone at 0.35x).
   //    A flat deduction taxes each hit separately and would collapse those into
@@ -466,13 +481,13 @@ const CONFIG = {
     // whoever is pressed up behind it. `laneRadius` is the same blast measured
     // ACROSS the lanes and starts under 1: a fresh Feuerball burns one lane, and
     // reaching into the neighbouring ones is what the Glutkern branch sells.
-    // `maxRadiusTiles` is where the growth stops — it matches caps.aoeFireball,
-    // so the cap is the single place that bounds the spell.
-    fireball: { dmgMult: 1.0, radiusTiles: 1.3, maxRadiusTiles: 3.25,
+    // How far the blast can grow is now just how much Glutkern the tree holds
+    // (see treeTotals.aoeFireball below — bought out, it reaches ~3,25 tiles).
+    fireball: { dmgMult: 1.0, radiusTiles: 1.3,
                 laneRadius: 0.85, flightMs: 450, blastMs: 560 },
     // Blitzschlag — arcs from body to body, each hop weaker than the last. Far
     // more reach than Feuerball, paid for in falloff.
-    lightning: { dmgMult: 0.95, chain: 3, maxChain: 14, falloff: 0.72, hopMs: 85, holdMs: 260 },
+    lightning: { dmgMult: 0.95, chain: 3, falloff: 0.72, hopMs: 85, holdMs: 260 },
     // Frostkegel — a cone off the staff that shoves the front ranks back down
     // the hall and freezes them where they land. Barely damages; it buys time
     // and sets up the shatter (see primeWindowMs).
@@ -483,13 +498,12 @@ const CONFIG = {
     // Reach: the cone opens 4 tiles down the hall on the page you unlock, which
     // is the front two or three ranks of each lane and no more — a wedge that
     // swept the corridor from the moment the page opened would leave the whole
-    // Weiter Atem branch with nothing to sell. `maxConeTiles` is the far end of
-    // that branch: every rank of it together adds FOUR tiles and not a tile
-    // more, so the fully-invested cone doubles its reach and stops there. The
-    // hall itself is 10 tiles deep on a phone and nearly 20 on a desktop, so
-    // even the maxed cone is a front-ranks spell rather than a screen clear.
-    frost: { dmgMult: 0.35, coneTiles: 4, maxConeTiles: 8, pushTiles: 2.4, pushMs: 280,
-             freezeMs: 2600, maxFreezeMs: 6000,
+    // Weiter Atem branch with nothing to sell. That branch, bought out entirely,
+    // adds four more tiles: the fully-invested cone doubles its reach because
+    // that is all the Kegelweite the tree contains. The hall itself is 10 tiles
+    // deep on a phone and nearly 20 on a desktop, so even then it is a
+    // front-ranks spell rather than a screen clear.
+    frost: { dmgMult: 0.35, coneTiles: 4, pushTiles: 2.4, pushMs: 280, freezeMs: 2600,
              // Trimmed from 2.4 with the number rescale: the shatter multiplies a
              // crit on top of a fully-invested page, so it sets the game's single
              // largest number and is what the three-digit ceiling binds against.
@@ -497,7 +511,7 @@ const CONFIG = {
     // Meteoritenschauer — rocks fall on random spots across the WHOLE visible
     // track, not on chosen targets. Low per-hit damage over a wide, random area:
     // it thins a spread-out mob rather than deleting a front rank.
-    meteor: { dmgMult: 0.5, count: 4, maxCount: 18, radiusTiles: 1.7, laneRadius: 1.4,
+    meteor: { dmgMult: 0.5, count: 4, radiusTiles: 1.7, laneRadius: 1.4,
               spreadMs: 900, fallMs: 380, impactMs: 260 },
     // Bannschild — absorb, not damage. Its pool is derived from spell power the
     // same way damage is, and it stacks onto whatever Ward nodes already grant.
@@ -519,73 +533,101 @@ const CONFIG = {
   // Floating damage numbers that pop over a fighter on each hit, then rise + fade
   dmgFloatMs: 850,      // how long a damage number lingers before it's culled
   dmgFloatRisePx: 16,   // art pixels it drifts upward across its life
-  // Balance ceilings. The skill tree is ~1300 nodes whose effect grows the
-  // farther out they sit, so without limits a stacked build snowballs into an
-  // unkillable, AFK-able hero. recomputeMods runs every summed stat through
-  // these: the flat/percent pools use a soft cap (near-linear while small, so
-  // early upgrades feel strong, then asymptoting so each extra point returns
-  // less), and the sustain/crit stats use hard ceilings. Enemies never scale, so
-  // these caps are what keep the fight a fight no matter how deep the tree goes.
+  // ===========================================================================
+  // THE BALANCE TABLE — how much of each stat the whole skill tree CONTAINS.
   //
-  // These are also the COMPRESSION half of the ×8 number scale (see heroBaseDmg).
-  // The base figures went up ×8 while these went up only ~2–3×, which is what
-  // holds the ceiling still: growth used to run ×16.7 on damage and ×10.5 on HP,
-  // and now runs ~×4.3 on both. That is the trade the three-digit rule forces —
-  // and it is the direction the tree already claims for itself, since the arms
-  // are meant to pay out in BREADTH (more pages, more bodies hit, more
-  // keystones) rather than in a bigger single number.
-  caps: {
-    flatHp: 190,        // soft-cap on summed +flat HP (before % HP)
-    flatDmg: 44,        // soft-cap on summed +flat damage (before % damage)
-    pctHp: 0.6,         // soft-cap on summed % HP  (approaches +60%)
-    pctDmg: 0.5,        // soft-cap on summed % damage (approaches +50%)
-    critChance: 0.6,    // hard ceiling on crit chance
-    critMult: 1.0,      // hard ceiling on bonus crit damage (max crit ×2.5)
-    // Armour penetration, in armour POINTS shredded off whatever the body wears
-    // (see CONFIG.armorK). Deliberately below the brute's armour 5: a build that
-    // commits the whole Macht arm to penetration wears the brute's mitigation
-    // down from a third to a sixth, but never erases it — and there is headroom
-    // left for a heavier-plated variant later.
-    armorPen: 3,
-    // Per-spell % damage. Soft-capped like the generic pools, and separately —
-    // a page's own nodes plateau on their own, so pouring an entire sector into
-    // one spell still leaves the other five worth visiting.
-    spellPct: 0.6,
-    regen: 16,          // hard ceiling on HP/s regen (below a full mob's DPS) — an HP
-                        // rate, so it took the full ×8 rather than the compression
-    // No thorns entry: reflection is bounded by supply instead of by a ceiling —
-    // only five unique nodes in the whole tree grant it, 10% each (see skilltree.js).
-    leech: 0.5,         // hard ceiling on life-leech fraction
-    shieldChance: 0.5,  // hard ceiling on per-cast shield chance
-    // Absorb is measured in HP, so these track the hero's pool rather than the
-    // ×8: the bankable shield stays worth roughly one full health bar, as before.
-    shieldAmount: 150,  // hard ceiling on absorb granted per proc
-    shieldMax: 350,     // hard ceiling on the absorb pool a hero may bank
-    spellFailProt: 0.6, // hard ceiling on backfire-ward chance
-    castHaste: 0.45,    // hard ceiling on how much of the cast charge can be shaved off
-    // Fortuna is a whole arm of the tree now, and neither of its stats is bounded
-    // by anything downstream the way damage is — so they soft-cap here.
-    coinMult: 1.5,      // soft-cap on summed bonus gold (approaches +150%)
-    walkMult: 1.0,      // soft-cap on summed bonus walking pace (heroWalkMaxPxPerMs still applies)
-    // A spell's SHAPE parameters, bounded so a fully-invested branch broadens the
-    // spell without erasing its trade-off. The whole-body counts (an extra hop,
-    // an extra rock) are absent on purpose: each spell's own maximum in
-    // CONFIG.spells already bounds those.
-    // Cone reach doubles and stops — the spell's own `maxConeTiles` is what
-    // actually binds it (in tiles, where the design rule lives). This cap is
-    // here so the STAT can't advertise growth the spell won't deliver: the tree
-    // has +148% of Kegelweite in it, and a node tooltip promising a reach past
-    // the ceiling would be a lie told at 30 gold a rank.
-    coneFrost: 1.0,        // frost cone reach, as a fraction of coneTiles
-    // Feuerball's blast, as a fraction of radiusTiles. The Glutkern branch holds
-    // ~229% of it, so the cap lands about two thirds of the way out — the same
-    // shape as Kegelweite above: the branch is worth walking, and its far end
-    // sells crit and sigils rather than yet more radius. Capped, the burst covers
-    // three lanes and ~6.5 tiles of track: wide, but still a blast around one
-    // body rather than the meteor's rain over the whole hall.
-    aoeFireball: 1.5,
-    aoeMeteor: 1.0,        // meteor crater size, as a fraction of radiusTiles
-    falloffLightning: 0.2, // added to lightning's per-hop falloff (0.72 → at most 0.92)
+  // This is the one place the game's power curve is tuned. Every figure is a
+  // total: "walk every node that grants Zähigkeit and you will have +1.200 LP,
+  // and not one point more". skilltree.js grows the tree from relative weights
+  // and then divides these totals across it (applyTreeTotals), so a node's
+  // printed value is derived from the number below rather than guessed at.
+  //
+  // WHY THIS IS A CAP AND ALSO ISN'T. Every stat is bounded again — you cannot
+  // carry more than the tree holds — but the bound is on what EXISTS, not on
+  // what you may keep. Nothing is clipped, nothing suffers diminishing returns,
+  // and a node always pays exactly what its tooltip says, at ring 1 and ring 19
+  // alike. The ceiling is just the end of the supply.
+  //
+  // And the pools slow themselves down without any help: they are ADDITIVE, so
+  // the tenth +30 LP is the same +30 as the first while being a far smaller
+  // share of the pool it lands in. That is where the diminishing return comes
+  // from now — the arithmetic, not a curve laid over it.
+  //
+  // WHAT A REAL BUILD SEES. Nobody owns the tree: it costs a couple of million
+  // gold. On the cheapest-first curve a player holds roughly 5–8 % of each total
+  // after 10.000 gold and 10–15 % after 30.000, so these figures are ceilings
+  // that a build approaches from far below, and raising one lifts the whole
+  // curve under it. `node tools/stat-supply.mjs` prints target vs. achieved
+  // total next to what a build carries at 1k–100k gold — run it after any edit
+  // here.
+  // What the WHOLE skill tree costs — every rank of every node, end to end.
+  // Each rank's price is a share of this, weighted by how deep the node sits,
+  // how much of a node it is, and how many of its ranks you already own (see
+  // skilltree.js applyTreeGold). Nothing is priced in gold by hand.
+  //
+  // It is set against the INCOME so that an endgame player really does walk most
+  // of the tree and really does arrive at the ceilings in treeTotals — which is
+  // what makes those ceilings mean something. A quiz session pays roughly
+  // goldPerCorrect × the banked multiplier × the gold bonus, over ten questions
+  // and two conjugation drills: about 350 gold early, ~1.000 in the middle and
+  // ~2.800 once Fortuna is walked. Reaching 90 % of the NODES costs ~300.000
+  // (the cheap ranks go first, so the last tenth of the gold buys keystones),
+  // which is on the order of 250–300 finished sessions.
+  //
+  // Lower it and the tree opens faster; raise it and every total below becomes a
+  // more distant horizon. Nothing else needs touching either way — the prices
+  // redistribute themselves.
+  treeGold: 400000,
+  treeTotals: {
+    // Every figure is what the WHOLE tree holds, and roughly 1/0,9 of what an
+    // endgame build actually ends up carrying. Read them as "this is the most
+    // this stat is ever worth", because now that is what they are.
+    //
+    // — damage, in the three stages it is built in (see skilltree.js)
+    flatBase: 150,        // ① +150 Kernschaden, before any factor
+    pctBase: 0.4,         // ① +40 % on that core
+    pctDmg: 0.6,          // ② ×1,6 all told
+    flatDmg: 250,         // ③ +250 on every single body hit, after everything
+    // …which lands an endgame Feuerball around 700 per body: a skeleton (80 LP)
+    // and a brute (160) both die to one, which is what an endgame ought to feel
+    // like. The two flat stages cannot go much below this: they are counted in
+    // whole points, and 143 / 231 ranks of the tree grant them, so a smaller
+    // total would only mean every one of those nodes printing "+1".
+    // — the hero
+    flatHp: 600,          // with pctHp: ~1.240 LP at the end, ~25 skeleton blows
+    pctHp: 1,
+    critChance: 0.6,      // 60 % — and it is a probability, so it could not be more
+    critMult: 1.5,        // a crit lands at ×3,0
+    armorPen: 5,          // exactly the brute's plate: commit fully and it is gone
+    leech: 0.4,
+    regen: 25,            // LP/s — ~2 % of the endgame pool per second
+    castHaste: 1.2,       // as a rate: 420 ms ÷ 2,2 ≈ 190 ms
+    walkMult: 1,          // pace 0,057 px/ms, still under the march's own 0,12
+    coinMult: 2.5,
+    shieldChance: 0.5,
+    shieldAmount: 350,
+    shieldMax: 800,       // a banked shield worth about half the endgame pool
+    spellFailProt: 0.6,
+    thorns: 0.5,          // five Dornenkronen, 10 % each — the one already-exact total
+    // — per page of the book: a page's own sigils are worth ~+50 % to it
+    dmgFireball: 0.5, dmgLightning: 0.5, dmgFrost: 0.5,
+    dmgMeteor: 0.5, dmgShield: 0.5, dmgHeal: 0.5,
+    // — page SHAPE, where the totals are the shapes' own design limits
+    aoeFireball: 1.5,     // blast radius ×2,5 → 3,25 Felder
+    aoeMeteor: 1.5,       // crater ×2,5
+    coneFrost: 1,         // cone reach ×2 → 8 Felder, the corridor's own depth
+    freezeFrost: 3400,    // +3,4 s → 6,0 s frozen
+    falloffLightning: 0.2, // +20 % carried per hop → 0,92, still short of 1
+    // chainLightning / countMeteor are absent on purpose: they are whole bodies.
+    // A node grants one more hop or one more rock and cannot grant 0,7 of one,
+    // so their total is simply how many such nodes the tree has (12 and 13).
+  },
+  // Testing tools on the upgrade screen (see skilltree.js). A slider in the tree
+  // topbar arms them; while it is off nothing they touch can be reached, so the
+  // ordinary game is unchanged. `goldMax` bounds what the tappable purse accepts
+  // — high enough to buy anything, low enough that the pill still fits a phone.
+  dev: {
+    goldMax: 999999,
   },
   circleCenter: { x: 300, y: 300 },
   circleRadius: 215,
