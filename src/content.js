@@ -11,6 +11,41 @@
 // meaning (`de`). Nouns keep their article in both languages so the learner
 // absorbs gender; verbs are given as infinitives, everything else in its base
 // form. Grouped by theme for upkeep; the game treats it as one flat list.
+//
+// Where the A1 scope comes from
+// -----------------------------
+// The pool covers the official A1 lexical inventory of the *Profilo della lingua
+// italiana. Livelli del QCER A1, A2, B1, B2* (Spinelli & Parizzi 2010) — the
+// CEFR reference-level description for Italian, published by the CVCL of the
+// Università per Stranieri di Perugia. Its A1 list is 486 lemmas:
+//   https://www.unistrapg.it/profilo_lingua_italiana/site/liste_lessicali_a1.html
+// All 486 are represented here, with two deliberate exceptions: the bare
+// definite articles (il, lo, la, i, gli, le) and the indefinite un/o/a. Seven
+// cards that all answer "der/die/das" teach nothing and cannot be marked right —
+// Italian gender is taught the way it is actually used, by the article each noun
+// below carries. Everything beyond the 486 is extra the game already had (more
+// animals, body parts, colours, numbers); it is kept, not pruned.
+//
+// …and the practical layer on top of it
+// -------------------------------------
+// A syllabus list is not the same as what people say. So the pool also carries
+// everyday phrases ("come stai?", "quanto costa?", "mi dispiace"), the discourse
+// glue that joins spoken sentences (allora, quindi, però, magari, purtroppo),
+// the high-frequency verbs the A1 list skips (chiedere, credere, riuscire,
+// conoscere) and the abstractions that fill ordinary talk (la gente, la volta,
+// il modo). These were checked against the *Nuovo vocabolario di base della
+// lingua italiana* (De Mauro & Chiari 2016) through dizionario.internazionale.it:
+// all but a few carry the FO mark — the ~2000 lemmas that make up 86% of
+// everything written or spoken in Italian.
+//
+// Two things to respect when adding a phrase. `normAnswer` in quiz.js turns an
+// apostrophe into a space, so a German gloss must not contain one ("wie geht es
+// dir?", never "wie geht's?") or nobody can type it. And the rune circle draws
+// each word as one un-wrapped SVG <text> in a 48px-radius bubble, so anything
+// much past ~16 characters starts to hang over the edge.
+//
+// To re-check coverage after editing, diff the `it` fields (minus their article)
+// against that page's numbered list.
 // ---------------------------------------------------------------------------
 const WORD_POOL = [
   // Greetings & courtesy
@@ -24,6 +59,39 @@ const WORD_POOL = [
   { it: "per favore", de: "bitte" },
   { it: "scusa", de: "Entschuldigung" },
   { it: "sì", de: "ja" },
+  { it: "l'affetto", de: "die Zuneigung" },
+  { it: "l'augurio", de: "der Glückwunsch" },
+  { it: "il saluto", de: "der Gruß" },
+  { it: "il bacio", de: "der Kuss" },
+  { it: "l'attenzione", de: "die Aufmerksamkeit" },
+  { it: "il favore", de: "der Gefallen" },
+  { it: "il piacere", de: "das Vergnügen" },
+  { it: "la cosa", de: "die Sache" },
+  { it: "aiuto", de: "Hilfe" },
+  { it: "cin cin", de: "Prost" },
+  { it: "salute", de: "Gesundheit" },
+
+  // Everyday phrases — the chunks a beginner actually says out loud
+  { it: "come stai?", de: "wie geht es dir?" },
+  { it: "come va?", de: "wie läuft es?" },
+  { it: "va bene", de: "in Ordnung" },
+  { it: "d'accordo", de: "einverstanden" },
+  { it: "mi dispiace", de: "es tut mir leid" },
+  { it: "non capisco", de: "ich verstehe nicht" },
+  { it: "non lo so", de: "ich weiß es nicht" },
+  { it: "quanto costa?", de: "was kostet das?" },
+  { it: "quanti anni hai?", de: "wie alt bist du?" },
+  { it: "mi chiamo", de: "ich heiße" },
+  { it: "di niente", de: "keine Ursache" },
+  { it: "a presto", de: "bis bald" },
+  { it: "a domani", de: "bis morgen" },
+  { it: "buon appetito", de: "guten Appetit" },
+  { it: "buona fortuna", de: "viel Glück" },
+  { it: "che peccato", de: "wie schade" },
+  { it: "posso?", de: "darf ich?" },
+  { it: "vorrei", de: "ich hätte gern" },
+  { it: "ecco", de: "hier ist" },
+  { it: "basta", de: "genug" },
 
   // People & family
   { it: "la famiglia", de: "die Familie" },
@@ -42,6 +110,20 @@ const WORD_POOL = [
   { it: "il ragazzo", de: "der Junge" },
   { it: "la ragazza", de: "das Mädchen" },
   { it: "il nome", de: "der Name" },
+  { it: "la mamma", de: "die Mama" },
+  { it: "il papà", de: "der Papa" },
+  { it: "il marito", de: "der Ehemann" },
+  { it: "la moglie", de: "die Ehefrau" },
+  { it: "maschio", de: "männlich" },
+  { it: "femmina", de: "weiblich" },
+  { it: "il compagno", de: "der Partner" },
+  { it: "la signora", de: "die Dame" },
+  { it: "il dottore", de: "der Arzt" },
+  { it: "il professore", de: "der Lehrer" },
+  { it: "l'insegnante", de: "die Lehrkraft" },
+  { it: "lo studente", de: "der Student" },
+  { it: "il turista", de: "der Tourist" },
+  { it: "il cameriere", de: "der Kellner" },
 
   // Body
   { it: "la testa", de: "der Kopf" },
@@ -57,6 +139,9 @@ const WORD_POOL = [
   { it: "il cuore", de: "das Herz" },
   { it: "i capelli", de: "die Haare" },
   { it: "il dente", de: "der Zahn" },
+  { it: "gli occhiali", de: "die Brille" },
+  { it: "la medicina", de: "die Medizin" },
+  { it: "il sonno", de: "der Schlaf" },
 
   // Food & drink
   { it: "il cibo", de: "das Essen" },
@@ -85,6 +170,26 @@ const WORD_POOL = [
   { it: "la colazione", de: "das Frühstück" },
   { it: "il pranzo", de: "das Mittagessen" },
   { it: "la cena", de: "das Abendessen" },
+  { it: "l'aceto", de: "der Essig" },
+  { it: "l'olio", de: "das Öl" },
+  { it: "il pepe", de: "der Pfeffer" },
+  { it: "il pomodoro", de: "die Tomate" },
+  { it: "la pasta", de: "die Nudeln" },
+  { it: "gli spaghetti", de: "die Spaghetti" },
+  { it: "la pizza", de: "die Pizza" },
+  { it: "il cappuccino", de: "der Cappuccino" },
+  { it: "la fame", de: "der Hunger" },
+  { it: "la sete", de: "der Durst" },
+
+  // Table & restaurant
+  { it: "la bottiglia", de: "die Flasche" },
+  { it: "il bicchiere", de: "das Glas" },
+  { it: "il coltello", de: "das Messer" },
+  { it: "la forchetta", de: "die Gabel" },
+  { it: "il cucchiaio", de: "der Löffel" },
+  { it: "il piatto", de: "der Teller" },
+  { it: "il menù", de: "die Speisekarte" },
+  { it: "il conto", de: "die Rechnung" },
 
   // Animals
   { it: "il gatto", de: "die Katze" },
@@ -114,6 +219,18 @@ const WORD_POOL = [
   { it: "lo specchio", de: "der Spiegel" },
   { it: "il telefono", de: "das Telefon" },
   { it: "l'orologio", de: "die Uhr" },
+  { it: "l'appartamento", de: "die Wohnung" },
+  { it: "il giardino", de: "der Garten" },
+  { it: "la doccia", de: "die Dusche" },
+  { it: "il soggiorno", de: "das Wohnzimmer" },
+  { it: "il piano", de: "die Etage" },
+  { it: "il quadro", de: "das Bild" },
+  { it: "la pianta", de: "die Pflanze" },
+  { it: "l'ombrello", de: "der Schirm" },
+  { it: "la matita", de: "der Bleistift" },
+  { it: "il quaderno", de: "das Heft" },
+  { it: "la sigaretta", de: "die Zigarette" },
+  { it: "l'animale", de: "das Tier" },
 
   // Clothes
   { it: "il vestito", de: "das Kleid" },
@@ -123,6 +240,11 @@ const WORD_POOL = [
   { it: "i pantaloni", de: "die Hose" },
   { it: "la camicia", de: "das Hemd" },
   { it: "la borsa", de: "die Tasche" },
+  { it: "la calza", de: "die Socke" },
+  { it: "la gonna", de: "der Rock" },
+  { it: "la maglietta", de: "das T-Shirt" },
+  { it: "il maglione", de: "der Pullover" },
+  { it: "il cappotto", de: "der Mantel" },
 
   // Nature
   { it: "il sole", de: "die Sonne" },
@@ -160,6 +282,14 @@ const WORD_POOL = [
   { it: "mai", de: "nie" },
   { it: "presto", de: "früh" },
   { it: "tardi", de: "spät" },
+  { it: "il minuto", de: "die Minute" },
+  { it: "il secondo", de: "die Sekunde" },
+  { it: "il quarto", de: "das Viertel" },
+  { it: "la metà", de: "die Hälfte" },
+  { it: "il mezzogiorno", de: "der Mittag" },
+  { it: "la mezzanotte", de: "die Mitternacht" },
+  { it: "il pomeriggio", de: "der Nachmittag" },
+  { it: "la giornata", de: "der ganze Tag" },
 
   // Days of the week
   { it: "lunedì", de: "Montag" },
@@ -169,6 +299,28 @@ const WORD_POOL = [
   { it: "venerdì", de: "Freitag" },
   { it: "sabato", de: "Samstag" },
   { it: "domenica", de: "Sonntag" },
+
+  // Months
+  { it: "gennaio", de: "Januar" },
+  { it: "febbraio", de: "Februar" },
+  { it: "marzo", de: "März" },
+  { it: "aprile", de: "April" },
+  { it: "maggio", de: "Mai" },
+  { it: "giugno", de: "Juni" },
+  { it: "luglio", de: "Juli" },
+  { it: "agosto", de: "August" },
+  { it: "settembre", de: "September" },
+  { it: "ottobre", de: "Oktober" },
+  { it: "novembre", de: "November" },
+  { it: "dicembre", de: "Dezember" },
+
+  // Seasons & holidays
+  { it: "la primavera", de: "der Frühling" },
+  { it: "l'estate", de: "der Sommer" },
+  { it: "l'autunno", de: "der Herbst" },
+  { it: "l'inverno", de: "der Winter" },
+  { it: "Natale", de: "Weihnachten" },
+  { it: "Pasqua", de: "Ostern" },
 
   // Colours
   { it: "rosso", de: "rot" },
@@ -224,6 +376,32 @@ const WORD_POOL = [
   { it: "vuoto", de: "leer" },
   { it: "pulito", de: "sauber" },
   { it: "sporco", de: "schmutzig" },
+  { it: "attento", de: "aufmerksam" },
+  { it: "biondo", de: "blond" },
+  { it: "caro", de: "teuer" },
+  { it: "castano", de: "braunhaarig" },
+  { it: "doppio", de: "doppelt" },
+  { it: "falso", de: "falsch" },
+  { it: "gentile", de: "freundlich" },
+  { it: "importante", de: "wichtig" },
+  { it: "intelligente", de: "intelligent" },
+  { it: "interessante", de: "interessant" },
+  { it: "internazionale", de: "international" },
+  { it: "largo", de: "breit" },
+  { it: "magro", de: "dünn" },
+  { it: "malato", de: "krank" },
+  { it: "mezzo", de: "halb" },
+  { it: "simpatico", de: "sympathisch" },
+  { it: "singolo", de: "einzeln" },
+  { it: "stanco", de: "müde" },
+  { it: "straniero", de: "ausländisch" },
+  { it: "stretto", de: "eng" },
+  { it: "vero", de: "wahr" },
+  { it: "bravo", de: "tüchtig" },
+  { it: "mio", de: "mein" },
+  { it: "tuo", de: "dein" },
+  { it: "quello", de: "jener" },
+  { it: "questo", de: "dieser" },
 
   // Verbs
   { it: "essere", de: "sein" },
@@ -274,6 +452,64 @@ const WORD_POOL = [
   { it: "preferire", de: "bevorzugen" },
   { it: "pulire", de: "putzen" },
   { it: "uscire", de: "hinausgehen" },
+  { it: "abitare", de: "wohnen" },
+  { it: "ballare", de: "tanzen" },
+  { it: "cambiare", de: "wechseln" },
+  { it: "cantare", de: "singen" },
+  { it: "cenare", de: "zu Abend essen" },
+  { it: "cercare", de: "suchen" },
+  { it: "cominciare", de: "anfangen" },
+  { it: "costare", de: "kosten" },
+  { it: "domandare", de: "fragen" },
+  { it: "entrare", de: "eintreten" },
+  { it: "fumare", de: "rauchen" },
+  { it: "imparare", de: "lernen" },
+  { it: "incontrare", de: "treffen" },
+  { it: "insegnare", de: "unterrichten" },
+  { it: "mettere", de: "legen" },
+  { it: "morire", de: "sterben" },
+  { it: "nascere", de: "geboren werden" },
+  { it: "piovere", de: "regnen" },
+  { it: "portare", de: "tragen" },
+  { it: "pranzare", de: "zu Mittag essen" },
+  { it: "prenotare", de: "reservieren" },
+  { it: "ripetere", de: "wiederholen" },
+  { it: "rispondere", de: "antworten" },
+  { it: "ritornare", de: "zurückkehren" },
+  { it: "scusare", de: "entschuldigen" },
+  { it: "significare", de: "bedeuten" },
+  { it: "spedire", de: "verschicken" },
+  { it: "sposare", de: "heiraten" },
+  { it: "suonare", de: "spielen" },
+  { it: "svegliarsi", de: "aufwachen" },
+  { it: "telefonare", de: "anrufen" },
+  { it: "tornare", de: "zurückkommen" },
+  { it: "viaggiare", de: "reisen" },
+  { it: "visitare", de: "besuchen" },
+  { it: "vedersi", de: "sich sehen" },
+  { it: "piacere", de: "gefallen" },
+
+  // More of the verbs that carry ordinary talk
+  { it: "chiedere", de: "bitten" },
+  { it: "credere", de: "glauben" },
+  { it: "sperare", de: "hoffen" },
+  { it: "ricordare", de: "erinnern" },
+  { it: "dimenticare", de: "vergessen" },
+  { it: "provare", de: "versuchen" },
+  { it: "usare", de: "benutzen" },
+  { it: "aiutare", de: "helfen" },
+  { it: "lasciare", de: "lassen" },
+  { it: "tenere", de: "halten" },
+  { it: "perdere", de: "verlieren" },
+  { it: "vincere", de: "gewinnen" },
+  { it: "succedere", de: "geschehen" },
+  { it: "funzionare", de: "funktionieren" },
+  { it: "diventare", de: "werden" },
+  { it: "sembrare", de: "scheinen" },
+  { it: "restare", de: "übrig bleiben" },
+  { it: "servire", de: "dienen" },
+  { it: "riuscire", de: "schaffen" },
+  { it: "conoscere", de: "kennen" },
 
   // Places
   { it: "la città", de: "die Stadt" },
@@ -292,6 +528,30 @@ const WORD_POOL = [
   { it: "l'ufficio", de: "das Büro" },
   { it: "il museo", de: "das Museum" },
   { it: "la piazza", de: "der Platz" },
+  { it: "l'albergo", de: "das Hotel" },
+  { it: "l'hotel", de: "die Herberge" },
+  { it: "il bar", de: "die Bar" },
+  { it: "il cinema", de: "das Kino" },
+  { it: "il teatro", de: "das Theater" },
+  { it: "la pizzeria", de: "die Pizzeria" },
+  { it: "il supermercato", de: "der Supermarkt" },
+  { it: "la farmacia", de: "die Apotheke" },
+  { it: "la posta", de: "die Post" },
+  { it: "l'agenzia", de: "die Agentur" },
+  { it: "l'ambasciata", de: "die Botschaft" },
+  { it: "il consolato", de: "das Konsulat" },
+  { it: "la polizia", de: "die Polizei" },
+  { it: "l'università", de: "die Universität" },
+  { it: "la fabbrica", de: "die Fabrik" },
+  { it: "l'industria", de: "die Industrie" },
+  { it: "il centro", de: "das Zentrum" },
+  { it: "il parcheggio", de: "der Parkplatz" },
+  { it: "la fermata", de: "die Haltestelle" },
+  { it: "la via", de: "der Weg" },
+  { it: "il lago", de: "der See" },
+  { it: "la campagna", de: "das Land" },
+  { it: "l'estero", de: "das Ausland" },
+  { it: "il posto", de: "der Ort" },
 
   // Transport
   { it: "la macchina", de: "das Auto" },
@@ -300,6 +560,20 @@ const WORD_POOL = [
   { it: "la bicicletta", de: "das Fahrrad" },
   { it: "l'aereo", de: "das Flugzeug" },
   { it: "la nave", de: "das Schiff" },
+
+  // Travel & documents
+  { it: "il viaggio", de: "die Reise" },
+  { it: "la vacanza", de: "der Urlaub" },
+  { it: "il biglietto", de: "die Fahrkarte" },
+  { it: "il passaporto", de: "der Reisepass" },
+  { it: "il documento", de: "das Dokument" },
+  { it: "il visto", de: "das Visum" },
+  { it: "il check-in", de: "der Check-in" },
+  { it: "la moto", de: "das Motorrad" },
+  { it: "il taxi", de: "das Taxi" },
+  { it: "lo stop", de: "das Stoppschild" },
+  { it: "la valigia", de: "der Koffer" },
+  { it: "lo zaino", de: "der Rucksack" },
 
   // Everyday life
   { it: "il lavoro", de: "die Arbeit" },
@@ -319,6 +593,72 @@ const WORD_POOL = [
   { it: "l'amore", de: "die Liebe" },
   { it: "la storia", de: "die Geschichte" },
   { it: "il colore", de: "die Farbe" },
+
+  // Communication & media
+  { it: "il computer", de: "der Computer" },
+  { it: "il cellulare", de: "das Handy" },
+  { it: "la tv", de: "der Fernseher" },
+  { it: "la televisione", de: "das Fernsehen" },
+  { it: "la radio", de: "das Radio" },
+  { it: "il cd", de: "die CD" },
+  { it: "il fax", de: "das Fax" },
+  { it: "l'e-mail", de: "die E-Mail" },
+  { it: "internet", de: "das Internet" },
+  { it: "la lettera", de: "der Brief" },
+  { it: "la cartolina", de: "die Postkarte" },
+  { it: "il francobollo", de: "die Briefmarke" },
+  { it: "il giornale", de: "die Zeitung" },
+  { it: "la fotografia", de: "das Foto" },
+  { it: "la busta", de: "der Umschlag" },
+  { it: "il pacco", de: "das Paket" },
+
+  // School, study & leisure
+  { it: "la lezione", de: "die Lektion" },
+  { it: "la classe", de: "die Klasse" },
+  { it: "il corso", de: "der Kurs" },
+  { it: "l'esercizio", de: "die Übung" },
+  { it: "l'alfabeto", de: "das Alphabet" },
+  { it: "italiano", de: "Italienisch" },
+  { it: "l'arte", de: "die Kunst" },
+  { it: "lo sport", de: "der Sport" },
+  { it: "l'hobby", de: "das Hobby" },
+  { it: "la canzone", de: "das Lied" },
+
+  // Money & shopping
+  { it: "il prezzo", de: "der Preis" },
+  { it: "l'euro", de: "der Euro" },
+  { it: "la spesa", de: "der Einkauf" },
+  { it: "il credito", de: "das Guthaben" },
+
+  // Personal data & appointments
+  { it: "il cognome", de: "der Nachname" },
+  { it: "l'indirizzo", de: "die Adresse" },
+  { it: "la nazionalità", de: "die Staatsangehörigkeit" },
+  { it: "la nazione", de: "die Nation" },
+  { it: "la data", de: "das Datum" },
+  { it: "il compleanno", de: "der Geburtstag" },
+  { it: "l'informazione", de: "die Information" },
+  { it: "la segreteria", de: "das Sekretariat" },
+  { it: "l'appuntamento", de: "der Termin" },
+  { it: "il momento", de: "der Moment" },
+
+  // Everyday abstractions
+  { it: "la gente", de: "die Leute" },
+  { it: "la volta", de: "das Mal" },
+  { it: "il modo", de: "die Art" },
+  { it: "la parte", de: "der Teil" },
+  { it: "il fatto", de: "die Tatsache" },
+  { it: "il caso", de: "der Fall" },
+  { it: "il motivo", de: "der Grund" },
+  { it: "il bisogno", de: "das Bedürfnis" },
+  { it: "il pezzo", de: "das Stück" },
+  { it: "il gruppo", de: "die Gruppe" },
+  { it: "il punto", de: "der Punkt" },
+  { it: "la ragione", de: "das Recht" },
+  { it: "l'esempio", de: "das Beispiel" },
+  { it: "la paura", de: "die Angst" },
+  { it: "la fretta", de: "die Eile" },
+  { it: "la fine", de: "das Ende" },
 
   // Question & function words
   { it: "chi", de: "wer" },
@@ -346,6 +686,73 @@ const WORD_POOL = [
   { it: "fuori", de: "draußen" },
   { it: "vicino", de: "nah" },
   { it: "lontano", de: "weit" },
+  { it: "a", de: "zu" },
+  { it: "di", de: "von" },
+  { it: "in", de: "in" },
+  { it: "per", de: "für" },
+  { it: "e", de: "und" },
+  { it: "o", de: "oder" },
+  { it: "no", de: "nein" },
+  { it: "non", de: "nicht" },
+  { it: "avanti", de: "vorwärts" },
+  { it: "certo", de: "sicher" },
+  { it: "davanti", de: "vorne" },
+  { it: "dietro", de: "hinten" },
+  { it: "dopo", de: "danach" },
+  { it: "giù", de: "hinunter" },
+  { it: "indietro", de: "zurück" },
+  { it: "lì", de: "da" },
+  { it: "meno", de: "weniger" },
+  { it: "più", de: "mehr" },
+  { it: "quasi", de: "fast" },
+  { it: "spesso", de: "oft" },
+  { it: "su", de: "hinauf" },
+  { it: "qua", de: "hierher" },
+  { it: "la destra", de: "die rechte Seite" },
+  { it: "la sinistra", de: "die linke Seite" },
+  { it: "tanto", de: "so viel" },
+  { it: "troppo", de: "zu viel" },
+
+  // Pronouns
+  { it: "io", de: "ich" },
+  { it: "tu", de: "du" },
+  { it: "lui", de: "er" },
+  { it: "lei", de: "sie" },
+  { it: "noi", de: "wir" },
+  { it: "voi", de: "ihr" },
+  { it: "loro", de: "sie (Pl.)" },
+  { it: "me", de: "mich" },
+  { it: "te", de: "dich" },
+  { it: "mi", de: "mir" },
+  { it: "ti", de: "dir" },
+  { it: "si", de: "sich" },
+  { it: "ci", de: "uns" },
+  { it: "nessuno", de: "niemand" },
+  { it: "quale", de: "welcher" },
+
+  // Discourse glue — the little words that join spoken sentences up
+  { it: "allora", de: "also" },
+  { it: "quindi", de: "deshalb" },
+  { it: "però", de: "jedoch" },
+  { it: "invece", de: "stattdessen" },
+  { it: "anzi", de: "im Gegenteil" },
+  { it: "almeno", de: "wenigstens" },
+  { it: "soprattutto", de: "vor allem" },
+  { it: "abbastanza", de: "ziemlich" },
+  { it: "circa", de: "ungefähr" },
+  { it: "insomma", de: "kurz gesagt" },
+  { it: "comunque", de: "jedenfalls" },
+  { it: "naturalmente", de: "natürlich" },
+  { it: "volentieri", de: "gerne" },
+  { it: "purtroppo", de: "leider" },
+  { it: "davvero", de: "wirklich" },
+  { it: "subito", de: "sofort" },
+  { it: "insieme", de: "zusammen" },
+  { it: "ancora", de: "noch" },
+  { it: "già", de: "schon" },
+  { it: "appena", de: "gerade eben" },
+  { it: "forse", de: "vielleicht" },
+  { it: "magari", de: "hoffentlich" },
 ];
 
 // ---------------------------------------------------------------------------
