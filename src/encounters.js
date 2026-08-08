@@ -58,6 +58,14 @@ const pack = (name, shape, types) => ({ name, ranks: SHAPES[shape], types });
 const D = DEFAULT_TYPE;
 
 const PACKS = {
+  // --- Ch. 1 · Ungeziefer: the three camps a new player meets first. One body,
+  // then two, then three — the head count is the whole escalation, because
+  // nothing in here can actually hurt anyone (see the rat/slime variants in
+  // CONFIG.enemyTypes).
+  ratte:       pack("Ratte", "solo", ["rat"]),
+  ratten:      pack("Ratten", "paar", ["rat"]),
+  schleimspur: pack("Schleimspur", "drei", [["rat", "slime", "rat"]]),
+
   // --- Bone. The opening language of the hall.
   spaeher:  pack("Späher", "solo"),
   paar:     pack("Paar", "paar"),
@@ -232,7 +240,7 @@ const PACKS = {
 // game's main supply of skeletons. Widening that past ~2.8 m hands the corridor
 // back to the fillers.
 //
-// HOW LONG THE HALL IS, AND WHY. The corridor ENDS: 160 camps, then a door. It
+// HOW LONG THE HALL IS, AND WHY. The corridor ENDS: 163 camps, then a door. It
 // is not an endless tail any more, because a hall with no end has no reward for
 // walking down it and no way to say "you have seen all of this". The length is
 // set by one intention — the player should reach the door at ROUGHLY the point
@@ -259,23 +267,30 @@ const PACKS = {
 // tools/stat-supply.mjs` prints that curve against tree completion, which is the
 // figure to re-tune the deep variants against.
 //
-//     chapter  camps      metres    the hero it is written for
-//     -------  ---------  --------  ---------------------------------------
-//      1       0–13         0–32    a fresh tree · the first two runs
-//      2       14–23       35–57    ~10% · flat damage, one page open
-//      3       24–33       60–82    ~20% · a second page
-//      4       34–43       85–107   ~30% · the first penetration ranks
-//      5       44–53      110–132   ~35% · area damage that reaches the back
-//      6       54–63      135–157   ~45% · sustain, or nothing survives the grind
-//      7       64–73      160–182   ~55% · burst enough to out-pace a mend
-//      8       74–83      185–207   ~60% · a third page
-//      9       84–93      210–232   ~65% · picking targets, not just the front
-//     10       94–103     235–257   ~72% · penetration in earnest
-//     11      104–113     260–282   ~78% · crit, and a fourth page
-//     12      114–123     285–307   ~83% · everything at once, quickly
-//     13      124–133     310–332   ~87% · single-target damage
-//     14      134–143     335–357   ~91% · both, sustained
-//     15      144–159     360–397   ~95% · a grown tree, and the door
+//     chapter                 camps      metres    the hero it is written for
+//     ----------------------  ---------  --------  ------------------------------
+//      1  Ungeziefer            0–2         0–5    nothing at all · a first-ever minute
+//      2  Knochen               3–16        7–40   a fresh tree · the first two runs
+//      3  Knochenläufer        17–26       42–65   ~10% · flat damage, one page open
+//      4  Kobolde              27–36       67–90   ~20% · a second page
+//      5  Orks                 37–46       92–115  ~30% · the first penetration ranks
+//      6  Imps                 47–56      117–140  ~35% · area damage that reaches the back
+//      7  Die faulenden Reihen 57–66      142–165  ~45% · sustain, or nothing survives the grind
+//      8  Schamanen            67–76      167–190  ~55% · burst enough to out-pace a mend
+//      9  Wogole               77–86      192–215  ~60% · a third page
+//     10  Nekromanten          87–96      217–240  ~65% · picking targets, not just the front
+//     11  Masken               97–106     242–265  ~72% · penetration in earnest
+//     12  Das Eis             107–116     267–290  ~78% · crit, and a fourth page
+//     13  Chorts              117–126     292–315  ~83% · everything at once, quickly
+//     14  Oger                127–136     317–340  ~87% · single-target damage
+//     15  Fleischberge        137–146     342–365  ~91% · both, sustained
+//     16  Das Tor             147–162     367–405  ~95% · a grown tree, and the door
+//
+// Chapter 1 is the exception to every line under it: it is the ONLY one that is
+// not a check of anything, and it is not part of the ramp — it is the step onto
+// it. Ch. 2 is still the game's real opening, the skeleton-and-brute lesson,
+// unchanged and met by exactly the hero it always was, three camps and 7,5 m
+// later than before.
 //
 // Re-tuning the hall means re-tuning THIS table (and the variants it names), not
 // hunting for a difficulty multiplier — there isn't one.
@@ -287,9 +302,25 @@ const PACKS = {
 // without needing its own entry.
 const CHAPTERS = [
   {
+    name: "Ungeziefer",
+    // The ramp's bottom step: three camps of vermin before the first skeleton.
+    // A player opening the game for the first time has never traced a rune, and
+    // the hall used to answer that with a skeleton that hits for 48 out of 112.
+    // These three cost nothing to get wrong — one rat, then two, then a slime
+    // between two rats — so the opening minute is spent learning the circle
+    // rather than learning the death screen.
+    //
+    // The chapter breaks the "one new body alone first" rule on the slime, and
+    // deliberately: the rule exists so a body that can kill you is legible
+    // before it arrives escorted, and neither of these can. Showing the slime
+    // alone would have bought a fourth camp of nothing happening.
+    packs: ["ratte", "ratten", "schleimspur"],
+  },
+  {
     name: "Knochen",
-    // The hall's original fourteen camps, unchanged: the game's first minutes
-    // are still exactly the skeleton-and-brute lesson they always were.
+    // The hall's original fourteen camps, unchanged: once the vermin are past,
+    // the game still opens on exactly the skeleton-and-brute lesson it always
+    // did, in the same order, at the same head counts.
     packs: ["spaeher", "paar", "keil", "kolonne", "welle", "koloss", "zange",
             "reihe", "wache", "trupp", "mauer", "bollwerk", "schwarm", ["mauer", 1]],
   },

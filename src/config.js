@@ -199,6 +199,33 @@ const CONFIG = {
       hpMult: 2.2, dmgMult: 1.2, attackSpeedMult: 0.85, armor: 9,
       scale: 1.15, walkMult: 0.75, filter: "sepia(1) saturate(1.8) hue-rotate(175deg) brightness(0.95)" },
 
+    // --- Ungeziefer. What the hall opens with, ahead of the bone: vermin that
+    // are not a fight. Both die to a single fresh Feuerball (24 damage against
+    // 12 and 20 HP) and both nibble for 6-7 against a 112 HP hero, so the first
+    // three camps cost a new player nothing while they learn where the rune
+    // circle is, trace a shape wrong, and try again. They are the ramp's bottom
+    // step, and nothing later in the hall ever sends them again — a body the
+    // player has outgrown by metre 8 has no business coming back.
+    //
+    // ART: the sheet has neither a rat nor a slime, so both are existing
+    // creatures shrunk and washed — the same trick every other variant here uses,
+    // pointed at the small end of the roster instead of the deep one. The goblin
+    // at 0.6 keeps its little pale feet and loses its face, which at 10x7 px is
+    // exactly a scurrying brown thing; the muddy blob at 0.6 keeps its dripping
+    // underside, which is already what a slime is. Both are drawn SMALLER than
+    // anything else in the hall, and that is the read: the corridor's opening
+    // silhouettes are ankle-high.
+    //
+    // (Written here rather than at the head of the table because the FIRST entry
+    // is the fallback an unknown variant id resolves to — see enemyTypeById —
+    // and that has to stay the plain skeleton.)
+    { id: "rat", name: "RATTE", sprite: "goblin",
+      hpMult: 0.15, dmgMult: 0.12, attackSpeedMult: 1.2, armor: 0, scale: 0.6, walkMult: 1.9,
+      filter: "sepia(1) saturate(1.1) hue-rotate(345deg) brightness(0.92)" },
+    { id: "slime", name: "SCHLEIM", sprite: "muddy",
+      hpMult: 0.25, dmgMult: 0.15, attackSpeedMult: 0.6, armor: 0, scale: 0.6, walkMult: 0.85,
+      filter: "sepia(1) saturate(2.6) hue-rotate(55deg) brightness(1.15)" },
+
     // --- Goblins. Small, fast, in numbers: the swarm chapter.
     { id: "goblin", name: "KOBOLD", sprite: "goblin",
       hpMult: 0.5, dmgMult: 0.6, attackSpeedMult: 1.4, armor: 0, scale: 1, walkMult: 1.7 },
