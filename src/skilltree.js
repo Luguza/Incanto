@@ -625,7 +625,10 @@ function buildSkillTree() {
   });
 
   // Weights in, game units out: the totals are divided across the finished tree
-  // (see applyTreeTotals). Nothing downstream ever sees a raw weight.
+  // (see applyTreeTotals). Nothing downstream ever sees a raw weight. The grain
+  // pass runs first and settles how many ways each total is about to be cut, so
+  // that no node ends up printing a number too small to be a reward.
+  applyRankGrain(nodes);
   const scale = applyTreeTotals(nodes);
   applyTreeGold(nodes);
 
@@ -774,6 +777,95 @@ function supplyOf(nodes) {
     for (const k in n.effect) total[k] = (total[k] || 0) + n.effect[k] * n.maxRank;
   }
   return total;
+}
+
+// ---------------------------------------------------------------------------
+// THE GRAIN PASS — how finely a total may be sliced before a node stops reading
+// as a reward.
+//
+// CONFIG.treeTotals says what the tree HOLDS. The arms, as authored, grow about
+// a thousand nodes, and at three ranks apiece that is some three thousand ranks
+// to divide those totals across. Nothing in that is broken, but the arithmetic
+// has an end: +60 % Krit-Chance cut 258 ways is +0,23 % a rank, which no tooltip
+// can print and no thumb can feel. A node that pays what it prints is worthless
+// anyway if what it prints rounds to nothing.
+//
+// So a stat says two things now — how much of it exists (CONFIG.treeTotals) and
+// the smallest slice of it still worth a tap (STAT_GRAIN below). This pass
+// reconciles them the only way that leaves the tree alone: it takes RANKS away.
+// Every node, every edge and every branch stays exactly where the arms put them;
+// a node that used to want three taps wants one, and that one tap is worth all
+// three. The total is untouched, so the balance table still means what it says,
+// and applyTreeGold then hands the freed gold back to the ranks that remain, so
+// the tree still costs CONFIG.treeGold end to end.
+//
+// Raise a grain and that stat's nodes get chunkier and quicker to max out; lower
+// it and the stat spreads thin again. Check the result in the "je Rang" column
+// of tools/stat-supply.mjs — that column is this table's whole purpose.
+// ---------------------------------------------------------------------------
+const STAT_GRAIN = {
+  // The percentage pools. Half a percent is about where a number stops looking
+  // like a rounding error on a tooltip; the pools deep enough to afford it ask
+  // for a full percent.
+  pctDmg: 0.005,     pctBase: 0.01,     pctHp: 0.01,
+  critChance: 0.005, critMult: 0.01,    leech: 0.006,
+  coinMult: 0.01,    walkMult: 0.01,    castHaste: 0.01,
+  spellFailProt: 0.01, shieldChance: 0.005,
+  // Per-page damage and the shapes a page throws — a page's own nodes are read
+  // against that page, so they may be a touch coarser.
+  dmgFireball: 0.01, dmgLightning: 0.01, dmgFrost: 0.01,
+  dmgMeteor: 0.01,   dmgShield: 0.01,    dmgHeal: 0.01,
+  aoeFireball: 0.02, aoeMeteor: 0.02,    coneFrost: 0.02, falloffLightning: 0.02,
+  // Counted in units the player sees land: points of damage, LP, milliseconds.
+  // These are the stats that were being clamped up to "+1" wholesale, which is
+  // why the achieved totals used to drift off target — with a grain they land
+  // on a printable number by themselves.
+  flatBase: 3, flatDmg: 3, flatHp: 5,
+  shieldAmount: 4, shieldMax: 8, freezeFrost: 200, regen: 0.4,
+  armorPen: 0.2,
+};
+
+function applyRankGrain(nodes) {
+  // Split each stat's weight into the ranks this pass may thin — the archetype
+  // nodes — and the ones it may not: a keystone is one-of-a-kind by definition,
+  // and a spell's seal is lifted once.
+  const one = {}, ranked = {}, fixedSupply = {}, count = {};
+  for (const id in nodes) {
+    const n = nodes[id];
+    for (const k in n.effect) {
+      const v = n.effect[k];
+      if (n.unique || n.maxRank <= 1) { fixedSupply[k] = (fixedSupply[k] || 0) + v * n.maxRank; continue; }
+      one[k] = (one[k] || 0) + v;
+      ranked[k] = (ranked[k] || 0) + v * n.maxRank;
+      count[k] = (count[k] || 0) + 1;
+    }
+  }
+
+  // How much of its rank depth each stat may keep. A node's printed value is its
+  // weight times the scale applyTreeTotals is about to work out, and that scale
+  // is total/supply — so the supply a grain allows follows straight from the
+  // average node's weight, and from there the fraction of the removable ranks
+  // that still fits underneath it.
+  const keep = {};
+  for (const k in one) {
+    const total = CONFIG.treeTotals[k], grain = STAT_GRAIN[k];
+    if (total == null || !grain) { keep[k] = 1; continue; }
+    const cap = (one[k] / count[k]) * total / grain;       // the largest supply the grain tolerates
+    const removable = ranked[k] - one[k];                  // every rank past the first
+    keep[k] = removable <= 0 ? 1
+      : treeClamp((cap - (fixedSupply[k] || 0) - one[k]) / removable, 0, 1);
+  }
+
+  // Every node keeps its first rank — thinning is never deletion — and of the
+  // rest as many as the tightest of its stats allows (the Schildzauber nodes
+  // carry three at once).
+  for (const id in nodes) {
+    const n = nodes[id];
+    if (n.unique || n.maxRank <= 1) continue;
+    let f = 1;
+    for (const k in n.effect) if (keep[k] != null) f = Math.min(f, keep[k]);
+    n.maxRank = 1 + Math.round((n.maxRank - 1) * f);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1082,43 +1174,56 @@ function treeBuy(id) {
 // ---------------------------------------------------------------------------
 // Effect wording (single-click info)
 // ---------------------------------------------------------------------------
+// A number the tooltip can always tell the truth about. Rounding to whole
+// percent is what turned a real +0,4 % into "+0 %", so the precision follows the
+// size of the number instead: big values stay clean, small ones keep just enough
+// decimals to be a number rather than a zero. German comma, as everywhere else
+// on screen (cf. svNum in stats.js).
+function treeNum(v) {
+  const a = Math.abs(v);
+  let s = a >= 10 ? v.toFixed(0) : a >= 1 ? v.toFixed(1) : v.toFixed(2);
+  if (s.includes(".")) s = s.replace(/0+$/, "").replace(/\.$/, "");
+  return s.replace(".", ",");
+}
+function treePct(v) { return treeNum(v * 100) + "%"; }
+
 const STAT_FMT = {
   // The three damage stages read differently on purpose: "je Treffer" is the
   // one that lands verbatim on every body, and it must not be confusable with
   // the two that get multiplied on the way.
   flatDmg:      (v) => `+${Math.round(v)} Schaden je Treffer`,
   flatBase:     (v) => `+${Math.round(v)} Kernschaden`,
-  pctBase:      (v) => `+${Math.round(v * 100)}% Kernschaden`,
+  pctBase:      (v) => `+${treePct(v)} Kernschaden`,
   flatHp:       (v) => `+${Math.round(v)} LP`,
-  pctDmg:       (v) => `+${Math.round(v * 100)}% Schaden`,
-  pctHp:        (v) => `+${Math.round(v * 100)}% LP`,
-  critChance:   (v) => `+${Math.round(v * 100)}% Krit-Chance`,
-  critMult:     (v) => `+${Math.round(v * 100)}% Krit-Schaden`,
-  armorPen:     (v) => `+${(Math.round(v * 10) / 10)} Rüstungsbruch`,
-  leech:        (v) => `${Math.round(v * 100)}% Lebensraub`,
+  pctDmg:       (v) => `+${treePct(v)} Schaden`,
+  pctHp:        (v) => `+${treePct(v)} LP`,
+  critChance:   (v) => `+${treePct(v)} Krit-Chance`,
+  critMult:     (v) => `+${treePct(v)} Krit-Schaden`,
+  armorPen:     (v) => `+${treeNum(v)} Rüstungsbruch`,
+  leech:        (v) => `${treePct(v)} Lebensraub`,
   // Per-spell nodes — worded so the page they lift is named in the effect line.
-  dmgFireball:  (v) => `+${Math.round(v * 100)}% Feuerball-Schaden`,
-  dmgLightning: (v) => `+${Math.round(v * 100)}% Blitzschlag-Schaden`,
-  dmgFrost:     (v) => `+${Math.round(v * 100)}% Frostkegel-Schaden`,
-  dmgMeteor:    (v) => `+${Math.round(v * 100)}% Meteoriten-Schaden`,
-  dmgShield:    (v) => `+${Math.round(v * 100)}% Bannschild-Kraft`,
-  dmgHeal:      (v) => `+${Math.round(v * 100)}% Heilwort-Kraft`,
-  aoeFireball:  (v) => `+${Math.round(v * 100)}% Feuerball-Radius`,
+  dmgFireball:  (v) => `+${treePct(v)} Feuerball-Schaden`,
+  dmgLightning: (v) => `+${treePct(v)} Blitzschlag-Schaden`,
+  dmgFrost:     (v) => `+${treePct(v)} Frostkegel-Schaden`,
+  dmgMeteor:    (v) => `+${treePct(v)} Meteoriten-Schaden`,
+  dmgShield:    (v) => `+${treePct(v)} Bannschild-Kraft`,
+  dmgHeal:      (v) => `+${treePct(v)} Heilwort-Kraft`,
+  aoeFireball:  (v) => `+${treePct(v)} Feuerball-Radius`,
   chainLightning: (v) => `+${Math.round(v)} Blitz-Sprung`,
   countMeteor:  (v) => `+${Math.round(v)} Meteorit`,
-  freezeFrost:  (v) => `+${(v / 1000).toFixed(1)}s Frostdauer`,
-  coneFrost:    (v) => `+${Math.round(v * 100)}% Kegelweite`,
-  aoeMeteor:    (v) => `+${Math.round(v * 100)}% Einschlagradius`,
-  falloffLightning: (v) => `+${Math.round(v * 100)}% Sprungkraft`,
-  castHaste:    (v) => `+${Math.round(v * 100)}% Zaubertempo`,
-  regen:        (v) => `+${(Math.round(v * 10) / 10)}/s LP`,
-  walkMult:     (v) => `+${Math.round(v * 100)}% Tempo`,
-  coinMult:     (v) => `+${Math.round(v * 100)}% Gold`,
-  shieldChance: (v) => `${Math.round(v * 100)}% Schild-Chance`,
+  freezeFrost:  (v) => `+${treeNum(v / 1000)}s Frostdauer`,
+  coneFrost:    (v) => `+${treePct(v)} Kegelweite`,
+  aoeMeteor:    (v) => `+${treePct(v)} Einschlagradius`,
+  falloffLightning: (v) => `+${treePct(v)} Sprungkraft`,
+  castHaste:    (v) => `+${treePct(v)} Zaubertempo`,
+  regen:        (v) => `+${treeNum(v)}/s LP`,
+  walkMult:     (v) => `+${treePct(v)} Tempo`,
+  coinMult:     (v) => `+${treePct(v)} Gold`,
+  shieldChance: (v) => `${treePct(v)} Schild-Chance`,
   shieldAmount: (v) => `+${Math.round(v)} Schild`,
   shieldMax:    (v) => `+${Math.round(v)} max. Schild`,
-  thorns:       (v) => `${Math.round(v * 100)}% Dornen`,
-  spellFailProt:(v) => `${Math.round(v * 100)}% Fehlschutz`,
+  thorns:       (v) => `${treePct(v)} Dornen`,
+  spellFailProt:(v) => `${treePct(v)} Fehlschutz`,
 };
 function effectText(effect, mult) {
   return Object.keys(effect)
@@ -1249,7 +1354,9 @@ function renderTreeInfo() {
   const rank = nodeRank(id);
   const maxed = rank >= node.maxRank;
   const per = effectText(node.effect, 1);
-  const total = rank > 0 ? effectText(node.effect, rank) : null;
+  // What the node is worth WALKED, not what you happen to own of it — a single
+  // rank is the price you are being quoted, and the sum is the reason to pay it.
+  const total = node.maxRank > 1 ? effectText(node.effect, node.maxRank) : null;
 
   let dots = "";
   for (let i = 0; i < node.maxRank; i++) dots += `<i class="dot${i < rank ? " on" : ""}"></i>`;
@@ -1281,8 +1388,8 @@ function renderTreeInfo() {
     ${node.path && node.path !== node.title ? `<div class="ti-path">${node.path}</div>` : ""}
     <div class="ti-blurb">${node.blurb}</div>
     ${node.unlocks ? `<div class="ti-effect">Schaltet frei: <b>${SPELL_BY_ID[node.unlocks].name}</b></div>` : ""}
-    ${per ? `<div class="ti-effect">${node.unique ? "Einmalig" : "Pro Stufe"}: <b>${per}</b>` +
-      `${!node.unique && total ? ` &middot; Gesamt: <b>${total}</b>` : ""}</div>` : ""}
+    ${per ? `<div class="ti-effect">${node.maxRank > 1 ? "Pro Stufe" : "Einmalig"}: <b>${per}</b>` +
+      `${total ? ` &middot; Alle ${node.maxRank}: <b>${total}</b>` : ""}</div>` : ""}
     ${buy}</div>`;
 }
 
@@ -1565,6 +1672,7 @@ const TREE_SUPPLY = supplyOf(TREE_NODES);
 
 window.Incanto.skilltree = {
   TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, TREE_SUPPLY, supplyOf,
+  STAT_GRAIN, effectText,
   recomputeMods, treeBuy, treeZoom, treeReset,
   renderUpgradeFull, nodeRevealed, nodeReachable, nodeCost, nodeRank,
   devToggle, devResetTree, devEditGold, devGoldCommit,
