@@ -106,7 +106,8 @@ function renderNav() {
 // Map the internal screen name to the phase the nav highlights.
 const NAV_PHASE_FOR_SCREEN = {
   quiz: "study", history: "study",
-  upgrade: "upgrade", bookorder: "upgrade",   // binding the book is part of the forge
+  // binding the book and reading the ledger are both part of the forge
+  upgrade: "upgrade", bookorder: "upgrade", stats: "upgrade",
   combat: "combat",
 };
 

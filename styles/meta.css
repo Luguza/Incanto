@@ -65,19 +65,30 @@
     background: var(--gold-1); border: 1px solid var(--gold-2);
     border-radius: var(--r-pill); padding: 3px 10px;
   }
-  /* Opens the order screen. Sits between the title and the purse because that is
-     the other thing the forge does with the book: the tree opens pages, this
-     binds them into an order. */
+  .tree-topbar .tree-title {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* The forge's two side doors, between the title and the purse: the tree opens
+     pages, these two read the build (stats.js) and bind the pages into an order
+     (book-order.js). */
+  .tree-tools { display: flex; align-items: center; gap: 7px; margin-left: auto; margin-right: 10px; }
   .bo-open {
-    display: inline-flex; align-items: center; gap: 6px; margin-left: auto; margin-right: 10px;
+    display: inline-flex; align-items: center; gap: 6px;
     font-size: 12px; letter-spacing: 1px; color: var(--arcane-pale);
     background: rgba(24, 19, 36, 0.82); border: 1px solid var(--edge);
     border-radius: var(--r-pill); padding: 4px 11px 4px 9px; cursor: pointer;
+    white-space: nowrap;
     transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
   }
   .bo-open:active { background: var(--raised-hi); border-color: var(--arcane-3); }
   .bo-open-icon { width: 20px; height: 14px; fill: #f2ead0; stroke: #10151a; stroke-width: 1.1; }
   .bo-open-icon .bo-open-spine { stroke: #8a7f63; fill: none; }
+  .sv-open-icon { width: 14px; height: 14px; fill: var(--arcane-lt); }
+  /* On a narrow phone the two pills would crowd the title out; drop to the
+     icons, which are the part that is actually aimed at with a thumb. */
+  @media (max-width: 390px) {
+    .tree-tools .bo-open { font-size: 0; gap: 0; padding: 5px 9px; }
+  }
 
   /* Dev tools (see skilltree.js) — the slider always sits in the topbar; the row
      of tools under it only exists while the slider is on. Deliberately drab, so
@@ -86,7 +97,9 @@
     display: inline-flex; align-items: center; gap: 6px; margin-left: auto;
     background: none; border: 0; padding: 4px 2px; cursor: pointer; color: var(--ink-4);
   }
-  .tree-topbar .dev-switch + .bo-open { margin-left: 10px; }
+  /* The slider takes the auto margin that pushes everything right, so the two
+     door pills sit next to it rather than starting a second gap of their own. */
+  .tree-topbar .dev-switch + .tree-tools { margin-left: 10px; }
   .dev-switch-text { font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; }
   .dev-switch-track {
     width: 26px; height: 14px; border-radius: var(--r-pill); position: relative;
@@ -257,6 +270,182 @@
   .bo-lift { filter: drop-shadow(0 8px 14px rgba(4, 2, 10, 0.75)); opacity: 0.95; }
   /* The page it would trade with, lit along its own edge. */
   .bo-target .bk-leaf { stroke: var(--gold); stroke-width: 3; }
+
+  /* ===========================================================================
+     Werte — the ledger screen (see stats.js). Laid out as a `.frame` like the
+     study-phase screens: a capped, centred reading column with a fixed header
+     (the three headline figures + the tabs) over one scrolling body.
+
+     The visual grammar is one row type repeated everywhere: LABEL — VALUE on a
+     line, a meter under it drawn against that stat's own ceiling, and a quiet
+     note explaining where the number came from. Every accent colour is passed
+     in from the tree's theme table as --sec (a section) or --c (a spell card),
+     so nothing here hard-codes a hue.
+     =========================================================================== */
+  .sv-screen {
+    justify-content: flex-start; align-items: stretch;
+    background: radial-gradient(130% 75% at 50% 0%, #1a1425 0%, var(--bg) 58%);
+  }
+  @media (min-width: 760px) {
+    .sv-frame {
+      border-left: 1px solid var(--edge-soft);
+      border-right: 1px solid var(--edge-soft);
+      background: linear-gradient(180deg, rgba(127, 240, 237, 0.02), transparent 45%);
+    }
+  }
+  .sv-frame { text-align: left; }
+  .sv-header { flex: 0 0 auto; }
+  .sv-top { display: flex; align-items: center; gap: 10px; }
+  .sv-back { font-size: 15px; line-height: 1; padding: 7px 12px; }
+  .sv-title {
+    flex: 1 1 auto; margin: 0; text-align: center;
+    font-family: var(--display-font); font-size: 19px; font-weight: 600; letter-spacing: 2px;
+    color: var(--ink); text-shadow: 0 0 16px rgba(127, 240, 237, 0.3);
+  }
+
+  /* The three figures every other number leans on. They stay put above the
+     tabs, so switching between Held and Zauber never loses the frame of
+     reference. */
+  .sv-hero { display: flex; gap: 8px; margin: 10px 0 9px; }
+  .sv-hero-tile {
+    flex: 1 1 0; min-width: 0; position: relative;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    padding: 7px 6px 6px; border-radius: var(--r-2);
+    border: 1px solid var(--edge-soft); background: var(--panel);
+    box-shadow: var(--shadow-1);
+  }
+  .sv-hero-tile::before {
+    content: ""; position: absolute; inset: -1px -1px auto; height: 2px;
+    border-radius: var(--r-2) var(--r-2) 0 0; background: var(--tile, var(--arcane));
+    opacity: 0.85;
+  }
+  .sv-hero-tile.might    { --tile: #ff7043; }
+  .sv-hero-tile.vigor    { --tile: #5ecf8f; }
+  .sv-hero-tile.fireball { --tile: #f2a83a; }
+  /* The glyph carries its theme's colour on the <g> runeGlyphSvg writes, so the
+     tile only has to make room for it. */
+  .sv-hero-rune { display: block; line-height: 0; opacity: 0.9; }
+  .sv-hero-tile b {
+    font-family: var(--display-font); font-size: 22px; line-height: 1.1; font-weight: 700;
+    color: var(--tile); font-variant-numeric: tabular-nums;
+  }
+  .sv-hero-tile .sv-of { font-size: 14px; color: var(--ink-4); }
+  .sv-hero-label { font-size: 10.5px; letter-spacing: 0.5px; color: var(--ink-4); text-align: center; }
+
+  .sv-tabs { display: flex; gap: 6px; padding-bottom: 9px; }
+  .sv-tab {
+    flex: 1 1 0; padding: 7px 4px; cursor: pointer;
+    font-size: 12.5px; letter-spacing: 0.6px;
+    color: var(--ink-3); background: transparent;
+    border: 1px solid var(--edge-soft); border-radius: var(--r-pill);
+    transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+  }
+  .sv-tab:hover { color: var(--ink-2); border-color: var(--edge); }
+  .sv-tab.active { border-color: var(--arcane-3); color: var(--ink); background: var(--arcane-2); }
+
+  .sv-body { flex: 1 1 auto; min-height: 0; padding-bottom: 18px; }
+  .sv-lead { margin: 0 0 12px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+
+  /* --- A section: runic heading over a list of rows --- */
+  .sv-sec {
+    margin-bottom: 12px; padding: 12px 13px 4px;
+    border: 1px solid var(--edge-soft); border-left: 3px solid var(--sec, var(--edge));
+    border-radius: var(--r-2); background: var(--panel);
+    box-shadow: var(--shadow-1);
+  }
+  .sv-sec-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; }
+  .sv-sec-rune { align-self: center; line-height: 0; }
+  .sv-sec-title {
+    font-family: var(--display-font); font-size: 17px; font-weight: 600; letter-spacing: 1px;
+    color: var(--sec); text-shadow: 0 0 14px rgba(var(--sec-glow), 0.28);
+  }
+  .sv-sec-sub { font-size: 10.5px; letter-spacing: 0.4px; color: var(--ink-4); }
+  .sv-empty { margin: 4px 0 10px; font-size: 13px; color: var(--ink-4); }
+
+  /* --- The row: the one shape the whole screen is built from --- */
+  .sv-row { padding: 8px 0; border-top: 1px solid var(--edge-soft); }
+  .sv-rows > .sv-row:first-child { border-top: none; }
+  .sv-line { display: flex; align-items: baseline; gap: 7px; }
+  .sv-label { flex: 1 1 auto; min-width: 0; font-size: 13px; color: var(--ink-2); }
+  .sv-value {
+    flex: 0 0 auto; font-size: 14.5px; font-weight: 700; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .sv-value.gold { color: var(--gold); }
+  .sv-value .sv-of { font-size: 11.5px; font-weight: 400; color: var(--ink-4); }
+  /* Called out when a stat has run into the ceiling it is measured against —
+     the one thing a stat screen must say out loud, since further nodes of that
+     kind are then wasted gold. */
+  .sv-flag {
+    flex: 0 0 auto; font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--gold); border: 1px solid var(--gold-3); border-radius: var(--r-pill);
+    padding: 1px 6px; background: var(--gold-1);
+  }
+  .sv-flag.soft { color: var(--ink-4); border-color: var(--edge); background: transparent; }
+  .sv-bar {
+    height: 3px; margin: 6px 0 5px; border-radius: var(--r-pill);
+    background: var(--edge-soft); overflow: hidden;
+  }
+  .sv-bar > i { display: block; height: 100%; border-radius: var(--r-pill); }
+  /* A meter that has run into its ceiling is lit rather than recoloured — the
+     stat keeps its own hue, it just stops being a suggestion to spend more. */
+  .sv-bar.full { background: var(--gold-2); }
+  .sv-bar.full > i { filter: brightness(1.25) saturate(1.1); }
+  .sv-note { font-size: 11px; line-height: 1.4; color: var(--ink-4); }
+  .sv-note b { color: var(--ink-2); font-weight: 700; }
+
+  /* --- A spell card: the page's own colour carries it --- */
+  .sv-spell {
+    margin-bottom: 12px; padding: 12px 13px 4px;
+    border: 1px solid var(--edge-soft); border-radius: var(--r-2);
+    background:
+      linear-gradient(180deg, rgba(var(--g), 0.07), transparent 42%),
+      var(--panel);
+    box-shadow: var(--shadow-1);
+  }
+  .sv-spell.active { border-color: rgba(var(--g), 0.5); box-shadow: var(--shadow-1), 0 0 20px rgba(var(--g), 0.14); }
+  .sv-spell.sealed { opacity: 0.72; }
+  .sv-spell-head { display: flex; align-items: center; gap: 10px; }
+  .sv-spell-rune { flex: 0 0 auto; line-height: 0; filter: drop-shadow(0 0 6px rgba(var(--g), 0.45)); }
+  .sv-spell-name { flex: 1 1 auto; min-width: 0; }
+  .sv-spell-name h3 {
+    margin: 0; font-family: var(--display-font); font-size: 18px; font-weight: 600; letter-spacing: 1px;
+    color: var(--c);
+  }
+  .sv-spell-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .sv-pill {
+    font-size: 9.5px; letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--ink-4); border: 1px solid var(--edge); border-radius: var(--r-pill); padding: 1px 7px;
+  }
+  .sv-pill.open { color: var(--c); border-color: rgba(var(--g), 0.55); }
+  .sv-pill.sealed { color: var(--ink-3); border-color: var(--edge-hi); background: var(--sunk); }
+  .sv-spell-head-num { flex: 0 0 auto; text-align: right; }
+  .sv-spell-head-num b {
+    display: block; font-family: var(--display-font); font-size: 23px; line-height: 1.1;
+    color: var(--c); font-variant-numeric: tabular-nums;
+  }
+  .sv-spell-head-num span { display: block; font-size: 9.5px; letter-spacing: 0.4px; color: var(--ink-4); }
+  .sv-seal {
+    margin: 10px 0 0; padding: 7px 9px; border-radius: var(--r-1);
+    border: 1px dashed var(--edge-hi); background: var(--sunk);
+    font-size: 11px; line-height: 1.45; color: var(--ink-3);
+  }
+  .sv-seal b { color: var(--ink-2); }
+  .sv-spell-blurb { margin: 9px 0 3px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+
+  /* --- Where the ranks went: one stacked band + its legend --- */
+  .sv-band {
+    display: flex; height: 10px; margin: 2px 0 12px; border-radius: var(--r-pill);
+    overflow: hidden; background: var(--edge-soft);
+  }
+  .sv-band > i { display: block; height: 100%; }
+  .sv-legend { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; }
+  .sv-leg { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+  .sv-leg-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+  .sv-leg-name { flex: 0 0 84px; }
+  .sv-leg-bar { flex: 1 1 auto; height: 3px; border-radius: var(--r-pill); background: var(--edge-soft); overflow: hidden; }
+  .sv-leg-bar > i { display: block; height: 100%; border-radius: var(--r-pill); }
+  .sv-leg-n { flex: 0 0 auto; min-width: 22px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
   /* End screens */
   .end-screen { cursor: pointer; padding: 16px; text-align: center; }

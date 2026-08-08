@@ -11,7 +11,8 @@ let state = null;
 
 function freshState() {
   return {
-    screen: "combat",       // combat | quiz | upgrade | reward
+    screen: "combat",       // combat | quiz | history | upgrade | bookorder | stats | reward
+    statsTab: "hero",       // which tab the ledger screen shows (see stats.js) — pure UI, not persisted
     runActive: false,       // a combat run is live (used by the bottom nav to resume vs. restart)
     runes: [],               // {id, pairId, lang, word, x, y, matchState}
     selectedRuneId: null,
@@ -34,6 +35,7 @@ function freshState() {
     // Derived combat modifiers (see skilltree.recomputeMods). Safe defaults so
     // combat never touches an undefined field before the first recompute.
     mods: {
+      flatDmg: 0,
       critChance: 0, critMult: 1.5, leech: 0, regen: 0, castHaste: 0,
       walkMult: 1, coinMult: 1, shieldChance: 0, shieldAmount: 0, shieldMax: 0,
       thorns: 0, spellFailProt: 0,

@@ -43,24 +43,27 @@
 // Themes — a node's colour and glyph come from WHAT IT DOES, not from which arm
 // it grew on, so a wall of orange chevrons reads as "damage" wherever you find
 // it and the six spell colours match their page in the book (CONFIG.colors.spell).
+// `label` is the theme's name in the player's language: the ledger screen groups
+// a build by theme (see stats.js), and that name belongs next to the colour it
+// is drawn in rather than in a second table somewhere else.
 // ---------------------------------------------------------------------------
 const TREE_THEMES = {
-  origin:    { color: "#eafffe", glow: "234,255,254" }, // the central seed
-  might:     { color: "#ff7043", glow: "255,112,67"  }, // flat + % damage
-  vigor:     { color: "#5ecf8f", glow: "94,207,143"  }, // flat + % HP
-  crit:      { color: "#f2c14e", glow: "242,193,78"  }, // crit chance + crit damage
-  sustain:   { color: "#e5679a", glow: "229,103,154" }, // regen + life leech
-  guard:     { color: "#4de3e0", glow: "77,227,224"  }, // shields + fail-protection
-  fortune:   { color: "#d9a441", glow: "217,164,65"  }, // gold + walk speed
-  focus:     { color: "#c08cff", glow: "192,140,255" }, // cast speed
-  thorn:     { color: "#ff3b30", glow: "255,59,48"   }, // the five unique thorn caches
+  origin:    { color: "#eafffe", glow: "234,255,254", label: "Ursprung"     }, // the central seed
+  might:     { color: "#ff7043", glow: "255,112,67",  label: "Macht"        }, // flat + % damage
+  vigor:     { color: "#5ecf8f", glow: "94,207,143",  label: "Lebenskraft"  }, // flat + % HP
+  crit:      { color: "#f2c14e", glow: "242,193,78",  label: "Präzision"    }, // crit chance + crit damage
+  sustain:   { color: "#e5679a", glow: "229,103,154", label: "Zehrung"      }, // regen + life leech
+  guard:     { color: "#4de3e0", glow: "77,227,224",  label: "Bewahrung"    }, // shields + fail-protection
+  fortune:   { color: "#d9a441", glow: "217,164,65",  label: "Fortuna"      }, // gold + walk speed
+  focus:     { color: "#c08cff", glow: "192,140,255", label: "Sammlung"     }, // cast speed
+  thorn:     { color: "#ff3b30", glow: "255,59,48",   label: "Dornen"       }, // the five unique thorn caches
   // One per page of the book — same colour the spell burns in on the canvas.
-  fireball:  { color: "#f2a83a", glow: "242,168,58"  },
-  lightning: { color: "#7fb8ff", glow: "127,184,255" },
-  frost:     { color: "#79d8ee", glow: "121,216,238" },
-  meteor:    { color: "#e5673a", glow: "229,103,58"  },
-  shield:    { color: "#9a8ff0", glow: "154,143,240" },
-  heal:      { color: "#6ed08a", glow: "110,208,138" },
+  fireball:  { color: "#f2a83a", glow: "242,168,58",  label: "Feuerball"    },
+  lightning: { color: "#7fb8ff", glow: "127,184,255", label: "Blitzschlag"  },
+  frost:     { color: "#79d8ee", glow: "121,216,238", label: "Frostkegel"   },
+  meteor:    { color: "#e5673a", glow: "229,103,58",  label: "Meteoriten"   },
+  shield:    { color: "#9a8ff0", glow: "154,143,240", label: "Bannschild"   },
+  heal:      { color: "#6ed08a", glow: "110,208,138", label: "Heilwort"     },
 };
 
 // Small runic line-glyphs in local coords (centred on 0,0, ~±13). Stroke is
@@ -131,8 +134,8 @@ const RELAX_CELLS = 34;            // repulsion lookup grid; RELAX_SPAN/RELAX_CE
 const RELAX_SPAN = 5200;
 
 // A node's effect grows gently with its ring — enough that a deep node is
-// clearly the better one, not so much that a single outer node saturates a
-// capped pool on its own (see CONFIG.caps and softCap).
+// clearly the better one, not so much that walking one arm to its tip is worth
+// more than everything else a build could reach with the same gold.
 const VAL_PER_RING = 0.14;
 // Cost grows SUB-linearly with the ring (ring^0.9). Deep nodes are still much
 // dearer per point than shallow ones, but the curve never runs away the way a
@@ -156,18 +159,43 @@ const COUNT_STATS = { chainLightning: 1, countMeteor: 1 };
 // these that it cycles through outward, so "this branch is about crit" is a
 // property of the branch, not of thirty hand-written nodes.
 // ---------------------------------------------------------------------------
-// FLAT vs PERCENT under the ×8 number scale (see CONFIG.heroBaseDmg): a flat
-// value moved with its pool's cap — damage ×2, HP ×3, regen and other HP rates
-// ×8 — so it still takes the same walk to fill a pool. The PERCENT bases below
-// were deliberately left alone even though their caps came down: at +4% a single
-// rank now moves heroDmg 24 → 25 where before it moved 3 → 3, and being able to
-// see one rank do something is the whole point of the rescale.
+// ---------------------------------------------------------------------------
+// Where the balance lives: CONFIG.treeTotals.
+//
+// The A entries below, and the keystones further down, are authored as RELATIVE
+// weights — "a Zähigkeit node is worth about six Schneide nodes" — because that
+// is the judgement a designer can make while writing a thousand nodes. How much
+// the whole tree comes to is a different question, and it is answered in one
+// place: CONFIG.treeTotals says the tree contains exactly +1.200 LP, exactly
+// +60 % Krit-Chance, and so on. applyTreeTotals divides each of those across the
+// nodes that carry it, in proportion to their weights, while the tree is built.
+//
+// So every stat has a maximum again — but it bounds what EXISTS instead of
+// clipping what you carry, which is why nothing has to be bent at runtime: a
+// node always pays exactly what it prints, and the ceiling is simply the end of
+// the supply. Being additive, the pools slow down by themselves — the tenth
+// +30 LP is the same +30 and a much smaller share of the pool it joins.
+//
+// To rebalance: edit CONFIG.treeTotals, run `node tools/stat-supply.mjs`.
 const A = {
-  dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 4,     cost: 15, maxRank: 3,
-                title: "Schneide",      blurb: "Schärft deinen Grundschaden — jede Seite des Buches trifft härter." },
-  dmgPct:     { stat: "pctDmg",     theme: "might",   base: 0.04,  cost: 22, maxRank: 3,
+  // THE THREE STAGES OF DAMAGE. A hit is built in this order and no other:
+  //
+  //   1. KERN        (heroBaseDmg + flatBase) × (1 + pctBase)
+  //   2. VERSTÄRKUNG × (1 + pctDmg) × the page's own factor × its sigils
+  //   3. ZUSCHLAG    + flatDmg — added last, after every multiplier
+  //
+  // Stage 3 is why the split exists. A node that reads "+5 Schaden je Treffer"
+  // puts exactly 5 on the number that pops over a skeleton — on every page of
+  // the book, at any depth of the tree, forever.
+  dmgBaseFlat:{ stat: "flatBase",   theme: "might",   base: 1.5,   cost: 16, maxRank: 3, ringVal: 0.35,
+                title: "Kernschliff",   blurb: "Vertieft den Kern, aus dem jeder Zauber gerechnet wird — alles danach vervielfacht ihn." },
+  dmgBasePct: { stat: "pctBase",    theme: "might",   base: 0.02,  cost: 22, maxRank: 3,
+                title: "Härtung",       blurb: "Hebt deinen Kernschaden prozentual, bevor irgendein Faktor darauf greift." },
+  dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 2.5,   cost: 15, maxRank: 3, ringVal: 0.35,
+                title: "Schneide",      blurb: "Legt festen Schaden auf JEDEN Treffer — ganz zuletzt, nach allen Faktoren. Was hier steht, kommt genau so an." },
+  dmgPct:     { stat: "pctDmg",     theme: "might",   base: 0.025, cost: 22, maxRank: 3,
                 title: "Zorn",          blurb: "Verstärkt allen Schaden prozentual." },
-  hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3,
+  hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3, ringVal: 0.4,
                 title: "Zähigkeit",     blurb: "Erhöht deine maximalen Lebenspunkte." },
   hpPct:      { stat: "pctHp",      theme: "vigor",   base: 0.04,  cost: 20, maxRank: 3,
                 title: "Lebenskraft",   blurb: "Mehr Lebenspunkte prozentual." },
@@ -228,7 +256,7 @@ function uq(theme, title, cost, effect, blurb) {
 // to look on the next — only the middle branch (the spell's own shape) differs.
 // ---------------------------------------------------------------------------
 function bRawPower(L) {
-  return { title: "Rohe Kraft", arch: [A.dmgFlat, A.dmgPct, A.dmgFlat],
+  return { title: "Rohe Kraft", arch: [A.dmgBaseFlat, A.dmgPct, A.dmgFlat],
     tip: uq("might", `${L.word}gewalt`, KEYSTONE_COST, { flatDmg: 16, pctDmg: 0.06 },
       "Kraft, die keiner Seite gehört und darum jede trägt.") };
 }
@@ -260,9 +288,9 @@ function bDrain(L) {
 //   · a page of the book costs ~380 gold (four prelude nodes + the key) — about
 //     three runs, and each further page costs the same, so which spell you go
 //     and fetch first is a real choice and not a queue;
-//   · every % damage pool, every crit pool, every HP pool soft-caps on its own
-//     (CONFIG.caps), so the outward push is rewarded with BREADTH — more pages,
-//     more bodies hit, more keystones — rather than with a bigger single number;
+//   · nothing is capped, so the outward push pays in whatever it buys — but the
+//     tree only HOLDS so much of each stat (see CONFIG.treeTotals), and breadth is
+//     where the pages, the extra bodies hit and the keystones live;
 //   · the whole-body nodes (an extra hop, an extra rock) and the keystones sit
 //     from ring 13 outward, which is where the run-away power would be if the
 //     caps didn't bound it.
@@ -276,7 +304,7 @@ function damageSpellArm(key, id, prelude, shapeBranch) {
 const ARMS = [
   // ---- Blitzschlag: reach. Its shape branch buys hops and softens the falloff.
   damageSpellArm("lig", "lightning",
-    [A.dmgFlat, A.dmgFlat, A.dmgPct, A.critChance],
+    [A.dmgFlat, A.dmgBaseFlat, A.dmgPct, A.critChance],
     { title: "Wirkung",
       arch: [
         bodyNode("chainLightning", "lightning", "Kettenglied", "Der Blitz springt auf einen weiteren Körper über."),
@@ -289,14 +317,14 @@ const ARMS = [
 
   // ---- Might: the plain damage arm. Lifts every page at once.
   { key: "mig", kind: "generic", theme: "might", title: "Macht",
-    prelude: [A.dmgFlat, A.dmgFlat, A.dmgPct, A.dmgFlat],
+    prelude: [A.dmgBaseFlat, A.dmgFlat, A.dmgBasePct, A.dmgFlat],
     notable: uq("might", "Kriegsherz", NOTABLE_COST, { flatDmg: 8, pctDmg: 0.06 },
       "Ein Herz, das den Kampf sucht. Alles, was du wirkst, wiegt schwerer."),
     branches: [
-      { title: "Schneide", arch: [A.dmgFlat, A.dmgFlat, A.dmgPct],
+      { title: "Schneide", arch: [A.dmgFlat, A.dmgFlat, A.dmgBaseFlat],
         tip: uq("might", "Henkersklinge", KEYSTONE_COST, { flatDmg: 20, armorPen: 1.2 },
           "Ein Schnitt, der nicht fragt, wie viel Knochen im Weg steht.") },
-      { title: "Zorn", arch: [A.dmgPct, A.dmgPct, A.dmgFlat],
+      { title: "Zorn", arch: [A.dmgPct, A.dmgBasePct, A.dmgPct],
         tip: uq("might", "Blinder Zorn", KEYSTONE_COST, { pctDmg: 0.18 },
           "Du hörst auf zu zielen und fängst an zu treffen.") },
       // Zermalmen is where armour penetration lives: crushing through the plate
@@ -346,7 +374,7 @@ const ARMS = [
 
   // ---- Frostkegel: control. Its shape branch buys cone reach and freeze time.
   damageSpellArm("fro", "frost",
-    [A.hpFlat, A.dmgFlat, A.hpPct, A.dmgPct],
+    [A.hpFlat, A.dmgBaseFlat, A.hpPct, A.dmgPct],
     { title: "Wirkung",
       arch: [
         { stat: "freezeFrost", theme: "frost", base: 120, cost: 34, maxRank: 2, growth: 1.6,
@@ -448,7 +476,7 @@ const ARMS = [
   // ---- Feuerball: the page you start with, so its key is a keystone, not a
   // seal. Its shape branch buys blast radius — the spell's whole upgrade path.
   damageSpellArm("fir", "fireball",
-    [A.dmgFlat, A.dmgPct, A.critChance, A.dmgFlat],
+    [A.dmgFlat, A.dmgPct, A.critChance, A.dmgBaseFlat],
     { title: "Wirkung",
       arch: [
         { stat: "aoeFireball", theme: "fireball", base: 0.05, cost: 30, maxRank: 2, growth: 1.6,
@@ -487,7 +515,12 @@ const ARMS = [
 // looking drafted.
 // ---------------------------------------------------------------------------
 function ringRadius(ring) { return HOLE + (ring - 1) * NODE_STEP; }
-function ringCost(base, ring) { return Math.max(5, Math.round(base * Math.pow(ring, COST_RING_POW))); }
+// A node's price WEIGHT — not gold yet. Two things make one node dearer than
+// another: how deep it sits (ring^COST_RING_POW) and how much of a node it is
+// (the authored base — a keystone is worth several ordinary nodes). The weights
+// are turned into gold in one pass once the tree is finished, so that the whole
+// tree comes to exactly CONFIG.treeGold (see applyTreeGold).
+function ringWeight(base, ring) { return base * Math.pow(ring, COST_RING_POW); }
 
 // Small seeded PRNG. It decides which offshoots exist and how long twigs run,
 // and saves name the nodes on them, so the layout never touches Math.random.
@@ -591,9 +624,14 @@ function buildSkillTree() {
     });
   });
 
+  // Weights in, game units out: the totals are divided across the finished tree
+  // (see applyTreeTotals). Nothing downstream ever sees a raw weight.
+  const scale = applyTreeTotals(nodes);
+  applyTreeGold(nodes);
+
   const pos = radialSlices(nodes, kids);
   relaxTree(pos, nodes, edges);
-  return { nodes, pos, edges };
+  return { nodes, pos, edges, scale };
 }
 
 // Step one: every subtree gets a wedge of the circle sized by how many
@@ -721,31 +759,124 @@ function relaxTree(pos, nodes, edges) {
   ids.forEach((id, i) => { pos[id].x = px[i]; pos[id].y = py[i]; });
 }
 
-// One archetype, resolved at a ring: value scaled by the tier, cost by the ring.
+// Stats the player counts in whole units — a node granting 2.6 LP would be
+// noise, and "+3 LP" is what a tooltip should be able to say.
+const WHOLE_STATS = {
+  flatDmg: 1, flatBase: 1, flatHp: 1, shieldAmount: 1, shieldMax: 1,
+  freezeFrost: 1, chainLightning: 1, countMeteor: 1,
+};
+
+// What every rank of every node adds up to, per stat.
+function supplyOf(nodes) {
+  const total = {};
+  for (const id in nodes) {
+    const n = nodes[id];
+    for (const k in n.effect) total[k] = (total[k] || 0) + n.effect[k] * n.maxRank;
+  }
+  return total;
+}
+
+// ---------------------------------------------------------------------------
+// THE SECOND PASS — where the balance is actually decided.
+//
+// The tree is grown first with the RAW authored weights: the A table and the
+// keystones say how much a node is worth RELATIVE to its neighbours, which is
+// the judgement a designer can make while writing a thousand nodes. What none
+// of them can say is how much the whole thing should come to.
+//
+// So that is stated separately, once, in CONFIG.treeTotals — "the tree contains
+// exactly +1.200 LP" — and this pass divides that total across the nodes in
+// proportion to their weights. Tuning the game is then editing one number per
+// stat and re-running tools/stat-supply.mjs, instead of guessing at a multiplier
+// and measuring what fell out.
+//
+// This is also where the ceilings went. Every stat HAS a maximum again — its
+// total — but it is a ceiling of a different kind: it bounds what EXISTS rather
+// than clipping what you carry. You can own all of it, and every node on the way
+// pays exactly what it printed. And because these pools are additive, they slow
+// down on their own: the tenth +30 LP is the same +30, but it is a far smaller
+// share of the pool it lands in than the first was. The diminishing return is in
+// the arithmetic, not bolted on top of it.
+//
+// Rounding drifts the achieved total a little off the target (a node worth 0.4
+// LP still has to print +1). tools/stat-supply.mjs shows both figures.
+function applyTreeTotals(nodes) {
+  const raw = supplyOf(nodes);
+  const scale = {};
+  for (const stat in raw) {
+    const want = CONFIG.treeTotals[stat];
+    scale[stat] = (want == null || raw[stat] <= 0) ? 1 : want / raw[stat];
+  }
+  for (const id in nodes) {
+    const effect = nodes[id].effect;
+    for (const k in effect) {
+      const v = effect[k] * scale[k];
+      effect[k] = WHOLE_STATS[k] ? Math.max(1, Math.round(v))
+        : k === "regen" ? Math.round(v * 10) / 10
+        : Math.round(v * 1000) / 1000;
+    }
+  }
+  return scale;
+}
+
+// ---------------------------------------------------------------------------
+// THE PRICE PASS — the same idea as applyTreeTotals, for gold.
+//
+// CONFIG.treeGold says what the WHOLE tree costs: every rank of every node, end
+// to end. Each rank's share of that is its weight — how deep the node sits, how
+// much of a node it is, and how many ranks of it you have already bought (each
+// further rank of the same node is dearer by `growth`). So a price is never
+// authored in gold; it is a fraction of the one number that says how long the
+// tree should take.
+//
+// That is what makes the stat totals in CONFIG.treeTotals honest ceilings: gold
+// income and tree price are set against each other, so an endgame build really
+// does walk ~90 % of the nodes and really does arrive at the totals.
+function applyTreeGold(nodes) {
+  let weight = 0;
+  for (const id in nodes) {
+    const n = nodes[id];
+    const growth = n.growth || RANK_GROWTH;
+    for (let r = 0; r < n.maxRank; r++) weight += n.cost * Math.pow(growth, r);
+  }
+  const k = weight > 0 ? CONFIG.treeGold / weight : 1;
+  for (const id in nodes) {
+    if (id === "root") continue;
+    nodes[id].cost = Math.max(5, Math.round(nodes[id].cost * k));
+  }
+}
+
+// One archetype, resolved at a ring: weight scaled by the tier, cost by the ring.
 function archNode(arch, ring, path, maxRankOverride) {
-  const tier = 1 + VAL_PER_RING * (ring - 1);
+  // `ringVal` scales how fast this archetype grows with depth. The two flat
+  // DAMAGE pools use a gentler slope than everything else (see the A table):
+  // they are uncapped now, so their supply is what bounds the game instead of a
+  // ceiling, and a stat that both compounds with depth and never stops would
+  // put four digits over a skeleton by the time a deep arm is walked.
+  const tier = 1 + VAL_PER_RING * (arch.ringVal == null ? 1 : arch.ringVal) * (ring - 1);
   let effect;
   if (arch.special === "shield") {
-    effect = { shieldChance: Math.min(0.12, 0.05 + 0.004 * ring),
-      shieldAmount: Math.round(8 * tier), shieldMax: Math.round(13 * tier) };
+    effect = {
+      shieldChance: Math.min(0.12, 0.05 + 0.004 * ring),
+      shieldAmount: 8 * tier,
+      shieldMax: 13 * tier,
+    };
   } else if (COUNT_STATS[arch.stat]) {
     effect = { [arch.stat]: 1 };
   } else {
-    let v = arch.base * tier;
-    if (arch.stat === "flatDmg" || arch.stat === "flatHp" || arch.stat === "freezeFrost") v = Math.max(1, Math.round(v));
-    else if (arch.stat === "regen") v = Math.round(v * 10) / 10;
-    else v = Math.round(v * 1000) / 1000;
-    effect = { [arch.stat]: v };
+    effect = { [arch.stat]: arch.base * tier };
   }
   return { title: arch.title, theme: arch.theme, ring, path, effect, blurb: arch.blurb,
     maxRank: maxRankOverride || arch.maxRank || 3,
-    cost: ringCost(arch.cost, ring), growth: arch.growth || RANK_GROWTH };
+    cost: ringWeight(arch.cost, ring), growth: arch.growth || RANK_GROWTH };
 }
 
-// A unique — its value is authored outright, only its price knows about depth.
+// A unique — its weight is authored outright, only its price knows about depth.
+// It rides the same second pass as an archetype, so a keystone keeps the weight
+// it was written with relative to the ordinary nodes around it.
 function uniqueNode(spec, ring, path) {
-  return { title: spec.title, theme: spec.theme, ring, path, effect: spec.effect, blurb: spec.blurb,
-    unique: true, maxRank: 1, growth: 1, cost: ringCost(spec.cost, ring) };
+  return { title: spec.title, theme: spec.theme, ring, path, effect: { ...spec.effect }, blurb: spec.blurb,
+    unique: true, maxRank: 1, growth: 1, cost: ringWeight(spec.cost, ring) };
 }
 
 // The node at ring 5. On a spell arm that carries a sealed page it is the seal
@@ -760,7 +891,7 @@ function keyNode(arm) {
   if (spell && spell.unlock) {
     return { title: spell.name, theme: arm.theme, ring: KEY_RING, path: arm.title, beacon: true,
       maxRank: 1, unique: true, unlocks: spell.id, growth: 1, effect: {},
-      cost: ringCost(UNLOCK_COST, KEY_RING),
+      cost: ringWeight(UNLOCK_COST, KEY_RING),
       blurb: `Ein versiegeltes Zeichen. Heb es, und der Zauber schlägt eine neue Seite in deinem Buch auf. ${spell.blurb}` };
   }
   const node = arm.notable
@@ -823,23 +954,18 @@ function nodeCost(node, rank) {
 
 // ---------------------------------------------------------------------------
 // Stat model — sum every purchased rank's effect into `state.mods`, then derive
-// the two legacy fields (heroMaxHP / heroDmg) the rest of combat already reads.
-// The summed pools are run through CONFIG.caps so a deep, stacked tree hits
-// smooth diminishing returns instead of snowballing (see CONFIG.caps).
+// the two fields (heroMaxHP / heroDmg) the rest of combat reads.
+//
+// THAT IS THE WHOLE MODEL. There is no soft cap, no hard cap and no diminishing
+// return anywhere in it: what the nodes granted is what the hero carries. A
+// build is bounded by what the tree holds and what the player can afford, and
+// the node values are derived from exactly that (see CONFIG.treeTotals).
+//
+// The only clamps left are the two that are arithmetic rather than balance, and
+// they are marked as such below: a probability cannot exceed 1, and a chain hop
+// cannot carry more than it received.
 // ---------------------------------------------------------------------------
-// Soft cap with a linear knee: the first half of the pool (up to `cap`/2) counts
-// at full value, so a few early upgrades land exactly as advertised and feel
-// strong; only the excess beyond the knee suffers diminishing returns, bending
-// the total over to asymptote at `cap` (it can never reach or exceed it). This
-// gives the shape the design wants — early points matter, deep stacking plateaus.
-function softCap(x, cap) {
-  if (cap <= 0) return 0;
-  if (x <= 0) return 0;
-  const knee = cap / 2;
-  if (x <= knee) return x;                 // full value while under the knee
-  const over = x - knee;                   // excess gets diminishing returns
-  return knee + (knee * over) / (over + knee);
-}
+const asChance = (x) => (x > 1 ? 1 : x < 0 ? 0 : x);   // a probability, by definition
 
 // Which summed stat feeds which spell's % damage / signature parameter. Split
 // out so recomputeMods stays a flat read of the pools rather than a per-spell
@@ -849,9 +975,9 @@ const SPELL_DMG_STATS = {
   fireball: "dmgFireball", lightning: "dmgLightning", frost: "dmgFrost",
   meteor: "dmgMeteor", shield: "dmgShield", heal: "dmgHeal",
 };
-// Whole-body counts are bounded by their spell's own maximum (CONFIG.spells),
-// so they pass through uncapped; the shape parameters (cone reach, blast and
-// crater size, chain falloff) are bounded here — see CONFIG.caps.
+// Every one of these passes through exactly as summed. What a page's shape can
+// grow to is set by its total in CONFIG.treeTotals, not by a
+// ceiling in the resolver.
 const SPELL_PARAM_STATS = [
   "chainLightning", "countMeteor",
   "freezeFrost", "coneFrost", "aoeFireball", "aoeMeteor", "falloffLightning",
@@ -859,7 +985,7 @@ const SPELL_PARAM_STATS = [
 
 function recomputeMods() {
   const sum = {
-    flatDmg: 0, flatHp: 0, pctDmg: 0, pctHp: 0,
+    flatDmg: 0, flatBase: 0, pctBase: 0, flatHp: 0, pctDmg: 0, pctHp: 0,
     critChance: 0, critMult: 0, armorPen: 0,
     leech: 0, regen: 0, walkMult: 0, coinMult: 0, castHaste: 0,
     shieldChance: 0, shieldAmount: 0, shieldMax: 0,
@@ -884,47 +1010,48 @@ function recomputeMods() {
       }
     }
   }
-  const caps = CONFIG.caps;
-  // Each page's % damage soft-caps on its own, so dumping a whole arm into one
-  // spell plateaus there instead of making the other five pointless.
   const spellPct = {};
-  for (const id in SPELL_DMG_STATS) spellPct[id] = softCap(sum[SPELL_DMG_STATS[id]], caps.spellPct);
+  for (const id in SPELL_DMG_STATS) spellPct[id] = sum[SPELL_DMG_STATS[id]];
   const spellParam = {};
-  for (const k of SPELL_PARAM_STATS) {
-    spellParam[k] = caps[k] != null ? Math.min(caps[k], sum[k]) : sum[k];
-  }
+  for (const k of SPELL_PARAM_STATS) spellParam[k] = sum[k];
 
   state.mods = {
-    critChance: Math.min(caps.critChance, sum.critChance),
-    critMult: 1.5 + Math.min(caps.critMult, sum.critMult),  // base ×1.5 on a crit
+    // Stage 3 of the damage model: read by spellPower and added to every hit
+    // after every multiplier, so what the node printed is what lands.
+    flatDmg: sum.flatDmg,
+    critChance: asChance(sum.critChance),
+    critMult: 1.5 + sum.critMult,           // base ×1.5 on a crit
     // Armour points shredded off whatever the target wears, before the mitigation
-    // curve is read (see armorReduction in combat.js).
-    armorPen: Math.min(caps.armorPen, sum.armorPen),
+    // curve is read (see armorReduction in combat.js). Shredding past what a body
+    // wears simply leaves it unarmoured — armorReduction floors at zero.
+    armorPen: sum.armorPen,
     spellsUnlocked: unlocked,
     spellPct,
     spellParam,
-    leech: Math.min(caps.leech, sum.leech),
-    regen: Math.min(caps.regen, sum.regen),
-    castHaste: Math.min(caps.castHaste, sum.castHaste),
-    // Gold and pace get soft caps too: Fortuna is a whole arm now, and neither
-    // stat is bounded by anything downstream the way damage is by the caps.
-    walkMult: 1 + softCap(sum.walkMult, caps.walkMult),
-    coinMult: 1 + softCap(sum.coinMult, caps.coinMult),
-    shieldChance: Math.min(caps.shieldChance, sum.shieldChance),
-    shieldAmount: Math.min(caps.shieldAmount, sum.shieldAmount),
-    shieldMax: Math.min(caps.shieldMax, sum.shieldMax),
-    // Uncapped on purpose: only five unique nodes grant thorns at all, so the
-    // sum can never exceed 5 × THORN_VALUE = 50%.
+    leech: sum.leech,
+    regen: sum.regen,
+    castHaste: sum.castHaste,
+    walkMult: 1 + sum.walkMult,
+    coinMult: 1 + sum.coinMult,
+    shieldChance: asChance(sum.shieldChance),
+    shieldAmount: sum.shieldAmount,
+    shieldMax: sum.shieldMax,
     thorns: sum.thorns,
-    spellFailProt: Math.min(caps.spellFailProt, sum.spellFailProt),
+    spellFailProt: asChance(sum.spellFailProt),
   };
-  // Flat + percent pools soft-cap so a wall of stacked HP/damage nodes plateaus.
-  const flatHp = softCap(sum.flatHp, caps.flatHp);
-  const flatDmg = softCap(sum.flatDmg, caps.flatDmg);
-  const pctHp = softCap(sum.pctHp, caps.pctHp);
-  const pctDmg = softCap(sum.pctDmg, caps.pctDmg);
+  const flatHp = sum.flatHp, pctHp = sum.pctHp;
+  const flatBase = sum.flatBase, pctBase = sum.pctBase;
+  const pctDmg = sum.pctDmg, flatDmg = sum.flatDmg;
+  // Kept for the ledger (see stats.js), which shows each pool against what the
+  // whole tree holds of it rather than against a ceiling, since there isn't one.
+  state.mods.sums = sum;
+  state.mods.derived = { flatHp, pctHp, flatBase, pctBase, pctDmg, flatDmg };
   state.heroMaxHP = Math.round((CONFIG.heroBaseHP + flatHp) * (1 + pctHp));
-  state.heroDmg = Math.max(1, Math.round((CONFIG.heroBaseDmg + flatDmg) * (1 + pctDmg)));
+  // Stages 1 and 2. Stage 3 (flatDmg) is deliberately NOT in here: it is added
+  // after the page's own factor too, inside spellPower, which is the whole point
+  // of splitting it out — see spells.js.
+  state.heroDmg = Math.max(1,
+    Math.round((CONFIG.heroBaseDmg + flatBase) * (1 + pctBase) * (1 + pctDmg)));
   if (state.heroShield == null) state.heroShield = 0;
   if (state.heroShield > state.mods.shieldMax) state.heroShield = state.mods.shieldMax;
 }
@@ -956,7 +1083,12 @@ function treeBuy(id) {
 // Effect wording (single-click info)
 // ---------------------------------------------------------------------------
 const STAT_FMT = {
-  flatDmg:      (v) => `+${Math.round(v)} Schaden`,
+  // The three damage stages read differently on purpose: "je Treffer" is the
+  // one that lands verbatim on every body, and it must not be confusable with
+  // the two that get multiplied on the way.
+  flatDmg:      (v) => `+${Math.round(v)} Schaden je Treffer`,
+  flatBase:     (v) => `+${Math.round(v)} Kernschaden`,
+  pctBase:      (v) => `+${Math.round(v * 100)}% Kernschaden`,
   flatHp:       (v) => `+${Math.round(v)} LP`,
   pctDmg:       (v) => `+${Math.round(v * 100)}% Schaden`,
   pctHp:        (v) => `+${Math.round(v * 100)}% LP`,
@@ -1274,14 +1406,24 @@ function renderUpgradeFull() {
       <div class="tree-topbar">
         <div class="tree-title">Runenbaum</div>
         ${devSwitchMarkup()}
-        <!-- The tree opens pages; this is where they're bound into an order
-             (see book-order.js). -->
-        <button class="bo-open" data-act="openBookOrder">
-          <svg class="bo-open-icon" viewBox="0 0 24 16" aria-hidden="true">
-            <path d="M12 3.4C9.6 1.6 6.6 1.2 3 1.9v11.4c3.6-.7 6.6-.3 9 1.5 2.4-1.8 5.4-2.2 9-1.5V1.9c-3.6-.7-6.6-.3-9 1.5Z"/>
-            <path class="bo-open-spine" d="M12 3.4v11.4"/>
-          </svg>Buch
-        </button>
+        <!-- The two things the forge does BESIDE buying nodes: bind the book
+             into an order (book-order.js), and read what the build now adds up
+             to (stats.js). -->
+        <div class="tree-tools">
+          <button class="bo-open" data-act="openStats">
+            <svg class="sv-open-icon" viewBox="0 0 16 16" aria-hidden="true">
+              <rect x="1.5" y="9" width="3" height="5.5" rx="0.7"/>
+              <rect x="6.5" y="5.5" width="3" height="9" rx="0.7"/>
+              <rect x="11.5" y="2" width="3" height="12.5" rx="0.7"/>
+            </svg>Werte
+          </button>
+          <button class="bo-open" data-act="openBookOrder">
+            <svg class="bo-open-icon" viewBox="0 0 24 16" aria-hidden="true">
+              <path d="M12 3.4C9.6 1.6 6.6 1.2 3 1.9v11.4c3.6-.7 6.6-.3 9 1.5 2.4-1.8 5.4-2.2 9-1.5V1.9c-3.6-.7-6.6-.3-9 1.5Z"/>
+              <path class="bo-open-spine" d="M12 3.4v11.4"/>
+            </svg>Buch
+          </button>
+        </div>
         <div id="tree-gold-slot">${treeGoldMarkup()}</div>
       </div>
       ${devBarMarkup()}
@@ -1415,8 +1557,15 @@ function attachTreeInteractions() {
   }, { passive: false });
 }
 
+// What the tree ACTUALLY holds of each stat, counted off the finished nodes —
+// the targets in CONFIG.treeTotals as they came out after rounding. This is the
+// figure the ledger measures a build against, so the screen can never quote a
+// total the nodes don't really add up to.
+const TREE_SUPPLY = supplyOf(TREE_NODES);
+
 window.Incanto.skilltree = {
-  TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, recomputeMods, treeBuy, treeZoom, treeReset,
+  TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, TREE_SUPPLY, supplyOf,
+  recomputeMods, treeBuy, treeZoom, treeReset,
   renderUpgradeFull, nodeRevealed, nodeReachable, nodeCost, nodeRank,
   devToggle, devResetTree, devEditGold, devGoldCommit,
 };
