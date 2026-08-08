@@ -371,6 +371,42 @@ try {
   const inert = await page.evaluate(() => state.quizIndex);
   check(inert === 0, "keys do not drive the game — a stray Enter/Space changes nothing (index " + inert + ")");
 
+  // 8a2. The sentence exercises must not keep serving the same sentences. Three
+  //      questions of every session come out of SENTENCE_POOL, so the pool has
+  //      to be deep and the draw has to remember what it just showed (see
+  //      drawSentence + CONFIG.quizSentenceMemory). Drawn here the way a long
+  //      evening of play would draw it.
+  const sentences = await page.evaluate(() => {
+    const drawn = [];
+    const options = [];
+    for (let i = 0; i < 120; i++) {
+      const fc = Incanto.quiz.makeFill("fill-choose");
+      options.push(fc.options);
+      drawn.push(fc.tokens.join(" "),
+        Incanto.quiz.makeFill("fill-type").tokens.join(" "),
+        Incanto.quiz.makeArrange().answer.join(" "));
+    }
+    const last = {}; let minGap = Infinity;
+    drawn.forEach((s, i) => { if (s in last) minGap = Math.min(minGap, i - last[s]); last[s] = i; });
+    return {
+      pool: Incanto.SENTENCE_POOL.length,
+      memory: CONFIG.quizSentenceMemory,
+      optionCount: CONFIG.quizOptionCount,
+      distinct: new Set(drawn).size,
+      drawn: drawn.length,
+      minGap,
+      badOptions: options.filter((o) => o.length !== CONFIG.quizOptionCount || new Set(o).size !== o.length).length,
+    };
+  });
+  check(sentences.pool >= 200, "the sentence pool is deep enough to draw from (" + sentences.pool + " sentences)");
+  check(sentences.minGap > sentences.memory,
+    "a sentence never comes back inside the draw's memory (" + sentences.minGap + " draws apart, memory " + sentences.memory + ")");
+  check(sentences.distinct >= sentences.pool * 0.6,
+    "a long session works through most of the pool (" + sentences.distinct + " different sentences over " +
+    sentences.drawn + " draws)");
+  check(sentences.badOptions === 0,
+    "fill-the-blank always offers " + sentences.optionCount + " distinct options of the answer's own kind");
+
   // 8b. Conjugation drills (see quiz.js + CONFIG.conjugation). A ladder over one
   //     verb's present tense: tap the pairs together, pick a form, write a form,
   //     fill half a table, and at the top write the whole paradigm out from

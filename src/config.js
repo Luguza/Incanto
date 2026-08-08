@@ -69,6 +69,10 @@ const CONFIG = {
   quizQuestionCount: 10, // one of each Duolingo-style exercise per session, plus two conjugation drills
   quizOptionCount: 4,
   quizMatchPairs: 5,     // tap-to-match exercise: pairs per board
+  quizSentenceMemory: 90, // the three sentence exercises (fill ×2, build) skip the last N sentences
+                          // they served, so a session works through SENTENCE_POOL instead of
+                          // rolling the same few. Kept well under the pool size — the draw falls
+                          // back to the full pool if the memory ever swallowed all of it
   goldPerCorrect: 12,
   // CONJUGATION DRILLS (see quiz.js + content.js CONJ_POOL). A ladder rather
   // than one exercise: each rung asks for more of the verb's paradigm and pays
