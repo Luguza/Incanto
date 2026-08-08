@@ -89,13 +89,13 @@ const RUNE_GLYPHS = {
 
 // ---------------------------------------------------------------------------
 // Geometry — the tree lives in a large tree-space (seed at TREE_CENTER); the
-// 900-unit SVG viewBox is just the pan/zoom window onto it. A node's place is
+// SVG viewBox is just the pan/zoom window onto it. A node's place is
 // fully determined by three authored numbers: which arm it's on, its RING
 // (distance from the seed = tier), and its lateral fraction across the arm's
 // wedge. Nothing is random, so ids stay stable and saves keep working.
 // ---------------------------------------------------------------------------
 const TREE_CENTER = 2600;      // seed sits at the middle of the tree-space
-const TREE_VIEW = 900;         // SVG viewBox size = the pan/zoom window
+const TREE_VIEW = 900;         // the window the default zoom + zoom limits are authored against
 const HOLE = 165;              // radius of ring 1 (clear space around the seed)
 const NODE_STEP = 96;          // radial distance between consecutive rings
 const PRELUDE_RINGS = 4;       // rings 1..4 — the generic run-up on every arm
@@ -1136,11 +1136,57 @@ function nodeRadius(id) {
   return TREE_NODES[id] && TREE_NODES[id].unique ? 33 : 28;   // uniques sit a little larger
 }
 
+// The pan/zoom window, in CSS pixels of the canvas box. The viewBox is kept the
+// SAME SIZE as the <svg> element rather than a fixed 900 units, so one tree unit
+// is always one screen pixel at scale 1 and the picture never depends on how
+// tall the box happens to be.
+//
+// That is the whole point: the info panel below the canvas is as tall as the
+// node it describes (a hint, a two-line blurb, a spell unlock), so the canvas
+// box changes height on EVERY tap. With a fixed 900-unit viewBox and
+// preserveAspectRatio, that box change rescaled and re-centred the entire web —
+// the tree visibly resized and jumped each time you picked another node. Sized
+// this way the box can grow and shrink freely: the corner it is anchored at
+// stays put, so nothing on screen moves, the panel just uncovers or covers a
+// strip of tree.
+//
+// It also makes clientToVB an exact 1:1 mapping. It could not be one before:
+// under `meet` the square viewBox was letterboxed inside a taller box, and the
+// old maths ignored that offset, so pinch/wheel zoom drifted vertically instead
+// of holding the point under the fingers.
+const TREE_VP = { w: TREE_VIEW, h: TREE_VIEW, measured: false };
+
+// How much of the authored 900-unit window fits in the current box. The default
+// zoom and the zoom limits are written against that window, so they scale with
+// it and a phone still opens on exactly the framing they were chosen for.
+function treeFit() { return Math.min(TREE_VP.w, TREE_VP.h) / TREE_VIEW; }
+
+// Re-read the canvas box and keep the viewBox matched to it. Returns true when
+// the size actually changed. Deliberately does NOT touch the camera: leaving
+// tx/ty/scale alone is what pins the picture to the box's top-left corner and
+// keeps a resize (info panel, rotation, browser chrome) from moving anything.
+function syncTreeViewport() {
+  const svg = document.getElementById("tree-canvas");
+  if (!svg) return false;
+  const r = svg.getBoundingClientRect();
+  if (!r.width || !r.height) return false;
+  if (TREE_VP.measured && Math.abs(r.width - TREE_VP.w) < 0.5 && Math.abs(r.height - TREE_VP.h) < 0.5) return false;
+  TREE_VP.w = r.width; TREE_VP.h = r.height; TREE_VP.measured = true;
+  svg.setAttribute("viewBox", treeViewBox());
+  return true;
+}
+function treeViewBox() { return `0 0 ${TREE_VP.w.toFixed(2)} ${TREE_VP.h.toFixed(2)}`; }
+let treeResizeObs = null;
+
 function initTreeView(resetSelection) {
-  const s = 0.62;                       // default zoom — shows the seed, every prelude, and all twelve keys
-  const c = TREE_VIEW / 2;              // viewBox centre
+  const s = 0.62 * treeFit();           // default zoom — shows the seed, every prelude, and all twelve keys
   const keep = (!resetSelection && state.tree) ? state.tree.selected : null;
-  state.tree = { scale: s, tx: c - TREE_CENTER * s, ty: c - TREE_CENTER * s, selected: keep };
+  state.tree = {
+    scale: s, selected: keep,
+    tx: TREE_VP.w / 2 - TREE_CENTER * s,
+    ty: TREE_VP.h / 2 - TREE_CENTER * s,
+    fitted: TREE_VP.measured,           // false until the box has been measured once
+  };
 }
 
 function runeGroup(theme, opacity) {
@@ -1391,7 +1437,12 @@ function selRingSvg() {
 // "upgrade" screen (structural rebuild only — pan/zoom and node selection patch
 // the DOM live, so tapping around the web stays cheap).
 function renderUpgradeFull() {
-  if (!state.tree) initTreeView(true);
+  // A brand-new camera gets provisional numbers here (there is no box to measure
+  // until this markup is in the document) and its real framing a few lines down
+  // in attachTreeInteractions. Dropping `measured` makes sure the box is re-read
+  // rather than trusted from an earlier visit, which may have been a different
+  // size or orientation.
+  if (!state.tree) { TREE_VP.measured = false; initTreeView(true); }
   const t = state.tree;
 
   let edges = "";
@@ -1427,7 +1478,7 @@ function renderUpgradeFull() {
         <div id="tree-gold-slot">${treeGoldMarkup()}</div>
       </div>
       ${devBarMarkup()}
-      <svg class="tree-canvas" id="tree-canvas" viewBox="0 0 900 900" preserveAspectRatio="xMidYMid meet">
+      <svg class="tree-canvas" id="tree-canvas" viewBox="${treeViewBox()}" preserveAspectRatio="xMinYMin slice">
         <g id="tree-cam" transform="${cam}">
           <g class="tree-edges">${edges}</g>
           <g class="tree-nodes">${selRingSvg()}${nodes}</g>
@@ -1460,6 +1511,11 @@ function selectNode(id) {
   }
   const slot = document.getElementById("tree-info-slot");
   if (slot) slot.innerHTML = renderTreeInfo();
+  // The panel just changed height, so the canvas box did too. Re-match the
+  // viewBox to it here and now rather than waiting on the ResizeObserver: the
+  // observer only runs at the end of the task, which leaves the tree drawn
+  // through a stale window for anything that reads its geometry in between.
+  syncTreeViewport();
 }
 
 function applyTreeCam() {
@@ -1471,17 +1527,20 @@ function applyTreeCam() {
   }
 }
 // Zoom about a point given in viewBox coords, keeping it fixed under the cursor.
+// The limits are the authored ones scaled by how much of the 900-unit window the
+// box holds, so they mean the same thing on any screen.
 function treeZoomAt(vx, vy, factor) {
   const t = state.tree;
-  const ns = treeClamp(t.scale * factor, 0.1, 3.2);
+  const f = treeFit();
+  const ns = treeClamp(t.scale * factor, 0.1 * f, 3.2 * f);
   const real = ns / t.scale;
   t.tx = vx - (vx - t.tx) * real;
   t.ty = vy - (vy - t.ty) * real;
   t.scale = ns;
 }
-// Toolbar buttons (rebuild is fine — not per-frame).
-function treeZoom(factor) { treeZoomAt(450, 450, factor); state._structuralDirty = true; }
-function treeReset() { initTreeView(false); state._structuralDirty = true; }
+// Toolbar buttons — zoom about the middle of the canvas box.
+function treeZoom(factor) { treeZoomAt(TREE_VP.w / 2, TREE_VP.h / 2, factor); applyTreeCam(); }
+function treeReset() { syncTreeViewport(); initTreeView(false); applyTreeCam(); }
 
 // Pan (one pointer), pinch (two pointers), wheel zoom, and tap-to-select — all
 // bound to the freshly rendered SVG. Pan/zoom mutate the transform live and
@@ -1492,10 +1551,27 @@ function attachTreeInteractions() {
   const pts = new Map();
   let last = null, moved = 0, pinch = 0, downId = null;
 
-  const rect = () => svg.getBoundingClientRect();
+  // Match the viewBox to the box before anything reads it, and settle the
+  // default framing the first time we know how big the box really is.
+  syncTreeViewport();
+  if (state.tree && !state.tree.fitted && TREE_VP.measured) {
+    initTreeView(false);
+    applyTreeCam();
+  }
+  // The box also changes height whenever the info panel below it does (a taller
+  // node description, the dev bar opening). Keep the viewBox in step; the camera
+  // is left alone, so the web stays exactly where it was on screen. One observer
+  // for the screen's lifetime, re-pointed at each rebuild's fresh <svg>.
+  if (typeof ResizeObserver === "function") {
+    if (!treeResizeObs) treeResizeObs = new ResizeObserver(() => { syncTreeViewport(); });
+    treeResizeObs.disconnect();
+    treeResizeObs.observe(svg);
+  }
+
+  // The viewBox is the same size as the element, so this is 1:1.
   const clientToVB = (cx, cy) => {
-    const r = rect();
-    return { x: (cx - r.left) * (900 / r.width), y: (cy - r.top) * (900 / r.height) };
+    const r = svg.getBoundingClientRect();
+    return { x: cx - r.left, y: cy - r.top };
   };
   const twoDist = () => {
     const v = [...pts.values()];
@@ -1524,10 +1600,9 @@ function attachTreeInteractions() {
       return;
     }
     if (last) {
-      const k = 900 / rect().width;
       const dx = e.clientX - last.x, dy = e.clientY - last.y;
       moved += Math.abs(dx) + Math.abs(dy);
-      state.tree.tx += dx * k; state.tree.ty += dy * k;
+      state.tree.tx += dx; state.tree.ty += dy;
       last = { x: e.clientX, y: e.clientY };
       applyTreeCam();
     }
