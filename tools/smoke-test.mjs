@@ -926,6 +926,52 @@ try {
   check(roles.mended, "a healer puts HP back on the wounded body in front of it");
   check(roles.summoned > 0, `a summoner calls in bodies of its own (${roles.summoned})`);
 
+  //     A spell takes time to cross the hall, and a body it has already killed
+  //     must go on running until it ARRIVES — stopping dead and dissolving at the
+  //     moment the shape was drawn reads as dying of nothing.
+  const flight = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    startRun();
+    state.heroMaxHP = state.heroHP = 100000;
+    state.mods.regen = 0;
+    state.heroDmg = 100000;              // one-shot whatever it lands on
+    state.mods.castHaste = 1e6;          // no wind-up, so the flight IS the whole delay
+    state.enemies = [];
+    state.enemyShots = [];
+    const e = spawnEnemy(performance.now(), 1, 9, CONFIG.enemyTypes[0].id);
+    await settle(200);                   // let it get up to a walk out in the hall
+    const from = e.pos;
+    const kills0 = state.kills;
+    const t0 = performance.now();
+    onShapeComplete(t0);
+    const booked = e.deathAt ? Math.round(e.deathAt - t0) : null;
+    // Sample across the flight: it must still be walking, and still moving.
+    const seen = new Set();
+    let posAtLand = e.pos, earlyStop = false;
+    for (let i = 0; i < 40 && e.phase !== "dying"; i++) {
+      await settle(25);
+      if (performance.now() - t0 < CONFIG.spells.fireball.flightMs - 60) {
+        seen.add(e.phase);
+        posAtLand = e.pos;
+        if (e.phase === "dying") earlyStop = true;
+      }
+    }
+    await settle(700);                   // and the dissolve still finishes
+    return {
+      booked, flightMs: CONFIG.spells.fireball.flightMs,
+      phases: [...seen], earlyStop,
+      walked: +(from - posAtLand).toFixed(2),
+      kills: state.kills - kills0,
+      culled: !state.enemies.includes(e),
+    };
+  });
+  check(flight.booked !== null && Math.abs(flight.booked - flight.flightMs) < 40,
+    `a fatal hit books its death for the moment the spell arrives (+${flight.booked}ms of ${flight.flightMs}ms flight)`);
+  check(!flight.earlyStop && flight.phases.join() === "walk" && flight.walked > 0.15,
+    `the doomed body keeps running while the ball is in the air (${flight.walked} tiles, phase ${flight.phases.join("/")})`);
+  check(flight.kills === 1 && flight.culled,
+    "it then collapses, is culled, and is counted exactly once");
+
   //     And walking onto the hall's last metre ends the run the one way that
   //     isn't dying.
   const cleared = await page.evaluate(() => {

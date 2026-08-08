@@ -11,12 +11,20 @@
 // (before it rests, or before the third pair releases the spell).
 const TAP_TRACE_MS = 240;
 
+// A body whose death is already booked. `deathAt` is set the moment a fatal hit
+// is resolved but names a moment in the FUTURE — when the bolt, rock or wedge
+// actually reaches it (see applySpellHit). In between, it is still on its feet
+// and still marching; it just can't be saved. So it is a separate question from
+// its phase, which goes on saying what the body is visibly doing.
+function doomed(e) {
+  return e.phase === "dying" || !!e.deathAt;
+}
+
 // Enemies a spell can still meaningfully hit: on their feet and not already
-// doomed. A `struck` skeleton has taken its killing blow and is only standing
-// until the bolt lands, so it's excluded here — the next cast picks a new target
-// instead of wasting itself on a corpse-to-be.
+// doomed. A skeleton with a killing blow in the air is excluded here — the next
+// cast picks a new target instead of wasting itself on a corpse-to-be.
 function livingEnemies() {
-  return state.enemies.filter((e) => e.phase !== "dying" && e.phase !== "struck");
+  return state.enemies.filter((e) => !doomed(e));
 }
 
 // The skeleton closest to the hero (smallest pos) — the spell's target and the
@@ -172,4 +180,4 @@ function hitEnemy(enemy, n) {
   return dealt;
 }
 
-window.Incanto.combat = { handleRuneClick, onShapeComplete, hitPlayer, hitEnemy, armorReduction, healHero, livingEnemies, frontEnemy };
+window.Incanto.combat = { handleRuneClick, onShapeComplete, hitPlayer, hitEnemy, armorReduction, healHero, doomed, livingEnemies, frontEnemy };

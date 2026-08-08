@@ -44,10 +44,11 @@ function freshState() {
     gold: 0,
     // Designed packs walk in from the right as the hero passes their metre marks
     // (see encounters.js). An enemy: {id, maxHP, hp, dmg, slot, lane, pos, phase,
-    // phaseAt, attackAt, attackAnimAt, struckUntil}. `pos` is in tiles to the
-    // right of the hero (0 = at him); `phase` is walk | idle | attack | struck |
-    // dying. `struck` = fatally hit, standing until the bolt lands, then it
-    // collapses.
+    // phaseAt, attackAt, attackAnimAt, deathAt}. `pos` is in tiles to the right
+    // of the hero (0 = at him); `phase` is walk | idle | attack | frozen | dying
+    // and says only what the body is visibly DOING. Whether it is already dead
+    // is `deathAt`: a fatal hit books the moment the blow arrives, and until
+    // then the body keeps marching and swinging as though nothing had hit it.
     kills: 0,                 // bodies slain this run (the end-screen score)
     // Bolts a ranged body has in the air: {shooterId, dmg, rgb, born, landAt,
     // from, hit}. They carry their own damage and land on their own clock (see

@@ -376,7 +376,7 @@ const CONFIG = {
   armorK: 10,
   armorMaxReduction: 0.75,
   wrongPenaltyFraction: 0.15, // a wrong match backfires for this fraction of the hero's MAX HP
-  enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
+  enemyDeathMs: 600,         // how long a skeleton dissolves for, once the blow has landed on it
   // DESIGNED ENCOUNTERS. Skeletons don't trickle in on a timer — the hall is a
   // fixed sequence of packs laid out at fixed metre marks, and the hero walking
   // past a mark is what sends that pack in. The packs and the schedule are in
