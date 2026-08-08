@@ -512,6 +512,33 @@ try {
   check(kept.saved === 2 && kept.level === 2 && kept.streak === 1,
     "the rung the learner reached survives a reload (Stufe " + (kept.level + 1) + ")");
 
+  // 8c. Every node has to print a real number. The tree divides
+  //     CONFIG.treeTotals across a thousand-odd nodes and three thousand ranks,
+  //     so the smallest slices are genuinely tiny — and rounded to whole percent
+  //     they came out as "+0 % Krit-Chance" on a node costing real gold. Two
+  //     things keep that from happening and this guards both: the floors in
+  //     applyTreeTotals, under which no node's share may fall, and the tooltip's
+  //     decimal place (treeNum). So: read what ONE rank of every node in the
+  //     tree would say, and let no zero through.
+  const worthless = await page.evaluate(() => {
+    const { TREE_NODES: N, effectText } = Incanto.skilltree;
+    const bad = [];
+    for (const id in N) {
+      if (id === "root") continue;
+      const n = N[id];
+      for (const k in n.effect) {
+        const says = effectText({ [k]: n.effect[k] }, 1);
+        // A whole figure that is nothing but zeros — "+0%", "+0 LP", "0,0s".
+        // "+0,3%" is a real number and must pass, so the token has to END here.
+        if (/(^|[^\d])0(?:[,.]0+)?(?![\d,.])/.test(says)) bad.push(`${n.title} (${id}): ${says}`);
+      }
+    }
+    return { bad: bad.slice(0, 6), count: bad.length, nodes: Object.keys(N).length - 1 };
+  });
+  check(worthless.count === 0,
+    `no node in the tree sells a zero (${worthless.nodes} nodes read)` +
+    (worthless.count ? " — " + worthless.count + ": " + worthless.bad.join(", ") : ""));
+
   // 9. Binding the book (see book-order.js): the forge's book button opens the
   //    whole spell book as three open volumes, and a page dragged onto another
   //    trades places with it. Driven the way a thumb drives it — press, move,
@@ -926,7 +953,9 @@ try {
   await page.evaluate(() => {
     state.devMode = false;
     state.gold = 500;
-    state.nodeRanks = {}; Incanto.skilltree.treeBuy("migp0"); Incanto.skilltree.treeBuy("migp0");
+    // Two nodes rather than two ranks of one, so the check doesn't depend on
+    // how deep a particular archetype happens to rank.
+    state.nodeRanks = {}; Incanto.skilltree.treeBuy("migp0"); Incanto.skilltree.treeBuy("vigp0");
     state.screen = "upgrade"; state.tree = null;
     state._structuralDirty = true;
     render(performance.now());
@@ -965,7 +994,8 @@ try {
   // Wiping the tree: the first tap only arms the button.
   await page.click(".dev-btn");
   await page.waitForTimeout(120);
-  check(await page.evaluate(() => state.nodeRanks.migp0 === 2 && /Wirklich/.test(document.querySelector(".dev-btn").textContent)),
+  check(await page.evaluate(() => state.nodeRanks.migp0 > 0 && state.nodeRanks.vigp0 > 0
+      && /Wirklich/.test(document.querySelector(".dev-btn").textContent)),
     "the first tap on the wipe asks instead of wiping");
   await page.click(".dev-btn");
   await page.waitForTimeout(120);

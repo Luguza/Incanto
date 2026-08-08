@@ -178,6 +178,14 @@ const COUNT_STATS = { chainLightning: 1, countMeteor: 1 };
 //
 // To rebalance: edit CONFIG.treeTotals, run `node tools/stat-supply.mjs`.
 const A = {
+  // A `blurb` is for what the effect line CANNOT say. "Verstärkt allen Schaden
+  // prozentual" under a line reading "+0,6 % Schaden" is the tooltip talking to
+  // itself, and on a phone it pushes the number and the price further down the
+  // card for nothing. So most archetypes carry no blurb at all — the ones that
+  // do are the ones where the stat's name is not the whole story: where in the
+  // three stages a node lands, what a fraction is a fraction OF, what a chance
+  // is a chance AGAINST.
+  //
   // THE THREE STAGES OF DAMAGE. A hit is built in this order and no other:
   //
   //   1. KERN        (heroBaseDmg + flatBase) × (1 + pctBase)
@@ -186,40 +194,41 @@ const A = {
   //
   // Stage 3 is why the split exists. A node that reads "+5 Schaden je Treffer"
   // puts exactly 5 on the number that pops over a skeleton — on every page of
-  // the book, at any depth of the tree, forever.
+  // the book, at any depth of the tree, forever. Which stage a node feeds is the
+  // one thing its number can't tell you, so these three keep a blurb.
   dmgBaseFlat:{ stat: "flatBase",   theme: "might",   base: 1.5,   cost: 16, maxRank: 3, ringVal: 0.35,
                 title: "Kernschliff",   blurb: "Vertieft den Kern, aus dem jeder Zauber gerechnet wird — alles danach vervielfacht ihn." },
   dmgBasePct: { stat: "pctBase",    theme: "might",   base: 0.02,  cost: 22, maxRank: 3,
-                title: "Härtung",       blurb: "Hebt deinen Kernschaden prozentual, bevor irgendein Faktor darauf greift." },
+                title: "Härtung",       blurb: "Wächst den Kern, bevor irgendein Faktor darauf greift." },
   dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 2.5,   cost: 15, maxRank: 3, ringVal: 0.35,
-                title: "Schneide",      blurb: "Legt festen Schaden auf JEDEN Treffer — ganz zuletzt, nach allen Faktoren. Was hier steht, kommt genau so an." },
+                title: "Schneide",      blurb: "Kommt ganz zuletzt obendrauf, nach allen Faktoren." },
   dmgPct:     { stat: "pctDmg",     theme: "might",   base: 0.025, cost: 22, maxRank: 3,
-                title: "Zorn",          blurb: "Verstärkt allen Schaden prozentual." },
+                title: "Zorn" },
   hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3, ringVal: 0.4,
-                title: "Zähigkeit",     blurb: "Erhöht deine maximalen Lebenspunkte." },
+                title: "Zähigkeit" },
   hpPct:      { stat: "pctHp",      theme: "vigor",   base: 0.04,  cost: 20, maxRank: 3,
-                title: "Lebenskraft",   blurb: "Mehr Lebenspunkte prozentual." },
+                title: "Lebenskraft" },
   critChance: { stat: "critChance", theme: "crit",    base: 0.02,  cost: 22, maxRank: 3,
-                title: "Präzision",     blurb: "Chance, dass ein Treffer kritisch einschlägt." },
+                title: "Präzision" },
   critMult:   { stat: "critMult",   theme: "crit",    base: 0.09,  cost: 24, maxRank: 3,
-                title: "Wucht",         blurb: "Kritische Treffer schlagen härter zu." },
+                title: "Wucht" },
   // Armour penetration — the counter-stat to CONFIG.armorK. Its supply is
   // deliberately narrow (the Macht arm's Zermalmen branch, two keystones and
   // Falkenauge), so shredding plate is a detour a build chooses, like Dornen.
   armorPen:   { stat: "armorPen",   theme: "might",   base: 0.25,  cost: 24, maxRank: 3,
-                title: "Durchschlag",   blurb: "Deine Zauber durchschlagen einen Teil der Panzerung des Getroffenen." },
+                title: "Durchschlag",   blurb: "Zieht von der Panzerung des Getroffenen ab." },
   regen:      { stat: "regen",      theme: "sustain", base: 1.6,   cost: 20, maxRank: 3,
-                title: "Genesung",      blurb: "Regeneriert langsam Lebenspunkte im Kampf." },
+                title: "Genesung" },
   leech:      { stat: "leech",      theme: "sustain", base: 0.025, cost: 26, maxRank: 3,
-                title: "Aderlass",      blurb: "Heilt dich für einen Teil des Zauberschadens." },
+                title: "Aderlass",      blurb: "Ein Anteil deines Zauberschadens, der dich heilt." },
   coin:       { stat: "coinMult",   theme: "fortune", base: 0.05,  cost: 20, maxRank: 3,
-                title: "Glückssträhne", blurb: "Mehr Gold für richtig gelöste Vokabeln." },
+                title: "Glückssträhne", blurb: "Gilt für richtig gelöste Vokabeln." },
   walk:       { stat: "walkMult",   theme: "fortune", base: 0.04,  cost: 22, maxRank: 3,
-                title: "Flinkheit",     blurb: "Der Held schreitet zügiger durch den Gang." },
+                title: "Flinkheit" },
   failProt:   { stat: "spellFailProt", theme: "guard", base: 0.035, cost: 28, maxRank: 2, growth: 1.6,
                 title: "Schutzzauber",  blurb: "Chance, den Rückschlag eines Fehlschlags ganz abzuwehren." },
   haste:      { stat: "castHaste",  theme: "focus",   base: 0.015, cost: 26, maxRank: 2, growth: 1.6,
-                title: "Zauberhast",    blurb: "Der fertige Zauber löst sich schneller vom Stab." },
+                title: "Zauberhast" },
   shield:     { special: "shield",  theme: "guard",   cost: 26, maxRank: 3,
                 title: "Schildzauber",  blurb: "Manche Zauber gewähren einen absorbierenden Schild." },
 };
@@ -776,6 +785,7 @@ function supplyOf(nodes) {
   return total;
 }
 
+
 // ---------------------------------------------------------------------------
 // THE SECOND PASS — where the balance is actually decided.
 //
@@ -800,6 +810,13 @@ function supplyOf(nodes) {
 //
 // Rounding drifts the achieved total a little off the target (a node worth 0.4
 // LP still has to print +1). tools/stat-supply.mjs shows both figures.
+//
+// Every rounding here has a FLOOR, and the floor is the point: a thousand nodes
+// dividing these totals leaves the smallest of them holding very little, and
+// whatever it holds it still has to be a number the player can read. So a whole
+// stat never lands under +1, a rate never under 0,1/s, and a fraction never
+// under 0,001 — one tenth of a percent, which is exactly what the tooltip's last
+// decimal place can print (see treeNum). Nothing in the tree is ever nothing.
 function applyTreeTotals(nodes) {
   const raw = supplyOf(nodes);
   const scale = {};
@@ -812,8 +829,8 @@ function applyTreeTotals(nodes) {
     for (const k in effect) {
       const v = effect[k] * scale[k];
       effect[k] = WHOLE_STATS[k] ? Math.max(1, Math.round(v))
-        : k === "regen" ? Math.round(v * 10) / 10
-        : Math.round(v * 1000) / 1000;
+        : k === "regen" ? Math.max(0.1, Math.round(v * 10) / 10)
+        : Math.max(0.001, Math.round(v * 1000) / 1000);
     }
   }
   return scale;
@@ -1082,43 +1099,56 @@ function treeBuy(id) {
 // ---------------------------------------------------------------------------
 // Effect wording (single-click info)
 // ---------------------------------------------------------------------------
+// A number the tooltip can always tell the truth about. Rounding to whole
+// percent is what turned a real +0,4 % into "+0 %"; one decimal place is all it
+// takes for every figure in the tree to be a number instead of a zero, and the
+// tree is built so nothing lands under it (see the floors in applyTreeTotals).
+// A trailing ",0" is dropped — "+15 %" reads better than "+15,0 %" and says the
+// same thing. German comma, as everywhere else on screen (cf. svNum in stats.js).
+function treeNum(v) {
+  let s = v.toFixed(1);
+  if (s.endsWith(".0")) s = s.slice(0, -2);
+  return s.replace(".", ",");
+}
+function treePct(v) { return treeNum(v * 100) + "%"; }
+
 const STAT_FMT = {
   // The three damage stages read differently on purpose: "je Treffer" is the
   // one that lands verbatim on every body, and it must not be confusable with
   // the two that get multiplied on the way.
   flatDmg:      (v) => `+${Math.round(v)} Schaden je Treffer`,
   flatBase:     (v) => `+${Math.round(v)} Kernschaden`,
-  pctBase:      (v) => `+${Math.round(v * 100)}% Kernschaden`,
+  pctBase:      (v) => `+${treePct(v)} Kernschaden`,
   flatHp:       (v) => `+${Math.round(v)} LP`,
-  pctDmg:       (v) => `+${Math.round(v * 100)}% Schaden`,
-  pctHp:        (v) => `+${Math.round(v * 100)}% LP`,
-  critChance:   (v) => `+${Math.round(v * 100)}% Krit-Chance`,
-  critMult:     (v) => `+${Math.round(v * 100)}% Krit-Schaden`,
-  armorPen:     (v) => `+${(Math.round(v * 10) / 10)} Rüstungsbruch`,
-  leech:        (v) => `${Math.round(v * 100)}% Lebensraub`,
+  pctDmg:       (v) => `+${treePct(v)} Schaden`,
+  pctHp:        (v) => `+${treePct(v)} LP`,
+  critChance:   (v) => `+${treePct(v)} Krit-Chance`,
+  critMult:     (v) => `+${treePct(v)} Krit-Schaden`,
+  armorPen:     (v) => `+${treeNum(v)} Rüstungsbruch`,
+  leech:        (v) => `${treePct(v)} Lebensraub`,
   // Per-spell nodes — worded so the page they lift is named in the effect line.
-  dmgFireball:  (v) => `+${Math.round(v * 100)}% Feuerball-Schaden`,
-  dmgLightning: (v) => `+${Math.round(v * 100)}% Blitzschlag-Schaden`,
-  dmgFrost:     (v) => `+${Math.round(v * 100)}% Frostkegel-Schaden`,
-  dmgMeteor:    (v) => `+${Math.round(v * 100)}% Meteoriten-Schaden`,
-  dmgShield:    (v) => `+${Math.round(v * 100)}% Bannschild-Kraft`,
-  dmgHeal:      (v) => `+${Math.round(v * 100)}% Heilwort-Kraft`,
-  aoeFireball:  (v) => `+${Math.round(v * 100)}% Feuerball-Radius`,
+  dmgFireball:  (v) => `+${treePct(v)} Feuerball-Schaden`,
+  dmgLightning: (v) => `+${treePct(v)} Blitzschlag-Schaden`,
+  dmgFrost:     (v) => `+${treePct(v)} Frostkegel-Schaden`,
+  dmgMeteor:    (v) => `+${treePct(v)} Meteoriten-Schaden`,
+  dmgShield:    (v) => `+${treePct(v)} Bannschild-Kraft`,
+  dmgHeal:      (v) => `+${treePct(v)} Heilwort-Kraft`,
+  aoeFireball:  (v) => `+${treePct(v)} Feuerball-Radius`,
   chainLightning: (v) => `+${Math.round(v)} Blitz-Sprung`,
   countMeteor:  (v) => `+${Math.round(v)} Meteorit`,
-  freezeFrost:  (v) => `+${(v / 1000).toFixed(1)}s Frostdauer`,
-  coneFrost:    (v) => `+${Math.round(v * 100)}% Kegelweite`,
-  aoeMeteor:    (v) => `+${Math.round(v * 100)}% Einschlagradius`,
-  falloffLightning: (v) => `+${Math.round(v * 100)}% Sprungkraft`,
-  castHaste:    (v) => `+${Math.round(v * 100)}% Zaubertempo`,
-  regen:        (v) => `+${(Math.round(v * 10) / 10)}/s LP`,
-  walkMult:     (v) => `+${Math.round(v * 100)}% Tempo`,
-  coinMult:     (v) => `+${Math.round(v * 100)}% Gold`,
-  shieldChance: (v) => `${Math.round(v * 100)}% Schild-Chance`,
+  freezeFrost:  (v) => `+${treeNum(v / 1000)}s Frostdauer`,
+  coneFrost:    (v) => `+${treePct(v)} Kegelweite`,
+  aoeMeteor:    (v) => `+${treePct(v)} Einschlagradius`,
+  falloffLightning: (v) => `+${treePct(v)} Sprungkraft`,
+  castHaste:    (v) => `+${treePct(v)} Zaubertempo`,
+  regen:        (v) => `+${treeNum(v)}/s LP`,
+  walkMult:     (v) => `+${treePct(v)} Tempo`,
+  coinMult:     (v) => `+${treePct(v)} Gold`,
+  shieldChance: (v) => `${treePct(v)} Schild-Chance`,
   shieldAmount: (v) => `+${Math.round(v)} Schild`,
   shieldMax:    (v) => `+${Math.round(v)} max. Schild`,
-  thorns:       (v) => `${Math.round(v * 100)}% Dornen`,
-  spellFailProt:(v) => `${Math.round(v * 100)}% Fehlschutz`,
+  thorns:       (v) => `${treePct(v)} Dornen`,
+  spellFailProt:(v) => `${treePct(v)} Fehlschutz`,
 };
 function effectText(effect, mult) {
   return Object.keys(effect)
@@ -1294,8 +1324,9 @@ function renderTreeInfo() {
   const theme = TREE_THEMES[node.theme];
   const rank = nodeRank(id);
   const maxed = rank >= node.maxRank;
+  // One rank, because one rank is what the price below buys. How many there are
+  // is the dots' job, not a second sentence's.
   const per = effectText(node.effect, 1);
-  const total = rank > 0 ? effectText(node.effect, rank) : null;
 
   let dots = "";
   for (let i = 0; i < node.maxRank; i++) dots += `<i class="dot${i < rank ? " on" : ""}"></i>`;
@@ -1320,15 +1351,13 @@ function renderTreeInfo() {
     <div class="ti-head">
       <span class="ti-rune">${runeGlyphSvg(node.theme, 24)}</span>
       <span class="ti-name" style="color:${theme.color}">${node.title}</span>
-      <span class="ti-tier">Stufe ${node.ring}</span>
       ${node.unique ? `<span class="ti-unique" style="color:${theme.color}">${node.unlocks ? "Zauber" : "Einzigartig"}</span>`
         : node.maxRank ? `<span class="ti-dots" style="color:${theme.color}">${dots}</span>` : ""}
     </div>
     ${node.path && node.path !== node.title ? `<div class="ti-path">${node.path}</div>` : ""}
-    <div class="ti-blurb">${node.blurb}</div>
+    ${node.blurb ? `<div class="ti-blurb">${node.blurb}</div>` : ""}
     ${node.unlocks ? `<div class="ti-effect">Schaltet frei: <b>${SPELL_BY_ID[node.unlocks].name}</b></div>` : ""}
-    ${per ? `<div class="ti-effect">${node.unique ? "Einmalig" : "Pro Stufe"}: <b>${per}</b>` +
-      `${!node.unique && total ? ` &middot; Gesamt: <b>${total}</b>` : ""}</div>` : ""}
+    ${per ? `<div class="ti-effect">${node.maxRank > 1 ? "Pro Stufe" : "Einmalig"}: <b>${per}</b></div>` : ""}
     ${buy}</div>`;
 }
 
@@ -1640,6 +1669,7 @@ const TREE_SUPPLY = supplyOf(TREE_NODES);
 
 window.Incanto.skilltree = {
   TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, TREE_SUPPLY, supplyOf,
+  effectText,
   recomputeMods, treeBuy, treeZoom, treeReset,
   renderUpgradeFull, nodeRevealed, nodeReachable, nodeCost, nodeRank,
   devToggle, devResetTree, devEditGold, devGoldCommit,

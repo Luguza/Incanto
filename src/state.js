@@ -256,8 +256,13 @@ function applySavedProgress() {
         // present-day equivalent so nobody's tree progress is silently wiped
         const mapped = nodes[id] ? id : legacy[id];
         const node = mapped ? nodes[mapped] : null;
-        if (node) ranks[mapped] = Math.min((ranks[mapped] || 0) + r, node.maxRank);
-        else orphanedRanks += r;
+        if (!node) { orphanedRanks += r; continue; }
+        // A node reshaped since the save was written can hold fewer ranks than
+        // the save bought. Those ranks were paid for, so they refund like any
+        // other rank the current tree has nowhere to put.
+        const want = (ranks[mapped] || 0) + r;
+        ranks[mapped] = Math.min(want, node.maxRank);
+        orphanedRanks += want - ranks[mapped];
       }
       state.nodeRanks = ranks;
       state.gold += orphanedRanks * REPLANT_REFUND;

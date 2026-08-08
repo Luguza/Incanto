@@ -94,8 +94,34 @@ const data = await page.evaluate((shares) => {
     allRanks += N[id].maxRank;
     cheapest = Math.min(cheapest, nodeCost(N[id], 0));
   }
+
+  // What ONE TAP of the typical node granting this stat is worth, in the
+  // tooltip's own words. A total divided too many ways is how this tree goes
+  // wrong without any number above looking wrong: every figure stays on target
+  // while the nodes themselves quietly stop being worth reading. The smallest
+  // and largest node say how far the ring scaling spreads the same stat.
+  const { effectText } = Incanto.skilltree;
+  const grain = {};
+  for (const id in N) {
+    if (id === "root") continue;
+    const n = N[id];
+    for (const k in n.effect) {
+      const g = grain[k] || (grain[k] = { ranks: 0, vals: [] });
+      g.ranks += n.maxRank;
+      g.vals.push(n.effect[k]);
+    }
+  }
+  for (const k in grain) {
+    const v = grain[k].vals.sort((a, b) => a - b);
+    grain[k].nodes = v.length;
+    grain[k].says = effectText({ [k]: v[Math.floor(v.length / 2)] }, 1);
+    grain[k].span = effectText({ [k]: v[0] }, 1).match(/[\d,.]+/)[0] +
+      " … " + effectText({ [k]: v[v.length - 1] }, 1).match(/[\d,.]+/)[0];
+    delete grain[k].vals;
+  }
+
   return { supply: TREE_SUPPLY, target: CONFIG.treeTotals, rows, budgets, floor,
-           gold: CONFIG.treeGold, allRanks, cheapest };
+           gold: CONFIG.treeGold, allRanks, cheapest, grain };
 }, SHARES);
 
 const pad = (s, n) => String(s).padStart(n);
@@ -122,6 +148,21 @@ for (const [label, key] of [["tree completed %", "_pct"], ["ranks bought", "_ran
   console.log(label.padEnd(40) + data.budgets.map((b) => pad(data.rows[b][key], 9)).join(""));
 }
 console.log("\ngold spent" .padEnd(40) + data.budgets.map((b) => pad(b, 9)).join(""));
+
+// What one tap actually buys. A tree can hit every target above and still be
+// made of nodes nobody wants to read, if the totals are cut too many ways — this
+// is the table that shows it. A "+0" in the middle column is the failure, and
+// the last column is how far the ring scaling spreads the same stat between its
+// shallowest node and its deepest.
+console.log("\nWhat one tap buys — the typical node granting each stat\n");
+console.log("stat".padEnd(18) + pad("nodes", 7) + pad("ranks", 7) + "  " +
+  "one rank says".padEnd(30) + "shallowest … deepest");
+console.log("-".repeat(84));
+for (const k of Object.keys(data.grain).sort()) {
+  const g = data.grain[k];
+  console.log(k.padEnd(18) + pad(g.nodes, 7) + pad(g.ranks, 7) + "  " +
+    String(g.says || "—").padEnd(30) + g.span);
+}
 console.log();
 await browser.close();
 server.close();
