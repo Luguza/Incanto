@@ -121,27 +121,222 @@ const CONFIG = {
   // head count, and which variants the plan put in it.
   enemyBaseHP: 80,
   enemyBaseDmg: 48,
-  // Enemy variants — what a kind of skeleton IS. The multipliers scale the base
-  // numbers above; `scale` is the drawn size of the 16x16 skeleton art and
-  // `tint` a wash laid over its pixels, together the tell that a tougher one
-  // just walked in, so it reads before it swings.
+  // ===========================================================================
+  // ENEMY VARIANTS — what a kind of body IS. The multipliers scale the two base
+  // numbers above; everything else is how it reads and how it fights.
   //
   // WHERE each variant shows up is not decided here: packs name their members'
   // variants in encounters.js, so a mark on the plan always sends the same
   // bodies. (These entries used to carry `weight` and `minKills` for a random
   // per-arrival roll — that draw is gone, since it would have put randomness
   // back into the one thing the encounter plan exists to make designable.)
+  //
+  // A VARIANT IS ART + STATS + A ROLE, and the three are meant to agree:
+  //
+  //   `sprite`  which creature off the sheet (a key into ENEMY_SPRITES in
+  //             render-assets.js — that's where the frame rects live). The
+  //             sprite's own size is the body's size; `scale` multiplies it.
+  //   `filter`  a CSS filter string baked into the variant's frames ONCE at
+  //             load (hue-rotate / brightness / saturate). This is how one
+  //             creature becomes three: the sheet has 17 monsters on it, and
+  //             recolouring is what turns them into the ~30 bodies the hall
+  //             actually sends. Baked, not applied per frame — a filter on the
+  //             hot draw path would cost more than the whole scene.
+  //   `tint`    the older flat wash (source-atop), kept where a variant wants
+  //             DARKER rather than a different hue.
+  //   `role`    what it does when it stops walking:
+  //               melee    — closes to `enemyStandoffTiles` and swings (default)
+  //               ranged   — plants at its own `standoff`, far back, and
+  //                          throws (see `shot`); it never reaches the hero
+  //               summoner — plants and calls in bodies of its own (`summon`)
+  //               healer   — plants and mends the most wounded body near it
+  //                          (`heal`), which is the hall's DPS check
+  //             A body with a `standoff` past the melee line is placed in the
+  //             REAR of its lane automatically (see spawnPack), so a caster can
+  //             never wall its own front rank out of the fight.
+  //   `armor`   fraction of every hit turned aside (see armorK below).
+  //   `walkMult` march pace. Small things scurry; big things lumber.
+  //   `name`    called out on the enemy HP bar while it leads the queue, so a
+  //             slow-draining bar reads as "this one is tougher", not stuck.
+  //
+  // THE RAMP IS A DAMAGE CHECK, NOT A BURST CHECK. Depth is bought with HP
+  // pools, armour and healers rather than with ever-bigger hits: a hero who has
+  // not grown his damage stalls out and is ground down, instead of being one-shot
+  // out of nowhere. That is what ties the far end of the hall to a nearly-grown
+  // tree (see encounters.js) — you get there by killing faster, not by tanking.
+  // ===========================================================================
   enemyTypes: [
-    { id: "skeleton", hpMult: 1, dmgMult: 1, attackSpeedMult: 1, armor: 0, scale: 1, tint: null, label: null },
+    // --- Bone. The hall's first language: what the opening chapters teach with.
+    { id: "skeleton", name: "SKELETT", sprite: "skelet",
+      hpMult: 1, dmgMult: 1, attackSpeedMult: 1, armor: 0, scale: 1 },
     // Brute: a head taller, darker bone, twice the HP and damage, swings ~40%
-    // faster, and the only body in the hall that wears ARMOUR (see armorK).
-    // `label` is called out on the enemy HP bar while it leads the queue, so a
-    // slow-draining bar reads as "this one is tougher", not stuck.
-    {
-      id: "brute",
+    // faster, and the first body in the hall that wears ARMOUR.
+    { id: "brute", name: "KNOCHENKOLOSS", sprite: "skelet",
       hpMult: 2, dmgMult: 2, attackSpeedMult: 1.4, armor: 5,
-      scale: 1.375, tint: "rgba(26, 20, 34, 0.34)", label: "KNOCHENKOLOSS",
-    },
+      scale: 1.375, tint: "rgba(26, 20, 34, 0.34)" },
+    // Bleached, small and quick — the first thing that reaches the hero before
+    // he expected it. Dies to anything; there are simply a lot of them.
+    { id: "runner", name: "KNOCHENLÄUFER", sprite: "skelet",
+      hpMult: 0.55, dmgMult: 0.7, attackSpeedMult: 1.5, armor: 0,
+      scale: 0.85, walkMult: 1.8, filter: "sepia(0.9) saturate(1.9) brightness(1.12)" },
+    // Steel-blue bone: the skeleton family's answer to a grown hero — plated,
+    // slow, and not worth a fireball on its own.
+    { id: "warden", name: "KNOCHENWACHE", sprite: "skelet",
+      hpMult: 2.2, dmgMult: 1.2, attackSpeedMult: 0.85, armor: 9,
+      scale: 1.15, walkMult: 0.75, filter: "sepia(1) saturate(1.8) hue-rotate(175deg) brightness(0.95)" },
+
+    // --- Goblins. Small, fast, in numbers: the swarm chapter.
+    { id: "goblin", name: "KOBOLD", sprite: "goblin",
+      hpMult: 0.5, dmgMult: 0.6, attackSpeedMult: 1.4, armor: 0, scale: 1, walkMult: 1.7 },
+    { id: "goblinRed", name: "BLUTKOBOLD", sprite: "goblin",
+      hpMult: 0.8, dmgMult: 1.0, attackSpeedMult: 1.5, armor: 0, scale: 1.1, walkMult: 1.8,
+      filter: "sepia(1) saturate(3.4) hue-rotate(300deg)" },
+    { id: "goblinIce", name: "FROSTKOBOLD", sprite: "goblin",
+      hpMult: 0.9, dmgMult: 0.8, attackSpeedMult: 1.2, armor: 4, scale: 1.05, walkMult: 1.4,
+      filter: "sepia(1) saturate(2.4) hue-rotate(180deg) brightness(1.1)" },
+
+    // --- Imps. The hall's first RANGED bodies: they never close, so the front
+    // rank stops being the whole fight.
+    { id: "imp", name: "FEUERIMP", sprite: "imp", role: "ranged",
+      hpMult: 0.7, dmgMult: 0.55, attackSpeedMult: 0.85, armor: 0, scale: 1, walkMult: 1.2,
+      standoff: 6.5, range: 7.5, shot: { rgb: "242, 168, 58", ms: 420 } },
+    { id: "impFrost", name: "EISIMP", sprite: "imp", role: "ranged",
+      hpMult: 0.95, dmgMult: 0.7, attackSpeedMult: 0.8, armor: 2, scale: 1, walkMult: 1.1,
+      standoff: 7, range: 8, shot: { rgb: "121, 216, 238", ms: 420 },
+      filter: "hue-rotate(195deg) saturate(1.3) brightness(1.1)" },
+    { id: "impVoid", name: "SCHATTENIMP", sprite: "imp", role: "ranged",
+      hpMult: 1.2, dmgMult: 0.95, attackSpeedMult: 0.9, armor: 3, scale: 1.1, walkMult: 1.1,
+      standoff: 7.5, range: 8.5, shot: { rgb: "192, 140, 255", ms: 380 },
+      filter: "hue-rotate(265deg) saturate(0.9) brightness(0.8)" },
+
+    // --- The rotting ranks. Slow, heavy, and the first real HP walls.
+    { id: "zombie", name: "ZOMBIE", sprite: "zombie",
+      hpMult: 2.6, dmgMult: 1.3, attackSpeedMult: 0.7, armor: 0, scale: 1.1, walkMult: 0.55 },
+    { id: "muddy", name: "SCHLAMMLING", sprite: "muddy",
+      hpMult: 2.2, dmgMult: 1.1, attackSpeedMult: 0.7, armor: 6, scale: 1.1, walkMult: 0.5 },
+    { id: "swampy", name: "SUMPFLING", sprite: "swampy",
+      hpMult: 2.4, dmgMult: 1.2, attackSpeedMult: 0.75, armor: 4, scale: 1.1, walkMult: 0.6 },
+    { id: "iceZombie", name: "EISZOMBIE", sprite: "iceZombie",
+      hpMult: 3.0, dmgMult: 1.4, attackSpeedMult: 0.65, armor: 5, scale: 1.15, walkMult: 0.45 },
+
+    // --- Orcs. The armour chapters: nothing here dies to a hero who skipped
+    // his damage nodes, and the masks are where penetration starts to pay.
+    { id: "orc", name: "ORKKRIEGER", sprite: "orcWarrior",
+      hpMult: 2.0, dmgMult: 1.4, attackSpeedMult: 1, armor: 8, scale: 1, walkMult: 0.8 },
+    { id: "orcBlack", name: "SCHWARZORK", sprite: "orcWarrior",
+      hpMult: 2.6, dmgMult: 1.6, attackSpeedMult: 1, armor: 11, scale: 1.1, walkMult: 0.75,
+      filter: "brightness(0.55) saturate(0.6)" },
+    { id: "orcIron", name: "EISENORK", sprite: "orcWarrior",
+      hpMult: 3.0, dmgMult: 1.5, attackSpeedMult: 0.9, armor: 12, scale: 1.1, walkMult: 0.65,
+      filter: "sepia(1) saturate(1.6) hue-rotate(180deg)" },
+    { id: "maskedOrc", name: "MASKENORK", sprite: "maskedOrc",
+      hpMult: 3.0, dmgMult: 1.5, attackSpeedMult: 0.95, armor: 13, scale: 1.1, walkMult: 0.7 },
+    { id: "maskedOrcRed", name: "BLUTMASKE", sprite: "maskedOrc",
+      hpMult: 3.4, dmgMult: 1.7, attackSpeedMult: 1.25, armor: 12, scale: 1.15, walkMult: 0.85,
+      filter: "sepia(1) saturate(3.4) hue-rotate(300deg)" },
+
+    { id: "maskedOrcBone", name: "KNOCHENMASKE", sprite: "maskedOrc",
+      hpMult: 3.6, dmgMult: 1.6, attackSpeedMult: 1, armor: 15, scale: 1.2, walkMult: 0.65,
+      filter: "saturate(0.15) brightness(1.35)" },
+
+    // --- Shamans. HEALERS: they mend the body in front of them faster than a
+    // small spell can chew it down, so the hall starts asking for real damage
+    // (or for the player to kill the back rank first).
+    { id: "shaman", name: "ORKSCHAMANE", sprite: "orcShaman", role: "healer",
+      hpMult: 1.6, dmgMult: 0.6, attackSpeedMult: 0.8, armor: 2, scale: 1, walkMult: 0.9,
+      standoff: 8, heal: { frac: 0.16, everyMs: 3200, firstMs: 1800, radius: 7 } },
+    { id: "shamanElder", name: "ÄLTESTER", sprite: "orcShaman", role: "healer",
+      hpMult: 2.4, dmgMult: 0.7, attackSpeedMult: 0.8, armor: 5, scale: 1.1, walkMult: 0.85,
+      standoff: 8.5, heal: { frac: 0.26, everyMs: 2600, firstMs: 1500, radius: 9 },
+      filter: "hue-rotate(270deg) saturate(1.2)" },
+
+    { id: "shamanBlood", name: "BLUTSCHAMANE", sprite: "orcShaman", role: "healer",
+      hpMult: 2.0, dmgMult: 0.8, attackSpeedMult: 0.8, armor: 4, scale: 1.05, walkMult: 0.9,
+      standoff: 8, heal: { frac: 0.2, everyMs: 2200, firstMs: 1400, radius: 8 },
+      filter: "sepia(1) saturate(3.4) hue-rotate(300deg)" },
+
+    // --- Wogols. The heavier ranged rank: they out-range the imps and hurt.
+    { id: "wogol", name: "WOGOL", sprite: "wogol", role: "ranged",
+      hpMult: 1.3, dmgMult: 1.0, attackSpeedMult: 0.8, armor: 3, scale: 1, walkMult: 0.9,
+      standoff: 7.5, range: 8.5, shot: { rgb: "154, 143, 240", ms: 380 } },
+    { id: "wogolPale", name: "BLEICHER WOGOL", sprite: "wogol", role: "ranged",
+      hpMult: 1.7, dmgMult: 1.3, attackSpeedMult: 0.85, armor: 5, scale: 1.05, walkMult: 0.9,
+      standoff: 8, range: 9, shot: { rgb: "234, 252, 255", ms: 340 },
+      filter: "hue-rotate(185deg) saturate(0.8) brightness(1.25)" },
+
+    { id: "wogolVoid", name: "SCHATTENWOGOL", sprite: "wogol", role: "ranged",
+      hpMult: 2.0, dmgMult: 1.6, attackSpeedMult: 0.9, armor: 6, scale: 1.1, walkMult: 0.85,
+      standoff: 8.5, range: 9.5, shot: { rgb: "192, 140, 255", ms: 320 },
+      filter: "hue-rotate(265deg) saturate(1.1) brightness(0.85)" },
+
+    // --- Necromancers. SUMMONERS: left alone they refill the hall faster than
+    // the hero empties it, which is the one enemy that punishes killing in the
+    // wrong order. `max` is the lifetime budget, so a stalled fight can't grow
+    // without bound.
+    { id: "necromancer", name: "NEKROMANT", sprite: "necromancer", role: "summoner",
+      hpMult: 2.0, dmgMult: 0.5, attackSpeedMult: 0.8, armor: 3, scale: 1, walkMult: 0.85,
+      standoff: 8.5,
+      summon: { type: "skeleton", count: 2, everyMs: 5200, firstMs: 2600, max: 8 } },
+    { id: "necroLord", name: "KNOCHENFÜRST", sprite: "necromancer", role: "summoner",
+      hpMult: 3.2, dmgMult: 0.8, attackSpeedMult: 0.8, armor: 6, scale: 1.15, walkMult: 0.8,
+      standoff: 9,
+      summon: { type: "runner", count: 3, everyMs: 4200, firstMs: 2200, max: 12 },
+      filter: "hue-rotate(140deg) saturate(1.3)" },
+
+    { id: "necroPale", name: "BLEICHER NEKROMANT", sprite: "necromancer", role: "summoner",
+      hpMult: 2.6, dmgMult: 0.7, attackSpeedMult: 0.8, armor: 4, scale: 1.05, walkMult: 0.85,
+      standoff: 8.5,
+      summon: { type: "carrion", count: 4, everyMs: 3800, firstMs: 2000, max: 16 },
+      filter: "hue-rotate(235deg) saturate(0.7) brightness(1.3)" },
+
+    // --- Chorts. Elite melee: fast AND heavy, the first bodies that punish
+    // standing still.
+    { id: "chort", name: "CHORT", sprite: "chort",
+      hpMult: 2.8, dmgMult: 1.8, attackSpeedMult: 1.3, armor: 4, scale: 1, walkMult: 1.3 },
+    { id: "chortAsh", name: "ASCHECHORT", sprite: "chort",
+      hpMult: 3.6, dmgMult: 2.1, attackSpeedMult: 1.35, armor: 7, scale: 1.1, walkMult: 1.25,
+      filter: "brightness(0.6) saturate(0.35)" },
+
+    { id: "chortFrost", name: "FROSTCHORT", sprite: "chort",
+      hpMult: 3.2, dmgMult: 1.9, attackSpeedMult: 1.3, armor: 6, scale: 1.05, walkMult: 1.35,
+      filter: "hue-rotate(185deg) saturate(1.2) brightness(1.1)" },
+
+    // --- Carrion. Summoned fodder, never authored into a pack on its own.
+    { id: "carrion", name: "KADAVERLING", sprite: "tinyZombie",
+      hpMult: 0.35, dmgMult: 0.5, attackSpeedMult: 1.6, armor: 0, scale: 1, walkMult: 2.0 },
+
+    // --- The heavies. One of these is a whole camp's worth of HP.
+    { id: "ogre", name: "OGER", sprite: "ogre",
+      hpMult: 6.5, dmgMult: 2.2, attackSpeedMult: 0.8, armor: 10, scale: 1, walkMult: 0.5 },
+    { id: "ogreFrost", name: "FROSTOGER", sprite: "ogre",
+      hpMult: 8, dmgMult: 2.3, attackSpeedMult: 0.8, armor: 12, scale: 1.05, walkMult: 0.45,
+      filter: "hue-rotate(175deg) saturate(1.1) brightness(1.1)" },
+    { id: "ogreBlack", name: "SCHWARZOGER", sprite: "ogre",
+      hpMult: 9, dmgMult: 2.4, attackSpeedMult: 0.85, armor: 14, scale: 1.05, walkMult: 0.45,
+      filter: "brightness(0.5) saturate(0.5)" },
+    { id: "bigZombie", name: "FLEISCHBERG", sprite: "bigZombie", role: "summoner",
+      hpMult: 8, dmgMult: 2.4, attackSpeedMult: 0.6, armor: 5, scale: 1, walkMult: 0.4,
+      standoff: 2.4, range: 4.6,
+      summon: { type: "carrion", count: 2, everyMs: 6000, firstMs: 3000, max: 8 } },
+
+    { id: "pestBerg", name: "PESTBERG", sprite: "bigZombie", role: "summoner",
+      hpMult: 9.5, dmgMult: 2.5, attackSpeedMult: 0.6, armor: 7, scale: 1.05, walkMult: 0.4,
+      standoff: 2.4, range: 4.6,
+      summon: { type: "carrion", count: 3, everyMs: 5000, firstMs: 2600, max: 12 },
+      filter: "sepia(1) saturate(2.2) hue-rotate(80deg)" },
+
+    // --- The gate. The last two chapters, and nothing else in the hall reads
+    // like them: they fill the corridor's whole height.
+    { id: "bigDemon", name: "GROSSER DÄMON", sprite: "bigDemon",
+      hpMult: 12, dmgMult: 2.6, attackSpeedMult: 1, armor: 10, scale: 1, walkMult: 0.6 },
+    { id: "demonAsh", name: "ASCHETEUFEL", sprite: "bigDemon",
+      hpMult: 13, dmgMult: 2.7, attackSpeedMult: 1.05, armor: 11, scale: 1, walkMult: 0.6,
+      filter: "brightness(0.62) saturate(0.3)" },
+    { id: "demonLord", name: "DÄMONENFÜRST", sprite: "bigDemon", role: "summoner",
+      hpMult: 18, dmgMult: 2.9, attackSpeedMult: 1.1, armor: 12, scale: 1.1, walkMult: 0.55,
+      standoff: 2.6, range: 5,
+      summon: { type: "chort", count: 1, everyMs: 7000, firstMs: 4000, max: 6 },
+      filter: "hue-rotate(265deg) saturate(1.3) brightness(1.1)" },
   ],
   // ARMOUR. A body's armour turns aside a FRACTION of every hit that lands on
   // it, never a flat amount:
@@ -173,10 +368,10 @@ const CONFIG = {
   // encounters.js; these are the knobs the spawner reads. Nothing about it is
   // random: the same distance always produces the same fight, in the same lanes.
   // One metre = one 16px floor tile.
-  enemyMaxCount: 18,         // safety cap on skeletons alive at once (a late pack can out-grow it)
-  encounterLateSpacingMetres: 2.5, // metres between packs once the authored plan runs out (see
-                                   // ENCOUNTER_PLAN: must stay inside the dead-air budget below, or
-                                   // every gap grows a filler skeleton)
+  enemyMaxCount: 24,         // safety cap on bodies alive at once (a late pack + its summons can out-grow it)
+  encounterSpacingMetres: 2.5,     // metres between camps — the whole hall is laid out on this cadence
+                                   // (must stay inside the dead-air budget below, or every gap grows a
+                                   // filler skeleton)
   // How far past the edge of frame a pack forms up. This is a TIME budget wearing
   // tile units: at `enemyWalkTilesPerMs` it's a ~280ms approach — long enough
   // that skeletons visibly stride in rather than appear, short enough that the
@@ -221,6 +416,21 @@ const CONFIG = {
   enemyFirstAttackMs: 2000,     // windup before a skeleton's first hit after engaging (a beat to react on first engage)
   enemyAttackIntervalMs: 3400,  // steady cadence between a skeleton's hits
   enemyAttackLungeMs: 260,      // length of the forward jab drawn on each hit
+  // A RANGED body's bolt is a real travelling object, not a hitscan: the damage
+  // lands when the mote reaches the hero, so a shot fired at the moment its
+  // caster dies still arrives (it was already in the air) and the player can see
+  // what is about to hit him. `enemyShotFadeMs` is how long the splash lingers
+  // after impact.
+  enemyShotFadeMs: 180,
+  // A SUMMONER's bodies walk out of a rune it opens behind itself. The glow is
+  // what makes the call readable at a glance; `enemySummonGapTiles` is how far
+  // back of the caster they appear, so they never pop out on top of it.
+  enemySummonGlowMs: 520,
+  enemySummonGapTiles: 1.4,
+  // A HEALER's mend: the beam it throws at the body it is patching up, and how
+  // long that beam is drawn. The number pops in the heal spell's green, so
+  // "that bar just went back up" is legible without staring at it.
+  enemyHealBeamMs: 420,
   // SPELLS. Completing a rune shape casts whatever spell the hero's book is
   // open at (see spells.js for the registry and the resolvers, spellbook.js for
   // the book). Every spell reads the SAME `state.heroDmg` and scales it by its

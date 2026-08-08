@@ -50,7 +50,49 @@ const SHEET = {
   // 0x72 DungeonTileset II magic staff — a wooden shaft capped with a gem; the
   // gem is recolored teal at load so it matches the rune it traces.
   staffMagic: { x: 340, y: 145, w: 8, h: 30 },
+  // The door at the far end of the hall — the whole assembled gate (frame +
+  // leaf), drawn once, at one fixed metre mark (see encounters.HALL_END_METRES).
+  doorsAll: { x: 16, y: 221, w: 64, h: 35 },
 };
+
+// ---------------------------------------------------------------------------
+// THE BESTIARY'S ART. Every creature the sheet has, as an idle/run frame pair.
+// A CONFIG.enemyTypes entry names one of these keys in its `sprite` field and
+// then bends it with `scale` / `filter` / `tint`, which is how seventeen drawn
+// monsters become the ~30 bodies the hall actually sends in.
+//
+// Coordinates are lifted verbatim from assets/tiles_list.txt. A few creatures
+// ship without a separate run cycle (the sheet lists the same rect twice) — for
+// those the run entry deliberately aliases the idle rect rather than inventing
+// frames, so a zombie shambles with the same four poses whether it is walking or
+// standing. Every rect carries `f` frames laid out horizontally at `w` apart.
+// ---------------------------------------------------------------------------
+const ENEMY_SPRITES = {
+  skelet:      { idle: { x: 368, y: 80,  w: 16, h: 16, f: 4 }, run: { x: 432, y: 80,  w: 16, h: 16, f: 4 } },
+  tinyZombie:  { idle: { x: 368, y: 20,  w: 16, h: 12, f: 4 }, run: { x: 432, y: 20,  w: 16, h: 12, f: 4 } },
+  goblin:      { idle: { x: 368, y: 37,  w: 16, h: 11, f: 4 }, run: { x: 432, y: 37,  w: 16, h: 11, f: 4 } },
+  imp:         { idle: { x: 368, y: 48,  w: 16, h: 16, f: 4 }, run: { x: 432, y: 48,  w: 16, h: 16, f: 4 } },
+  muddy:       { idle: { x: 368, y: 112, w: 16, h: 16, f: 4 }, run: { x: 368, y: 112, w: 16, h: 16, f: 4 } },
+  swampy:      { idle: { x: 432, y: 112, w: 16, h: 16, f: 4 }, run: { x: 432, y: 112, w: 16, h: 16, f: 4 } },
+  zombie:      { idle: { x: 368, y: 144, w: 16, h: 16, f: 4 }, run: { x: 368, y: 144, w: 16, h: 16, f: 4 } },
+  iceZombie:   { idle: { x: 432, y: 144, w: 16, h: 16, f: 4 }, run: { x: 432, y: 144, w: 16, h: 16, f: 4 } },
+  maskedOrc:   { idle: { x: 368, y: 172, w: 16, h: 20, f: 4 }, run: { x: 432, y: 172, w: 16, h: 20, f: 4 } },
+  orcWarrior:  { idle: { x: 368, y: 204, w: 16, h: 20, f: 4 }, run: { x: 432, y: 204, w: 16, h: 20, f: 4 } },
+  orcShaman:   { idle: { x: 368, y: 236, w: 16, h: 20, f: 4 }, run: { x: 432, y: 236, w: 16, h: 20, f: 4 } },
+  necromancer: { idle: { x: 366, y: 270, w: 16, h: 20, f: 4 }, run: { x: 366, y: 270, w: 16, h: 20, f: 4 } },
+  wogol:       { idle: { x: 368, y: 303, w: 16, h: 17, f: 4 }, run: { x: 432, y: 303, w: 16, h: 17, f: 4 } },
+  chort:       { idle: { x: 368, y: 328, w: 16, h: 24, f: 4 }, run: { x: 432, y: 328, w: 16, h: 24, f: 4 } },
+  bigZombie:   { idle: { x: 16,  y: 270, w: 32, h: 34, f: 4 }, run: { x: 144, y: 270, w: 32, h: 34, f: 4 } },
+  ogre:        { idle: { x: 16,  y: 320, w: 32, h: 32, f: 4 }, run: { x: 144, y: 320, w: 32, h: 32, f: 4 } },
+  bigDemon:    { idle: { x: 16,  y: 364, w: 32, h: 36, f: 4 }, run: { x: 144, y: 364, w: 32, h: 36, f: 4 } },
+};
+
+// The frame rects a variant is drawn from, falling back to bare bone for an
+// unknown key so a typo in CONFIG.enemyTypes costs a sprite rather than the
+// whole scene.
+function enemySprite(type) {
+  return ENEMY_SPRITES[(type && type.sprite) || "skelet"] || ENEMY_SPRITES.skelet;
+}
 
 const FIREBALL_SPRITE = [
   "....OOO...",
@@ -128,13 +170,17 @@ function tileHash(a, b) {
   return Math.abs(h ^ (h >> 16));
 }
 
-// Cut one frame of a sheet entry to its own canvas; optionally flip, recolor to
-// a flat silhouette (for the hit flash), or wash it with a translucent `tint`
-// (for the darker enemy variants). The tint is laid over the sprite's own
-// pixels only — `source-atop` leaves the transparent surround alone, so the
-// silhouette keeps its shape and no getImageData is needed (that would taint
-// the canvas under file://).
-function cutFrame(img, rect, frame, { flip = false, silhouette = null, tint = null } = {}) {
+// Cut one frame of a sheet entry to its own canvas; optionally flip, run it
+// through a CSS `filter` (how a variant gets its own colour), recolor to a flat
+// silhouette (for the hit flash), or wash it with a translucent `tint` (for the
+// darker variants).
+//
+// Both recolour paths stay off getImageData, which would taint the canvas under
+// file://: the tint is laid over the sprite's own pixels with `source-atop`, so
+// the transparent surround is left alone and the silhouette keeps its shape,
+// and the hue shift rides on the 2D context's own `filter` — applied here, ONCE
+// at load, never on the per-frame draw path.
+function cutFrame(img, rect, frame, { flip = false, silhouette = null, tint = null, filter = null } = {}) {
   const cv = document.createElement("canvas");
   cv.width = rect.w;
   cv.height = rect.h;
@@ -144,7 +190,9 @@ function cutFrame(img, rect, frame, { flip = false, silhouette = null, tint = nu
     ctx.translate(rect.w, 0);
     ctx.scale(-1, 1);
   }
+  if (filter) ctx.filter = filter;
   ctx.drawImage(img, rect.x + frame * rect.w, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+  ctx.filter = "none";
   if (silhouette) {
     ctx.globalCompositeOperation = "source-in";
     ctx.fillStyle = silhouette;
@@ -202,6 +250,7 @@ function buildAssets() {
     // blue. Drawn OVER the live frame (see drawFrostRime) so the rime follows
     // the body's silhouette instead of sitting on it as a square of ice.
     skeletFrozen: frames(SHEET.skeletIdle, { flip: true, tint: "rgba(121, 216, 238, 0.62)" }),
+    door: cutFrame(tilesetImg, SHEET.doorsAll, 0),
     fountainMid: frames(SHEET.fountainMidRed),
     fountainBasin: frames(SHEET.fountainBasinRed),
     fireball: spriteToCanvas(FIREBALL_SPRITE, f),
@@ -214,20 +263,44 @@ function buildAssets() {
     shadow: shadowToCanvas(9, 3, 0.5),
     shadowSm: shadowToCanvas(8, 3, 0.45),
   };
-  // Per-variant frame sets: the same skeleton art washed with the variant's
-  // `tint` (a brute is darker — older, heavier bone — so it reads as a tougher
-  // thing even before its size registers). Untinted variants just alias the base
-  // frames instead of baking a duplicate. The white hit flash stays shared: it's
-  // a flash, and tinting it would mute the very thing it's there to show.
+  // ---------------------------------------------------------------------------
+  // Per-variant frame sets. Every body in CONFIG.enemyTypes gets FOUR sets baked
+  // here — idle, run, the white hit flash, and the frost-rime overlay — because
+  // the roster is no longer one 16x16 skeleton in different washes: a chort is
+  // 16x24 and an ogre 32x32, so a shared flash or shared rime cut from skeleton
+  // art would land on the wrong silhouette entirely.
+  //
+  // Baking is once-at-load and cheap (a few hundred sub-40px blits), which is
+  // the whole reason `filter` lives here rather than on the draw path: the hot
+  // loop only ever blits a finished canvas.
+  //
+  // Variants that share a look share their canvases — keyed by sprite + tint +
+  // filter — so three plain-coloured bodies off the same sheet rect cost one set
+  // between them.
+  // ---------------------------------------------------------------------------
   ASSETS.enemy = {};
+  const skinCache = new Map();
   for (const t of CONFIG.enemyTypes) {
-    ASSETS.enemy[t.id] = t.tint
-      ? {
-          idle: frames(SHEET.skeletIdle, { flip: true, tint: t.tint }),
-          run: frames(SHEET.skeletRun, { flip: true, tint: t.tint }),
-        }
-      : { idle: ASSETS.skelet, run: ASSETS.skeletRun };
+    const spr = enemySprite(t);
+    const key = `${t.sprite || "skelet"}|${t.tint || ""}|${t.filter || ""}`;
+    let skin = skinCache.get(key);
+    if (!skin) {
+      const look = { flip: true, tint: t.tint || null, filter: t.filter || null };
+      skin = {
+        idle: frames(spr.idle, look),
+        run: frames(spr.run, look),
+        // The flash is a flash: it is drawn flat, so it takes the body's shape
+        // and nothing else — tinting or hue-shifting it would mute the one
+        // thing it exists to show.
+        hit: frames(spr.idle, { flip: true, silhouette: "#fff3d0" }),
+        // Rime follows the body's own silhouette, so it is cut from the body's
+        // own frames rather than from a square of ice laid over them.
+        frozen: frames(spr.idle, { flip: true, tint: "rgba(121, 216, 238, 0.62)" }),
+      };
+      skinCache.set(key, skin);
+    }
+    ASSETS.enemy[t.id] = skin;
   }
 }
 
-window.Incanto.renderAssets = { buildAssets };
+window.Incanto.renderAssets = { buildAssets, ENEMY_SPRITES, enemySprite };

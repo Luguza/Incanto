@@ -13,19 +13,27 @@
 // also what keeps arrivals just off camera on a wide screen instead of popping
 // in over open floor. Before the scene exists (possible on the very first frame
 // of a run, ahead of the first render) fall back to a nominal off-screen mark.
-// `scale` is the body's drawn width in tiles, so a brute — drawn half again as
-// wide — has to stand that bit further in before it counts as fully on camera.
+// `tilesWide` is the body's drawn width in tiles, so an ogre — cut from a 32px
+// sprite, two tiles across — has to stand that bit further in before it counts
+// as fully on camera.
 const FALLBACK_EDGE_TILES = 12;
-function trackEdgeTiles(scale = 1) {
-  if (!scene) return FALLBACK_EDGE_TILES - scale;
-  return (scene.artW - scene.enemyLineX) / TILE - scale;
+function trackEdgeTiles(tilesWide = 1) {
+  if (!scene) return FALLBACK_EDGE_TILES - tilesWide;
+  return (scene.artW - scene.enemyLineX) / TILE - tilesWide;
+}
+
+// How wide a body is drawn, in march-track tiles — the figure every bit of
+// spacing geometry is measured in. A plain skeleton is exactly 1; an ogre, cut
+// from a 32px sprite, is 2.
+function bodyTiles(e) {
+  return (e && e.tiles) || 1;
 }
 
 // Is the corridor visibly empty — nothing on camera for the player to fight or
 // watch? Dying skeletons still count as occupied: they're drawn while they
 // dissolve, so the screen isn't actually bare.
 function sceneIsEmpty() {
-  return !state.enemies.some((e) => e.pos <= trackEdgeTiles(e.scale || 1));
+  return !state.enemies.some((e) => e.pos <= trackEdgeTiles(bodyTiles(e)));
 }
 
 // Lanes are authored in the pack data (encounters.js), so a plan written for
@@ -47,8 +55,18 @@ function clampLane(lane) {
 // around its own composition. The variant table keeps what a brute *is* (twice
 // the HP and damage, ~40% faster swings, drawn a head taller in darker bone);
 // encounters.js decides where brutes appear.
+let ENEMY_TYPE_BY_ID = null;
 function enemyTypeById(id) {
-  return CONFIG.enemyTypes.find((t) => t.id === id) || CONFIG.enemyTypes[0];
+  if (!ENEMY_TYPE_BY_ID) {
+    ENEMY_TYPE_BY_ID = new Map(CONFIG.enemyTypes.map((t) => [t.id, t]));
+  }
+  return ENEMY_TYPE_BY_ID.get(id) || CONFIG.enemyTypes[0];
+}
+
+// Where a variant plants itself: melee walk into the standoff line, everything
+// that shoots, summons or heals stops well short of it.
+function typeStandoff(type) {
+  return type.standoff != null ? type.standoff : CONFIG.enemyStandoffTiles;
 }
 
 // Send in one designed pack: every rank of it, in the lanes and variants the
@@ -62,12 +80,12 @@ function enemyTypeById(id) {
 // stretches are covered by spawnFiller instead, so there is no case here where a
 // camp needs landing early.
 function spawnPack(now, entry) {
-  const ranks = packRanks(entry);
+  const ranks = orderRanksByReach(packRanks(entry));
   const lanes = new Set();
   for (const rank of ranks) for (const m of rank) lanes.add(clampLane(m.lane));
   // Measured against the front rank's own bodies, so a rank of brutes musters
   // fully clear of the right border rather than half-clipped by it.
-  let front = trackEdgeTiles(rankScale(ranks[0])) + CONFIG.enemyApproachTiles;
+  let front = trackEdgeTiles(rankTiles(ranks[0])) + CONFIG.enemyApproachTiles;
   // Never form up on top of a straggler. If anything the pack shares a lane with
   // is still standing at or behind the muster line, shift the WHOLE pack back as
   // a unit — pushing just the colliding members would break the designed shape,
@@ -75,7 +93,7 @@ function spawnPack(now, entry) {
   // (in melee, walking in) can't collide and are ignored.
   for (const e of state.enemies) {
     if (!lanes.has(e.lane)) continue;
-    front = Math.max(front, e.pos + CONFIG.enemySpawnGapTiles * ((e.scale || 1) + 1) / 2);
+    front = Math.max(front, e.pos + CONFIG.enemySpawnGapTiles * (bodyTiles(e) + 1) / 2);
   }
   let sent = 0;
   let pos = front;
@@ -83,7 +101,7 @@ function spawnPack(now, entry) {
     // Ranks of brutes need more room between them than ranks of plain skeletons,
     // for the same reason two queued brutes do: the bodies are drawn bigger, so
     // a fixed gap would let the sprites overlap. Step by the pair's average size.
-    if (r > 0) pos += CONFIG.enemySpawnGapTiles * (rankScale(ranks[r - 1]) + rankScale(ranks[r])) / 2;
+    if (r > 0) pos += CONFIG.enemySpawnGapTiles * (rankTiles(ranks[r - 1]) + rankTiles(ranks[r])) / 2;
     const seen = new Set();
     for (const member of ranks[r]) {
       const lane = clampLane(member.lane);
@@ -99,40 +117,102 @@ function spawnPack(now, entry) {
   return sent;
 }
 
-// The drawn size of the biggest body in a rank, used to space ranks apart.
-function rankScale(rank) {
+// The drawn width (in track tiles) of the biggest body in a rank, used to space
+// ranks apart so two ranks of ogres don't muster inside one another.
+function rankTiles(rank) {
   let s = 1;
-  for (const m of rank) s = Math.max(s, enemyTypeById(m.type).scale || 1);
+  for (const m of rank) {
+    const type = enemyTypeById(m.type);
+    const spr = enemySprite(type);
+    s = Math.max(s, (spr.idle.w * (type.scale || 1)) / TILE);
+  }
   return s;
 }
 
-// One skeleton, placed exactly where the pack wants it. Its variant decides how
-// much HP and damage it carries, how much armour it wears, how fast it swings,
-// and how big it's drawn — everything else is identical. It walks to its own stop slot before it starts
-// attacking.
+// Put every lane's members in reach order — the body that plants CLOSEST to the
+// hero in the front slot, the one that plants furthest back at the rear.
+//
+// This is a guarantee rather than a nicety. A lane is a strict queue: nothing
+// walks through the body ahead of it. So a shaman authored into the front rank
+// of a lane would stop at its own 8-tile standoff and wall its entire escort out
+// of the fight behind it — the pack's melee would stand in the dark doing
+// nothing while the hero picked them off. Sorting here means a pack can be
+// written as a SHAPE (which lanes, how many ranks) without its author also
+// having to hold the reach of every variant in their head; the caster ends up
+// at the back of its lane no matter which rank it was written into.
+//
+// Only the lane assignment moves. Rank sizes, lanes and head count are untouched,
+// so the formation the plan drew is the formation that walks in.
+function orderRanksByReach(ranks) {
+  const byLane = new Map();
+  for (const rank of ranks) {
+    for (const m of rank) {
+      const lane = clampLane(m.lane);
+      if (!byLane.has(lane)) byLane.set(lane, []);
+      byLane.get(lane).push(m);
+    }
+  }
+  for (const members of byLane.values()) {
+    members.sort((a, b) => typeStandoff(enemyTypeById(a.type)) - typeStandoff(enemyTypeById(b.type)));
+  }
+  const cursor = new Map();
+  return ranks.map((rank) => rank.map((m) => {
+    const lane = clampLane(m.lane);
+    const i = cursor.get(lane) || 0;
+    cursor.set(lane, i + 1);
+    const members = byLane.get(lane);
+    return members[Math.min(i, members.length - 1)];
+  }));
+}
+
+// One body, placed exactly where the pack wants it. Its variant decides how much
+// HP and damage it carries, how much armour it wears, how fast it swings and
+// marches, which creature it is drawn as, and what it DOES when it stops walking
+// — everything else is identical. It walks to its own stop slot before it starts
+// fighting.
+//
+// The variant's art is resolved once, here, into the two numbers the rest of the
+// frame needs constantly (`w`/`h` in art pixels, `tiles` across the track), so
+// no hot path ever re-reads the sheet rect or re-multiplies by `scale`.
 function spawnEnemy(now, lane, pos, typeId) {
   const id = state.nextEnemyId++;
   const type = enemyTypeById(typeId);
+  const spr = enemySprite(type);
+  const scale = type.scale || 1;
+  const w = Math.max(1, Math.round(spr.idle.w * scale));
+  const h = Math.max(1, Math.round(spr.idle.h * scale));
   const hp = Math.max(1, Math.round(CONFIG.enemyBaseHP * type.hpMult));
-  state.enemies.push({
+  const e = {
     id,
     type: type.id,
+    role: type.role || "melee",   // melee | ranged | summoner | healer
     maxHP: hp,
     hp,
     dmg: Math.max(1, Math.round(CONFIG.enemyBaseDmg * type.dmgMult)),
     armor: Math.max(0, type.armor || 0),  // turns aside a fraction of each hit (see armorReduction)
     atkSpeed: type.attackSpeedMult || 1,  // multiplies swing rate (divides the interval)
-    scale: type.scale || 1,               // drawn size vs. the 16x16 sheet art
+    walk: type.walkMult || 1,             // multiplies the march pace
+    scale,                                // drawn size vs. its own sheet art
+    w, h,                                 // drawn size in art pixels
+    tiles: w / TILE,                      // …and across the march track, which is what spacing reads
+    standoff: typeStandoff(type),         // where it plants: the melee line, or well short of it
+    range: type.range != null ? type.range : CONFIG.enemyAttackRangeTiles,
     slot: id,                     // per-enemy constant, only used to de-sync the idle animation
     lane,
     pos,
     phase: "walk",                // walk | idle | attack | struck | dying
     phaseAt: now,
-    attackAt: 0,                  // next time this skeleton lands a hit
+    attackAt: 0,                  // next time this body lands a hit
     attackAnimAt: 0,              // start of the current forward-jab animation
     struckUntil: 0,               // while `struck`: when the bolt lands and it collapses
     frozenUntil: 0,               // held fast by a Frostkegel until this moment (see updateEnemies)
-  });
+    actAt: 0,                     // next summon/mend (0 = hasn't planted yet — see updateSupport)
+    actFxAt: 0,                   // when the rune/beam of that act was thrown, for the draw
+    healTargetId: null,           // who a healer's beam is pointing at
+  };
+  if (type.summon) e.summonsLeft = type.summon.max;
+  state.enemies.push(e);
+  return e;
 }
 
 // One lone skeleton to fill a quiet stretch of corridor (see updateSpawns). It
@@ -168,7 +248,7 @@ function advanceInboundPack() {
   if (!state.enemies.length) return false;
   // Close on whichever body would show first, measured against its own width.
   let shift = Infinity;
-  for (const e of state.enemies) shift = Math.min(shift, e.pos - trackEdgeTiles(e.scale || 1));
+  for (const e of state.enemies) shift = Math.min(shift, e.pos - trackEdgeTiles(bodyTiles(e)));
   if (shift <= 0) return false;                    // already on camera, nothing to close
   for (const e of state.enemies) e.pos -= shift;
   return true;
@@ -186,9 +266,11 @@ function startRun() {
   state.wrongMatchCount = 0;
   state.runStartMs = performance.now();
   state.runActive = true;
+  state.hallCleared = false;  // this run hasn't reached the door yet
   state.screen = "combat";
   const now = performance.now();
   state.enemies = [];
+  state.enemyShots = [];      // no bolt from a previous run still in the air
   state.cameraX = 0;
   state.distance = 0;
   state.cameraVel = 0;
@@ -207,6 +289,25 @@ function startRun() {
   state.tapTraceTo = null;
   state.pendingShapeAt = 0;
   populateCircle(drawLoadout());
+}
+
+// Walking out of the far door: the end of the hall, and the only way a run ends
+// that isn't the hero falling over. Deliberately handled like a death in every
+// mechanical respect — the run stops, the banked reward is untouched and still
+// waiting for a quiz — because the reward for the walk is the walk. What differs
+// is the screen it lands on (see renderEndFull) and `hallClearedEver`, which is
+// persisted so the hall stays walked-out once it has been.
+function clearHall() {
+  if (!state.runActive) return;
+  state.runActive = false;
+  state.hallCleared = true;
+  state.hallClearedEver = true;
+  state.deepest = Math.max(state.deepest || 0, HALL_END_METRES);
+  saveProgress();
+  // Only pull the player to the end screen if they are actually watching the
+  // corridor; a run that finished while they were off studying simply won't
+  // resume (the same rule death follows).
+  if (state.screen === "combat") state.screen = "reward";
 }
 
 // ---------------------------------------------------------------------------
@@ -232,4 +333,4 @@ function shuffleArray(arr) {
   return arr;
 }
 
-window.Incanto.progression = { spawnPack, spawnFiller, spawnEnemy, enemyTypeById, rankScale, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };
+window.Incanto.progression = { clearHall, spawnPack, spawnFiller, spawnEnemy, enemyTypeById, typeStandoff, rankTiles, orderRanksByReach, bodyTiles, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };
