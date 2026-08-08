@@ -165,6 +165,30 @@ try {
   check(bought.rank === 1, "delegated data-act='treeBuy' fired treeBuy() (migp0 rank=" + bought.rank + ")");
   check(bought.gold < before, "buying the node spent gold (" + before + " -> " + bought.gold + ")");
 
+  //    …and picking nodes never moves the web. The info panel under the canvas
+  //    is as tall as whatever it describes, so the canvas box changes height on
+  //    every tap. It used to carry a fixed 900-unit viewBox, which meant the SVG
+  //    rescaled and re-centred its contents to fit that box — so choosing a node
+  //    visibly resized and jumped the whole tree. The viewBox now tracks the box
+  //    in CSS pixels instead (see syncTreeViewport), pinning the picture where it
+  //    is. Guard: the camera's on-screen matrix must be identical for every
+  //    selection, even though the panel below is demonstrably changing height.
+  const still = await page.evaluate(() => {
+    const ids = Object.keys(Incanto.skilltree.TREE_NODES);
+    const read = () => {
+      const m = document.getElementById("tree-cam").getScreenCTM();
+      return {
+        cam: [m.a, m.d, m.e, m.f].map((v) => +v.toFixed(3)).join(","),
+        info: +document.querySelector(".tree-info").getBoundingClientRect().height.toFixed(1),
+      };
+    };
+    const seen = [];
+    for (const id of ["root", ids[3], ids[40], ids[200], ids[600]]) { selectNode(id); seen.push(read()); }
+    return { cams: [...new Set(seen.map((s) => s.cam))], panels: [...new Set(seen.map((s) => s.info))] };
+  });
+  check(still.panels.length > 1, "the info panel really does change height per node (" + still.panels.join(" / ") + "px)");
+  check(still.cams.length === 1, "…yet the tree's camera never moves with it (" + still.cams.length + " distinct transforms: " + still.cams.join(" | ") + ")");
+
   // 5. The skill tree is authored, not grown (see skilltree.js): twelve arms out
   //    of one seed, one connected acyclic graph, every sealed page reachable by
   //    exactly one unlock node, and no node overlapping another on screen.

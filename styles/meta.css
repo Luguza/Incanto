@@ -156,8 +156,13 @@
   }
   .dev-gold-ok:active { background: var(--raised-hi); }
 
+  /* `flex-basis: 0` on purpose: the canvas takes whatever the topbar, the info
+     panel and the run button leave over, and never sizes off its own viewBox.
+     With `auto` the SVG's intrinsic aspect ratio feeds into the layout, and the
+     viewBox is kept matched to this box (see syncTreeViewport) — the two would
+     chase each other. */
   .tree-canvas {
-    flex: 1 1 auto; min-height: 0; width: 100%; display: block;
+    flex: 1 1 0; min-height: 0; width: 100%; display: block;
     touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;
   }
   .tree-canvas:active { cursor: grabbing; }
