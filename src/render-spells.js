@@ -339,7 +339,9 @@ function renderSpellFx(ctx, now) {
 function drawFrostRime(ctx, now, e, frame, sx, sy, w, h) {
   const c = CONFIG.colors.spell.frost;
   const a = Math.min(1, Math.max(0, (e.frozenUntil - now) / 400));
-  const rime = ASSETS.skeletFrozen;
+  // The body's OWN frost-washed frames: a goblin and an ogre are different
+  // silhouettes, so a rime cut from skeleton art would ice the wrong shape.
+  const rime = enemySkin(e).frozen || ASSETS.skeletFrozen;
   ctx.save();
   ctx.globalAlpha *= a;
   if (rime) ctx.drawImage(rime[frame % rime.length], sx, sy, w, h);

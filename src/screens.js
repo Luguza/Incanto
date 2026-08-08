@@ -546,17 +546,33 @@ function patchCombatContinuous(now) {
   const remaining = livingEnemies();
   const front = frontEnemy();
   const count = remaining.length;
-  // Name the front skeleton's variant when it has one — the bar tracks that one,
-  // and a brute's doubled HP pool would otherwise look like a bar that's stuck.
-  const frontType = front && CONFIG.enemyTypes.find((t) => t.id === front.type);
-  const frontLabel = frontType && frontType.label ? ` · ${frontType.label}` : "";
+  // Name the front body — the bar tracks that one, and an ogre's eightfold HP
+  // pool would otherwise look like a bar that's stuck. Every variant is named
+  // now that the hall holds thirty of them: "which of these am I hitting" is a
+  // question the player asks constantly once the corridor stops being skeletons.
+  const frontType = front && enemyTypeById(front.type);
+  const frontLabel = frontType && frontType.name ? ` · ${frontType.name}` : "";
   // Armour is shown as the share of every hit it turns aside, not as raw points:
   // that's the number the player actually feels, and it visibly falls as
   // penetration nodes are bought (see armorReduction).
   const reduction = front ? armorReduction(front) : 0;
   const armorLabel = reduction > 0 ? ` ⛨${Math.round(reduction * 100)}%` : "";
+  // Depth reads against the length of the hall rather than as a bare count: the
+  // corridor ends (see encounters.HALL_END_METRES), so "how far in am I" is a
+  // fraction, not an ever-growing number with no scale to judge it by.
+  //
+  // The rest of the line describes WHAT IS IN FRONT OF HIM, and so it changes
+  // with the fight: while bodies are up it names them and counts them, and on
+  // the walk between camps — the only moment there is any time to read it — it
+  // gives the chapter instead. Two facts sharing one line rather than fighting
+  // over it: on a phone this label is about forty characters wide, and a body
+  // called BLEICHER NEKROMANT plus a chapter called DIE FAULENDEN REIHEN does
+  // not fit on any of them.
+  const where = front
+    ? `${count} GEGNER${frontLabel}${armorLabel}`
+    : chapterAt(state.distance).name.toUpperCase();
   document.getElementById("wave-label").innerHTML =
-    `${Math.floor(state.distance)} M · ${state.kills} ERLEGT · ${count} SKELETT${count === 1 ? "" : "E"}${frontLabel}${armorLabel}`;
+    `${Math.floor(state.distance)}/${HALL_END_METRES} M · ${where}`;
   const enemyPct = front ? (100 * front.hp / front.maxHP) : 0;
   document.getElementById("enemy-hp-fill").style.width = enemyPct.toFixed(1) + "%";
 
@@ -645,7 +661,29 @@ function fmtMult(m) {
 // won — the multiplier — and points at the one door that spends it: studying.
 // Deliberately near-wordless: the number, a bar filling toward the cap, what an
 // answer is worth, and the button. Nothing here needs a paragraph to explain.
+// The other way a run can end: the hero walks out of the far door. Mechanically
+// identical to falling — the bank is untouched and still wants a quiz — so this
+// keeps the same shape and the same button, and changes only what it leads with.
+// The reward for walking the hall is having walked it.
+function renderClearedFull() {
+  const elapsed = ((performance.now() - state.runStartMs) / 1000).toFixed(0);
+  const mult = rewardMult();
+  app.innerHTML = `
+    <div class="screen end-screen reward-screen">
+      <h1 class="reward">Das Ende des Ganges</h1>
+      <div class="reward-mult capped">
+        <span class="reward-mult-num">${HALL_END_METRES} m</span>
+        <span class="reward-mult-label">durchschritten</span>
+      </div>
+      <p class="reward-bank"><strong>${state.kills}</strong> erlegt &middot;
+        <span class="coin">◈</span> <strong>${quizReward()}</strong> pro Antwort</p>
+      <button class="fight-btn study-btn" data-act="goToQuiz">Lernen &amp; ${fmtMult(mult)} kassieren →</button>
+      <p class="dim">${elapsed}s</p>
+    </div>`;
+}
+
 function renderEndFull() {
+  if (state.hallCleared) return renderClearedFull();
   const elapsed = ((performance.now() - state.runStartMs) / 1000).toFixed(0);
   const mult = rewardMult();
   const capped = rewardMultCapped();
@@ -668,7 +706,8 @@ function renderEndFull() {
         <span class="coin">◈</span> <strong>${quizReward()}</strong> pro Antwort</p>
       ${capped ? `<p class="reward-carry">Am Anschlag &mdash; jetzt lernen</p>` : ""}
       <button class="fight-btn study-btn" data-act="goToQuiz">Lernen &amp; ${fmtMult(mult)} kassieren →</button>
-      <p class="dim">${Math.floor(state.distance)} m &middot; ${state.kills} erlegt &middot; ${elapsed}s</p>
+      <p class="dim">${Math.floor(state.distance)} / ${HALL_END_METRES} m &middot;
+        tiefster Punkt ${Math.floor(state.deepest || 0)} m &middot; ${state.kills} erlegt &middot; ${elapsed}s</p>
     </div>`;
 }
-window.Incanto.screens = { renderQuizFull, renderCombatFull, patchCombatContinuous, renderEndFull, fmtMult };
+window.Incanto.screens = { renderQuizFull, renderCombatFull, patchCombatContinuous, renderEndFull, renderClearedFull, fmtMult };

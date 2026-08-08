@@ -48,7 +48,19 @@ function freshState() {
     // right of the hero (0 = at him); `phase` is walk | idle | attack | struck |
     // dying. `struck` = fatally hit, standing until the bolt lands, then it
     // collapses.
-    kills: 0,                 // skeletons slain this run (the end-screen score)
+    kills: 0,                 // bodies slain this run (the end-screen score)
+    // Bolts a ranged body has in the air: {shooterId, dmg, rgb, born, landAt,
+    // from, hit}. They carry their own damage and land on their own clock (see
+    // updateEnemyShots), so a shot outlives the caster that threw it.
+    enemyShots: [],
+    // How deep the hall has ever been walked, in metres, and whether its far
+    // door has been reached at all. Both are persisted: the hall is finite (see
+    // encounters.HALL_END_METRES), so how far down it you have been is the one
+    // number that says how much of the game you have seen. `hallCleared` is the
+    // same fact for THIS run only, and is what the end screen reads.
+    deepest: 0,
+    hallCleared: false,
+    hallClearedEver: false,
     // The reward bank: skeletons slain and not yet cashed in. Unlike `kills` it
     // survives a death and a fresh run (see creditKill) and is persisted — it
     // empties only when a whole quiz session is finished.
@@ -176,6 +188,8 @@ function saveProgress() {
       spellOrder: state.spellOrder,
       conjLevel: state.conjLevel,
       conjStreak: state.conjStreak,
+      deepest: state.deepest,
+      hallClearedEver: state.hallClearedEver,
       devMode: state.devMode,
     }));
   } catch (e) { /* storage unavailable (private mode/quota) — play without saving */ }
@@ -222,6 +236,14 @@ function applySavedProgress() {
     const rungs = (CONFIG.conjugation && CONFIG.conjugation.levels.length) || 1;
     state.conjLevel = Math.min(asCount(data.conjLevel), rungs - 1);
     state.conjStreak = Number.isFinite(data.conjStreak) ? Math.trunc(data.conjStreak) : 0;
+    // How far down the hall this save has ever been. Clamped to the hall's
+    // current length so shortening the plan can't leave a save claiming a depth
+    // that no longer exists.
+    state.deepest = Math.min(
+      Number.isFinite(data.deepest) ? Math.max(0, data.deepest) : 0,
+      typeof HALL_END_METRES !== "undefined" ? HALL_END_METRES : Infinity
+    );
+    state.hallClearedEver = !!data.hallClearedEver;
     state.devMode = data.devMode === true;
     if (data.nodeRanks && typeof data.nodeRanks === "object") {
       const ranks = {};

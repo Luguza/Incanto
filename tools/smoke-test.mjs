@@ -769,7 +769,134 @@ try {
   check(!/Niederlage/.test(endScreen.text) && endScreen.mult === "×2,2" && endScreen.study,
     "the run-over screen leads with the multiplier and a nudge to study (" + endScreen.mult + ")");
 
-  // 11. The dev tools on the tree screen (see skilltree.js). They are armed by a
+  // 11. The hall (see encounters.js) and the bodies that walk it. Three things
+  //     are worth guarding here because all three are easy to break silently
+  //     from a data file: the schedule has to resolve end to end, a body has to
+  //     be able to fight from the back of the corridor, and the corridor has to
+  //     have an end at all.
+  const hall = await page.evaluate(() => {
+    const E = window.Incanto.encounters;
+    const SPRITES = window.Incanto.renderAssets.ENEMY_SPRITES;
+    const known = new Set(CONFIG.enemyTypes.map((t) => t.id));
+    const badPack = [], badType = new Set(), badSprite = [], noDebut = [];
+    const firstAt = new Map();
+    for (let i = 0; i < E.ENCOUNTER_PLAN.length; i++) {
+      const entry = E.encounterAt(i);
+      if (!entry.pack) { badPack.push(E.ENCOUNTER_PLAN[i].pack); continue; }
+      for (const rank of E.packRanks(entry)) {
+        for (const m of rank) {
+          if (!known.has(m.type)) badType.add(m.type);
+          if (!firstAt.has(m.type)) firstAt.set(m.type, entry.at);
+        }
+      }
+    }
+    for (const t of CONFIG.enemyTypes) {
+      if (!SPRITES[t.sprite || "skelet"]) badSprite.push(t.id);
+      if (!ASSETS.enemy[t.id]) badSprite.push(t.id + " (no frames)");
+    }
+    // Nothing new may arrive in a rush: after the opening chapter, each new body
+    // has to be at least a few camps clear of the last one that turned up.
+    const debuts = [...firstAt.values()].sort((a, b) => a - b);
+    let tightest = Infinity;
+    for (let i = 1; i < debuts.length; i++) {
+      if (debuts[i] < 33) continue;                   // the bone chapter teaches two at once, by design
+      tightest = Math.min(tightest, debuts[i] - debuts[i - 1]);
+    }
+    return {
+      camps: E.ENCOUNTER_PLAN.length,
+      end: E.HALL_END_METRES,
+      past: E.encounterAt(E.ENCOUNTER_PLAN.length),   // the plan runs out rather than looping
+      mark: E.nextMark(E.ENCOUNTER_PLAN.length),
+      types: CONFIG.enemyTypes.length,
+      placed: firstAt.size,
+      lastDebut: debuts[debuts.length - 1],
+      tightest,
+      badPack, badSprite, badType: [...badType],
+    };
+  });
+  check(hall.badPack.length === 0 && hall.badType.length === 0 && hall.badSprite.length === 0,
+    `every camp names a real pack, variant and sprite (${hall.camps} camps, ${hall.types} variants)`);
+  check(hall.past === null && hall.mark === hall.end,
+    `the hall ENDS: past the last camp the only mark left is the door at ${hall.end} m`);
+  check(hall.tightest >= 5,
+    `no new body is rushed in — the tightest gap between two debuts is ${hall.tightest} m`);
+  check(hall.lastDebut > hall.end * 0.9,
+    `the roster keeps opening up to the end (last new body at ${hall.lastDebut} m)`);
+
+  //     A ranged body plants far short of the melee line and still lands hits;
+  //     a healer puts HP back on a wounded ally; a summoner adds bodies.
+  const roles = await page.evaluate(async () => {
+    const E = window.Incanto.encounters;
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    startRun();
+    state.heroMaxHP = state.heroHP = 100000;
+    // Regen would quietly refill whatever the corridor takes off (the tree nodes
+    // bought earlier in this run are still on), so it is off for the measurement
+    // — the question here is whether a bolt lands at all, not how the hero copes.
+    state.mods.regen = 0;
+    state.enemies = [];
+    state.enemyShots = [];
+    // A caster escort, dropped where it would stand after its walk-in, with the
+    // front rank already hurt so the healer has something to mend.
+    spawnPack(performance.now(), { pack: E.PACKS.knochenfuerst, reinforce: 0 });
+    for (const e of state.enemies) {
+      e.pos = Math.max(e.standoff, e.pos - 7);
+      if (e.role === "melee") e.hp = Math.round(e.maxHP * 0.35);
+    }
+    const wounded = state.enemies.filter((e) => e.role === "melee").map((e) => e.id);
+    const before = { hp: state.heroHP, bodies: state.enemies.length, ids: new Set(state.enemies.map((e) => e.id)) };
+    // Watch the whole window rather than sampling the end of it: a bolt is in
+    // the air for well under a second, and a mend is instant.
+    let sawShot = 0, landed = 0, mended = false;
+    const seenShots = new Set();
+    for (let i = 0; i < 320; i++) {
+      await settle(50);
+      for (const shot of state.enemyShots || []) {
+        if (!seenShots.has(shot)) { seenShots.add(shot); sawShot++; }
+        if (shot.hit && !shot._counted) { shot._counted = true; landed++; }
+      }
+      if (state.enemies.some((e) => wounded.includes(e.id) && e.hp > Math.round(e.maxHP * 0.35))) mended = true;
+      if (landed && mended && state.enemies.length > before.bodies) break;
+    }
+    const ranged = state.enemies.filter((e) => e.role === "ranged");
+    return {
+      sawShot, landed,
+      heroLost: Math.round(before.hp - state.heroHP),
+      summoned: state.enemies.filter((e) => !before.ids.has(e.id)).length,
+      mended,
+      rangedStandoff: ranged.length ? Math.min(...ranged.map((e) => e.pos)) : 0,
+      meleeLine: CONFIG.enemyStandoffTiles,
+    };
+  });
+  check(roles.rangedStandoff > roles.meleeLine + 2,
+    `a ranged body holds the back of the hall (${roles.rangedStandoff.toFixed(1)} tiles vs. a ${roles.meleeLine}-tile melee line)`);
+  check(roles.sawShot > 0 && roles.landed > 0 && roles.heroLost > 0,
+    `its bolts cross the corridor and land (${roles.landed} of ${roles.sawShot} arrived, ${roles.heroLost} damage taken)`);
+  check(roles.mended, "a healer puts HP back on the wounded body in front of it");
+  check(roles.summoned > 0, `a summoner calls in bodies of its own (${roles.summoned})`);
+
+  //     And walking onto the hall's last metre ends the run the one way that
+  //     isn't dying.
+  const cleared = await page.evaluate(() => {
+    const E = window.Incanto.encounters;
+    startRun();
+    state.packIndex = E.ENCOUNTER_PLAN.length;
+    state.distance = E.HALL_END_METRES;
+    state.enemies = [];
+    updateCamera(performance.now(), 16);
+    state._structuralDirty = true;
+    render(performance.now());
+    return {
+      screen: state.screen, run: state.runActive, flag: state.hallCleared,
+      saved: !!JSON.parse(localStorage.getItem("incanto.save.v1")).hallClearedEver,
+      title: (document.querySelector(".end-screen h1") || {}).textContent,
+    };
+  });
+  check(cleared.flag && !cleared.run && cleared.screen === "reward" && cleared.saved,
+    "reaching the door ends the run and is remembered");
+  check(/Ende des Ganges/.test(cleared.title || ""),
+    `the end screen says so rather than reading as a death ("${cleared.title}")`);
+  // 12. The dev tools on the tree screen (see skilltree.js). They are armed by a
   //     slider and must be unreachable while it is off; armed, they wipe every
   //     purchased rank (asking once first) and let the purse be typed into.
   await page.evaluate(() => {

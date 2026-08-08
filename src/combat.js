@@ -141,6 +141,9 @@ function hitPlayer(n) {
     // them where they are (the dead run simply won't resume, and the next trip to
     // combat starts fresh).
     state.runActive = false;
+    // How deep this run got is meta-progression like the reward bank, so it is
+    // banked the moment the run ends rather than waiting on the next kill.
+    saveProgress();
     if (state.screen === "combat") state.screen = "reward";
   }
 }

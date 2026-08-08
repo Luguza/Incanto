@@ -7,17 +7,26 @@
 // Scene state: canvas element, integer pixel scale, layout, cached background
 let scene = null;
 
-// Drawn size of a skeleton: the same 16x16 sheet art, blown up by the variant's
-// `scale` (a brute stands a head taller than a plain skeleton). Everything
-// anchored to a body — the sprite, its shadow, the fireball's aim point, the
-// damage numbers — sizes itself through here rather than reading the sheet rect
-// directly, so a variant never draws with the wrong offsets. `chest` is the
+// Drawn size of a body. The roster is no longer one 16x16 skeleton at different
+// scales — a goblin is 16x11 and a demon 32x36 — so the size is resolved once at
+// spawn (see spawnEnemy) and simply read back here. Everything anchored to a
+// body — the sprite, its shadow, the fireball's aim point, the damage numbers —
+// sizes itself through this one function rather than reaching for a sheet rect,
+// so a variant can never draw with another variant's offsets. `chest` is the
 // aim/impact height measured down from the head, at the same fraction of the
 // body as the old fixed 9-of-16px offset.
 function enemyArt(e) {
   const s = (e && e.scale) || 1;
-  const h = Math.round(SHEET.skeletIdle.h * s);
-  return { s, w: Math.round(SHEET.skeletIdle.w * s), h, chest: Math.round((h * 9) / 16) };
+  const w = (e && e.w) || Math.round(SHEET.skeletIdle.w * s);
+  const h = (e && e.h) || Math.round(SHEET.skeletIdle.h * s);
+  return { s, w, h, chest: Math.round((h * 9) / 16) };
+}
+
+// The frame sets a body is drawn from — idle / run / hit flash / frost rime —
+// falling back to bare bone if a variant was named that no longer exists.
+function enemySkin(e) {
+  return (ASSETS.enemy && ASSETS.enemy[e.type]) ||
+    { idle: ASSETS.skelet, run: ASSETS.skeletRun, hit: ASSETS.skeletHit, frozen: ASSETS.skeletFrozen };
 }
 
 function setupScene(cv) {
@@ -253,6 +262,9 @@ function renderScene(now) {
   const camOff = ((state.cameraX % bgW) + bgW) % bgW;
   ctx.drawImage(scene.bg, -camOff, 0);
   ctx.drawImage(scene.bg, bgW - camOff, 0);
+  // The hall's far door, set into the back wall at its one fixed mark — drawn
+  // over the repeating strip, under everything else.
+  drawHallDoor(ctx);
   // Edge vignette rides on top, pinned to the viewport (not the scrolling hall).
   ctx.drawImage(scene.edgeVignette, 0, 0);
 
@@ -353,7 +365,7 @@ function renderScene(now) {
     const art = enemyArt(e);
     const skelY = ly - art.h;
     const walking = e.phase === "walk";
-    const skin = ASSETS.enemy[e.type] || { idle: ASSETS.skelet, run: ASSETS.skeletRun };
+    const skin = enemySkin(e);
     const frameSet = walking ? skin.run : skin.idle;
     // Frame cadence sets the three moods apart: a brisk run cycle, a calm idle,
     // and an agitated (fast) shuffle while attacking.
@@ -397,12 +409,19 @@ function renderScene(now) {
     // like the bolt that hits the front rank does.
     if (e.hitFlashAt && now >= e.hitFlashAt && now - e.hitFlashAt < 210 &&
         Math.floor((now - e.hitFlashAt) / 70) % 2 === 0) {
-      ctx.drawImage(ASSETS.skeletHit[sf], sx, skelY, art.w, art.h);
+      const hit = skin.hit || ASSETS.skeletHit;
+      ctx.drawImage(hit[sf % hit.length], sx, skelY, art.w, art.h);
     }
     // Frozen by a Frostkegel: rime over the body while it's held fast.
     if (now < (e.frozenUntil || 0)) drawFrostRime(ctx, now, e, ef, sx, skelY, art.w, art.h);
+    // What this body DOES besides swing: a summoner's rune, a healer's beam.
+    // Drawn after the sprite so the light sits on it, not under it.
+    if (e.actFxAt && now - e.actFxAt < CONFIG.enemySummonGlowMs) drawSupportFx(ctx, now, e, cx, ly);
     ctx.restore();
   }
+
+  // Bolts in the air from the ranged ranks, over the bodies that threw them.
+  drawEnemyShots(ctx, now);
 
   // The wizard's spell-in-progress: the rune the player is tracing below is
   // mirrored as a tilted disc in front of the wizard. While tracing, it shows
@@ -452,6 +471,104 @@ function renderScene(now) {
 
   // Floating damage numbers, drawn last so they sit above every fighter.
   renderDmgFloats(ctx, now);
+}
+
+// --- What the back ranks are doing -------------------------------------------
+// The three things a body can do besides walk and swing, drawn here rather than
+// through the spell-effect pipeline: `state.spellFx` belongs to the hero's book,
+// and these are the corridor answering back.
+
+// A bolt from a ranged body: a mote that travels the whole way to the hero, a
+// short tail behind it, and a splash where it lands. Reading the flight is the
+// point — a shot the player can see coming across the hall is a shot they can
+// answer by killing the thing that threw it.
+function drawEnemyShots(ctx, now) {
+  const shots = state.enemyShots;
+  if (!shots || !shots.length) return;
+  const hx = scene.wizard.x + SHEET.wizardIdle.w / 2;
+  const hy = scene.wizard.y + SHEET.wizardIdle.h * 0.45;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const s of shots) {
+    if (!s.from) continue;                     // fired while off-screen: no flight to draw
+    if (now >= s.landAt) {
+      // Splash: a quick ring bursting on the hero, fading over the fade window.
+      const q = (now - s.landAt) / CONFIG.enemyShotFadeMs;
+      if (q >= 1) continue;
+      ctx.globalAlpha = 1 - q;
+      ctx.fillStyle = `rgba(${s.rgb}, 0.9)`;
+      const r = Math.round(2 + q * 4);
+      for (let a = 0; a < 8; a++) {
+        const ang = (a / 8) * Math.PI * 2;
+        ctx.fillRect(Math.round(hx + Math.cos(ang) * r), Math.round(hy + Math.sin(ang) * r), 1, 1);
+      }
+      continue;
+    }
+    const q = (now - s.born) / Math.max(1, s.landAt - s.born);
+    const x = s.from.x + (hx - s.from.x) * q;
+    const y = s.from.y + (hy - s.from.y) * q;
+    ctx.globalAlpha = 1;
+    // Tail first, so the head burns over it.
+    ctx.fillStyle = `rgba(${s.rgb}, 0.35)`;
+    for (let t = 1; t <= 3; t++) {
+      const tq = Math.max(0, q - t * 0.035);
+      ctx.fillRect(Math.round(s.from.x + (hx - s.from.x) * tq), Math.round(s.from.y + (hy - s.from.y) * tq), 1, 1);
+    }
+    ctx.fillStyle = `rgba(${s.rgb}, 0.95)`;
+    ctx.fillRect(Math.round(x) - 1, Math.round(y), 3, 1);
+    ctx.fillRect(Math.round(x), Math.round(y) - 1, 1, 3);
+  }
+  ctx.restore();
+}
+
+// A summoner's rune (a ring pulsing on the floor under it) or a healer's mend
+// (a beam to the body it patched up). Both ride the same `actFxAt` stamp the act
+// itself set, so the light is exactly as long-lived as the act was.
+function drawSupportFx(ctx, now, e, cx, ly) {
+  const q = (now - e.actFxAt) / CONFIG.enemySummonGlowMs;
+  if (q < 0 || q >= 1) return;
+  const healer = e.role === "healer";
+  const rgb = healer ? CONFIG.colors.spell.heal.rgb : "154, 143, 240";
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 1 - q;
+  if (healer && now - e.actFxAt < CONFIG.enemyHealBeamMs && e.healTargetId != null) {
+    // The mend, drawn as a dotted line to whoever it went to — the one tell that
+    // says "that bar is going back up because of THAT body over there".
+    const t = state.enemies.find((o) => o.id === e.healTargetId);
+    if (t) {
+      const tx = scene.enemyLineX + t.pos * TILE;
+      const ty = (scene.laneY[t.lane] ?? scene.feetY) - t.h * 0.6;
+      const fy = ly - e.h * 0.6;
+      ctx.fillStyle = `rgba(${rgb}, 0.9)`;
+      for (let i = 0; i <= 12; i++) {
+        const p = i / 12;
+        if (i % 2) continue;
+        ctx.fillRect(Math.round(cx + (tx - cx) * p), Math.round(fy + (ty - fy) * p), 2, 1);
+      }
+    }
+  }
+  // The floor ring: a flat ellipse under the caster, widening as it fades.
+  ctx.strokeStyle = `rgba(${rgb}, 0.85)`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(cx, ly - 1, 5 + q * 7, 2 + q * 2.5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// The door at the end of the hall. It stands at ONE fixed metre mark, so it is
+// placed the way an enemy is — off the hero's own depth — rather than baked into
+// the scrolling background strip, which repeats every few screens and would
+// therefore show a row of doors. Off camera for all but the last stretch of the
+// last chapter, which is exactly the intent: the first time a player sees it,
+// they have walked the whole hall to get there.
+function drawHallDoor(ctx) {
+  const door = ASSETS.door;
+  if (!door) return;
+  const x = Math.round(scene.enemyLineX + (HALL_END_METRES - state.distance) * TILE - door.width / 2);
+  if (x > scene.artW || x + door.width < 0) return;
+  ctx.drawImage(door, x, FLOOR_Y - door.height + 3);
 }
 
 // --- Floating damage numbers -------------------------------------------------
@@ -1061,4 +1178,4 @@ function drawGemGlow(ctx, now, tx, ty, glow, rgb = CONFIG.colors.staff.glowRGB) 
   ctx.restore();
 }
 
-window.Incanto.renderScene = { setupScene, renderScene, spawnDmgFloat, enemyArt };
+window.Incanto.renderScene = { setupScene, renderScene, spawnDmgFloat, enemyArt, enemySkin };
