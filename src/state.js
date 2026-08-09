@@ -50,12 +50,17 @@ function freshState() {
     // already dead is `deathAt`: a fatal hit books the moment the blow arrives,
     // and until then the body keeps marching and swinging as though nothing had
     // hit it. `splitAt` is the same clock for the other thing a blow can do —
-    // a slime coming apart (see progression.splitOrShrink).
+    // a slime coming apart (see progression.splitSlime).
     kills: 0,                 // bodies slain this run (the end-screen score)
     // Bolts a ranged body has in the air: {shooterId, dmg, rgb, born, landAt,
     // from, hit}. They carry their own damage and land on their own clock (see
     // updateEnemyShots), so a shot outlives the caster that threw it.
     enemyShots: [],
+    // Goo on the floor: {x (WORLD px, camera baked in), lane, rx, ry, type, born,
+    // ttl}. A walking slime plants one every few strides and a split splashes a
+    // handful under the pair (see progression.plantGoo). Decoration only —
+    // nothing reads it back — and it dies of old age.
+    slimeGoo: [],
     // How deep the hall has ever been walked, in metres, and whether its far
     // door has been reached at all. Both are persisted: the hall is finite (see
     // encounters.HALL_END_METRES), so how far down it you have been is the one

@@ -257,9 +257,13 @@ const CONFIG = {
     // cannot punish a slow answer: even the big one nibbles for 6 against a
     // 112 HP hero, and its fragments for 2.
     //
-    // Their HP is set so a FRESH hero — 24 damage, one Feuerball, no tree —
-    // walks the whole ladder: 44 splits into two 10s, and 76 into two 26s, which
-    // are middling ones that then shrink to small rather than dividing again.
+    // Their HP is NOT set here: a splitting variant walks in on the top rung of
+    // `slimeTiers` (60) whatever its `hpMult` says, and every hit it survives
+    // hands it down that ladder. So a fresh hero — 24 damage, one Feuerball, no
+    // tree — walks the whole of it every time: 60 into two 40s, each 40 into two
+    // 20s, and the 20s die to a single cast. `hpMult` is left on both entries
+    // because everything else in the table carries one, but it is dead weight on
+    // these two and moving it changes nothing.
     // Nothing later in the hall ever sends a slime, which is the point of them.
     //
     // ART: these two are the only bodies in the hall that are NOT cut from the
@@ -445,39 +449,62 @@ const CONFIG = {
   ],
   // ===========================================================================
   // SPLITTING, AND THE SIZE LADDER IT WALKS DOWN (variants with `split: true` —
-  // today that is the two slimes). A slime is not a body with a fixed size. It
-  // is a POOL OF HP that keeps coming apart: hit one and it divides in two, each
-  // half carrying half of what the hit left behind, and hit those and they
-  // divide again.
+  // today that is the two slimes). A slime is not a body you wear down. It is
+  // THREE SIZES, and hurting one that survives turns it into two of the size
+  // below at FULL HP: 60 becomes two 40s, each 40 becomes two 20s, and a 20 is
+  // the bottom — nothing smaller to become, so it just takes the hit like any
+  // other body and dies when its bar runs out.
   //
-  // WHAT A SLIME *IS* IS READ OFF WHAT IT HAS LEFT. These rungs are HP bands
-  // rather than variants — a body sitting on 44 HP is drawn as the big one, and
-  // that same body worn down to 26 is drawn as the middle one, with nothing
-  // anywhere having to remember which it started as. It follows that a slime
-  // visibly SHRINKS as it is chewed on, which is most of the pleasure of
-  // fighting one.
+  // THE HP IS THE RUNG, AND THE RUNG IS WHAT THE BODY IS. A slime's `maxHP` is
+  // always exactly one of the numbers below, so the size it is drawn at, the
+  // damage it swings for and the name over its bar are all read straight off
+  // that rung — nothing has to remember what it started as.
+  //
+  // IT MAKES HP, ON PURPOSE, AND THAT IS THE WHOLE CHANGE. The old ladder halved
+  // what the hit left behind, which is arithmetically tidy and meant the
+  // mechanic almost never fired: a fresh hero's 24 damage on a 44 HP slime left
+  // 20, and 20 is two 10s, so one camp showed one split and the rest died before
+  // they could divide. Dividing at full HP means EVERY non-fatal hit divides,
+  // which is the point — one big slime is now seven casts (1 split, 2 splits,
+  // 4 kills) and a wedge of three fills the lane with fragments the way the
+  // chapter's comment always promised it would. It costs nothing in danger:
+  // these are the two bodies in the hall that cannot meaningfully hurt anyone
+  // (see the slime variants above), so the only thing the extra pool buys is
+  // more of the mechanic on screen.
   //
   // `scale` multiplies the variant's own drawn size and `dmgMult` its own
-  // damage, and the second of those is what keeps the mechanic honest: a slime
-  // the size of a fist must not hit like one the size of a barrel, or a floor
-  // covered in fragments would add up to more danger than the single body they
-  // came off. Split all the way down, a camp hits for LESS than it did intact.
+  // damage, and the second of those is what keeps the multiplying honest: a
+  // slime the size of a fist must not hit like one the size of a barrel, or a
+  // floor covered in fragments would add up to more danger than the single body
+  // they came off. Split all the way down, a camp hits for LESS than it did
+  // intact (4 x 2 against the 6 the big one swung for).
   //
-  // THE BOTTOM RUNG IS THE FLOOR, AND IT IS THE WHOLE RULE. A slime divides only
-  // while BOTH halves would still land on the ladder — at twice the bottom
-  // rung's HP or more. Below that the hit lands and the body just shrinks a
-  // size: a 24 HP slime taking 10 is one 14 HP slime, not two 7 HP ones. Without
-  // that floor a slime camp ends as a corridor of 1 HP specks, each still owed
-  // its own cast.
-  //
-  // No HP is created by any of it. Two halves always add up to exactly what was
-  // left after the hit, so a slime camp is a fixed pool however often it
-  // divides — splitting buys the player more targets, never more health.
+  // The rungs are written bottom-up: index 0 is the floor, the last is what a
+  // slime walks in on (see progression.spawnHP — a splitting variant's `hpMult`
+  // has no say, this ladder is the whole of what it is worth).
   slimeTiers: [
-    { minHP: 10, scale: 1,   dmgMult: 0.35, prefix: "KLEINER " },  // 10–20
-    { minHP: 21, scale: 1.3, dmgMult: 0.6,  prefix: "" },          // 21–40
-    { minHP: 41, scale: 1.6, dmgMult: 1,    prefix: "GROSSER " },  // 41–100, the top of the ladder
+    { hp: 20, scale: 1,   dmgMult: 0.35, prefix: "KLEINER " },
+    { hp: 40, scale: 1.3, dmgMult: 0.6,  prefix: "" },
+    { hp: 60, scale: 1.6, dmgMult: 1,    prefix: "GROSSER " },   // what one walks in on
   ],
+  // THE GOO A SLIME LEAVES BEHIND. Two things put marks on the floor and both
+  // draw through the same list (`state.slimeGoo`, drawn by render-scene): the
+  // smear a walking slime plants every few strides, and the puddle a split
+  // splashes out under the pair. They are pure decoration — nothing reads them
+  // back — but they are what makes a corridor of fragments read as slime rather
+  // than as a lot of green sprites.
+  // The trail is planted by GROUND COVERED, not on a timer: a slime crawls at
+  // barely a tile a second, so a mark every fifth of a second would lay down a
+  // smear every 3 px and the trail would read as one painted stripe. Every third
+  // of a tile leaves separate smears that overlap into a track.
+  slimeTrailStepTiles: 0.34, // how far a slime crawls between two smears
+  slimeTrailFadeMs: 2800,    // how long a smear lingers before it dries away
+  slimeTrailMax: 96,         // safety cap on marks on the floor at once
+  // The split itself: the two halves are pulled apart with a goo bridge stretched
+  // between them, which thins, snaps and drips. `slimeSplitFxMs` is that whole
+  // performance, and it is deliberately a touch longer than the hit flash (210ms)
+  // so the flash reads as the blow and the stretch as what the blow DID.
+  slimeSplitFxMs: 430,
   // ARMOUR. A body's armour turns aside a FRACTION of every hit that lands on
   // it, never a flat amount:
   //
