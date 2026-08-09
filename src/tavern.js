@@ -51,7 +51,15 @@ const TAV_PAL = {
 };
 
 // Room geometry, in the sheet's own 16px tiles.
-const TAV_WALL_ROWS = 3;                    // 1 cap row + 2 rows of brick face
+//
+// The wall is FOUR rows, and that is the door's doing. The sheet's gate is 35 px
+// tall and the cap row costs 16 of them, so a three-row wall leaves 32 px of
+// brick face for a 35 px door: the arch ends up jammed under the cap with its
+// crown flattened against the ledge. Four rows give the doorway a course of
+// brick above it, which is what an opening set into a wall looks like — and the
+// hearth, which is nearly as tall, stops clipping the cap for the same reason.
+// Anything hung on this wall has to fit inside `TAV_WALL_H - TILE`.
+const TAV_WALL_ROWS = 4;                    // 1 cap row + 3 rows of brick face
 const TAV_FLOOR_Y = TAV_WALL_ROWS * TILE;   // wall → floor line, in art px
 const TAV_WALK_MS = 0.024;                  // art px per ms — an unhurried stroll
 
