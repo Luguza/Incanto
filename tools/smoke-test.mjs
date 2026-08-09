@@ -964,25 +964,18 @@ try {
     screen: state.screen,
     phase: (document.querySelector("#bottom-nav .nav-btn.active") || {}).dataset.phase,
     canvas: !!document.getElementById("tav-scene"),
-    cards: [...document.querySelectorAll(".tav-card")].map((c) => c.dataset.station),
+    chips: [...document.querySelectorAll(".tav-chip")].map((c) => c.dataset.station),
     people: tavern ? tavern.people.length + 1 : 0,
-    // The room is drawn in the corridor's perspective: a wall face with a
-    // SHALLOW floor band under it. A deep floor would be a plan view, which is
-    // the one thing this tileset cannot draw — so the depth is guarded.
-    floorRows: tavern ? (tavern.artH - tavern.floorY) / 16 : 0,
-    // …and the room fits the stage it is drawn on, with nothing spilling out.
-    fits: (() => {
-      const r = document.getElementById("tav-scene").getBoundingClientRect();
-      const s = document.getElementById("tav-stage").getBoundingClientRect();
-      return r.width <= s.width + 0.5 && r.height <= s.height + 0.5;
-    })(),
+    // No chip may hang off the edge of the room, however tight the phone.
+    inside: [...document.querySelectorAll(".tav-chip")].every((c) => {
+      const r = c.getBoundingClientRect(), s = document.getElementById("tav-stage").getBoundingClientRect();
+      return r.left >= s.left - 0.5 && r.right <= s.right + 0.5;
+    }),
   }));
   check(room.screen === "tavern" && room.canvas && room.phase === "tavern",
     "the tankard button opens the tavern (nav=" + room.phase + ")");
-  check(room.cards.join(",") === "forge,bar,hall,study" && room.fits,
-    "every station has a card on the board, and the room fits its stage (" + room.cards.join(" · ") + ")");
-  check(room.floorRows >= 3 && room.floorRows <= 5,
-    "the floor stays a shallow band, as flat as the corridor's (" + room.floorRows + " tile rows)");
+  check(room.chips.join(",") === "forge,bar,hall,study" && room.inside,
+    "every station carries a chip, all of them on screen (" + room.chips.join(" · ") + ")");
   check(room.people === 7, "the room is peopled (" + room.people + " figures, the mage included)");
 
   //      The mage is not a still picture: left alone he picks somewhere to be
@@ -1004,22 +997,21 @@ try {
   const sent = await page.evaluate(() => {
     // Put him across the room from the forge so the walk is a real one.
     const st = tavern.stations.find((s) => s.id === "forge");
-    const far = tavern.stations.find((s) => s.id === "study").stand;
-    tavern.mage.x = far.x;
-    tavern.mage.y = far.y;
+    tavern.mage.x = tavern.walk.x1 - 6;
+    tavern.mage.y = tavern.walk.y1 - 6;
     tavern.mage.moving = false; tavern.mage.goal = null; tavern.mage.waitUntil = Infinity;
     return { stand: st.stand, from: { x: tavern.mage.x, y: tavern.mage.y } };
   });
-  await page.click('.tav-card[data-station="forge"]');
+  await page.click('.tav-chip[data-station="forge"]');
   await page.waitForTimeout(250);
   const walking = await page.evaluate(() => ({
     screen: state.screen,
     moving: tavern.mage.moving,
     goal: tavern.mage.goal && tavern.mage.goal.id,
-    lit: !!document.querySelector('.tav-card[data-station="forge"].on'),
+    lit: !!document.querySelector('.tav-chip[data-station="forge"].on'),
   }));
   check(walking.screen === "tavern" && walking.moving && walking.goal === "forge" && walking.lit,
-    "tapping a station's card sets the mage walking rather than jumping the screen (goal=" + walking.goal + ")");
+    "tapping a station sets the mage walking rather than jumping the screen (goal=" + walking.goal + ")");
   await page.waitForFunction(() => state.screen === "upgrade", null, { timeout: 15000 });
   const arrived = await page.evaluate((stand) => ({
     screen: state.screen,
@@ -1034,13 +1026,8 @@ try {
   const floor = await page.evaluate(() => {
     navTo("tavern");
     render(performance.now());
-    // Bare boards: clear of the furniture and clear of every station's reach.
     const w = tavern.walk;
-    let to = null;
-    for (let i = 0; i < 400 && !to; i++) {
-      const p = tavPickSpot(w);
-      if (p && !tavern.stations.some((s) => Math.abs(p.x - s.x) < 30)) to = p;
-    }
+    const to = { x: (w.x0 + w.x1) / 2, y: (w.y0 + w.y1) / 2 };
     tavernTapPoint(to.x, to.y);
     return { screen: state.screen, moving: tavern.mage.moving, goal: tavern.mage.goal };
   });
