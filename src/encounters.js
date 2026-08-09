@@ -58,18 +58,32 @@ const pack = (name, shape, types) => ({ name, ranks: SHAPES[shape], types });
 const D = DEFAULT_TYPE;
 
 const PACKS = {
-  // --- Ch. 1 · Schleim: the three camps a new player meets first. One body,
-  // then two, then three — the head count is the whole escalation, because
-  // nothing in here can actually hurt anyone (see the slime variants in
-  // CONFIG.enemyTypes).
+  // --- Ch. 1 · Schleim: the four camps a new player meets first. One body,
+  // then two, then three, then three big ones — the head count is the whole
+  // escalation, because nothing in here can actually hurt anyone (see the slime
+  // variants in CONFIG.enemyTypes).
   //
-  // The third is a WEDGE rather than a line, and that is about the splitting:
+  // The last two are WEDGES rather than lines, and that is about the splitting:
   // three big slimes abreast at one mark stand shoulder to shoulder, and the
   // moment each divides the lane fills up and the whole camp reads as one green
   // smear. Staggered in depth they stay countable however often they come apart.
-  schleim:     pack("Schleim", "solo", ["slime"]),
-  schleimspur: pack("Schleimspur", "paar", ["slime"]),
-  schleimnest: pack("Schleimnest", "keil", [["slimeBlue"], ["slime", "slime"]]),
+  //
+  // `schleimrudel` is the second wedge and the chapter's last word: the same
+  // three-body shape as the nest, but every one of them a GROSSER SCHLEIM at the
+  // top of the ladder rather than a Tropfling leading two. It is the most bodies
+  // and the most HP the prologue puts on the floor, and it still cannot threaten
+  // anyone — a big slime swings for 6 of the hero's 112, slowly (dmgMult 0,5 ×
+  // the top rung's 1, at 0,7 attack speed). What it is actually for is the
+  // splitting: three full-size pools coming apart at once is the first time the
+  // corridor has more targets in it than the player has casts to spare, which is
+  // the lesson chapter 2 opens by charging for.
+  schleim:      pack("Schleim", "solo", ["slime"]),
+  schleimspur:  pack("Schleimspur", "paar", ["slime"]),
+  schleimnest:  pack("Schleimnest", "keil", [["slimeBlue"], ["slime", "slime"]]),
+  // One id PER RANK, and `keil` has two of them — a bare ["slime"] would type the
+  // point and quietly leave the two wings as the default skeleton, which is the
+  // one body this chapter must not contain.
+  schleimrudel: pack("Schleimrudel", "keil", ["slime", "slime"]),
 
   // --- Ch. 2 · Knochen. The opening language of the hall, and the first camps
   // that can actually kill anyone.
@@ -246,7 +260,7 @@ const PACKS = {
 // game's main supply of skeletons. Widening that past ~2.8 m hands the corridor
 // back to the fillers.
 //
-// HOW LONG THE HALL IS, AND WHY. The corridor ENDS: 163 camps, then a door. It
+// HOW LONG THE HALL IS, AND WHY. The corridor ENDS: 164 camps, then a door. It
 // is not an endless tail any more, because a hall with no end has no reward for
 // walking down it and no way to say "you have seen all of this". The length is
 // set by one intention — the player should reach the door at ROUGHLY the point
@@ -275,27 +289,27 @@ const PACKS = {
 //
 //     chapter                 camps      metres    the hero it is written for
 //     ----------------------  ---------  --------  ------------------------------
-//      1  Schleim               0–2         0–5    nothing at all · a first-ever minute
-//      2  Knochen               3–16        7–40   a fresh tree · the first two runs
-//      3  Knochenläufer        17–26       42–65   ~10% · flat damage, one page open
-//      4  Kobolde              27–36       67–90   ~20% · a second page
-//      5  Orks                 37–46       92–115  ~30% · the first penetration ranks
-//      6  Imps                 47–56      117–140  ~35% · area damage that reaches the back
-//      7  Die faulenden Reihen 57–66      142–165  ~45% · sustain, or nothing survives the grind
-//      8  Schamanen            67–76      167–190  ~55% · burst enough to out-pace a mend
-//      9  Wogole               77–86      192–215  ~60% · a third page
-//     10  Nekromanten          87–96      217–240  ~65% · picking targets, not just the front
-//     11  Masken               97–106     242–265  ~72% · penetration in earnest
-//     12  Das Eis             107–116     267–290  ~78% · crit, and a fourth page
-//     13  Chorts              117–126     292–315  ~83% · everything at once, quickly
-//     14  Oger                127–136     317–340  ~87% · single-target damage
-//     15  Fleischberge        137–146     342–365  ~91% · both, sustained
-//     16  Das Tor             147–162     367–405  ~95% · a grown tree, and the door
+//      1  Schleim               0–3         0–7    nothing at all · a first-ever minute
+//      2  Knochen               4–17       10–42   a fresh tree · the first two runs
+//      3  Knochenläufer        18–27       45–67   ~10% · flat damage, one page open
+//      4  Kobolde              28–37       70–92   ~20% · a second page
+//      5  Orks                 38–47       95–117  ~30% · the first penetration ranks
+//      6  Imps                 48–57      120–142  ~35% · area damage that reaches the back
+//      7  Die faulenden Reihen 58–67      145–167  ~45% · sustain, or nothing survives the grind
+//      8  Schamanen            68–77      170–192  ~55% · burst enough to out-pace a mend
+//      9  Wogole               78–87      195–217  ~60% · a third page
+//     10  Nekromanten          88–97      220–242  ~65% · picking targets, not just the front
+//     11  Masken               98–107     245–267  ~72% · penetration in earnest
+//     12  Das Eis             108–117     270–292  ~78% · crit, and a fourth page
+//     13  Chorts              118–127     295–317  ~83% · everything at once, quickly
+//     14  Oger                128–137     320–342  ~87% · single-target damage
+//     15  Fleischberge        138–147     345–367  ~91% · both, sustained
+//     16  Das Tor             148–163     370–407  ~95% · a grown tree, and the door
 //
 // Chapter 1 is the exception to every line under it: it is the ONLY one that is
 // not a check of anything, and it is not part of the ramp — it is the step onto
 // it. Ch. 2 is still the game's real opening, the skeleton-and-brute lesson,
-// unchanged and met by exactly the hero it always was, three camps and 7,5 m
+// unchanged and met by exactly the hero it always was, four camps and 10 m
 // later than before.
 //
 // Re-tuning the hall means re-tuning THIS table (and the variants it names), not
@@ -309,12 +323,12 @@ const PACKS = {
 const CHAPTERS = [
   {
     name: "Schleim",
-    // The ramp's bottom step: three camps of slimes before the first skeleton.
+    // The ramp's bottom step: four camps of slimes before the first skeleton.
     // A player opening the game for the first time has never traced a rune, and
     // the hall used to answer that with a skeleton that hits for 48 out of 112.
-    // These three cost nothing to get wrong — one slime, then two, then a cold
-    // one leading a pair — so the opening minute is spent learning the circle
-    // rather than learning the death screen.
+    // These four cost nothing to get wrong — one slime, then two, then a cold
+    // one leading a pair, then three big ones — so the opening minute is spent
+    // learning the circle rather than learning the death screen.
     //
     // It is also where the hall's one trick body is taught, and taught in
     // order. A slime DIVIDES when it is hurt (see CONFIG.slimeTiers): camp one
@@ -328,7 +342,12 @@ const CHAPTERS = [
     // and deliberately: the rule exists so a body that can kill you is legible
     // before it arrives escorted, and neither of these can. It leads the wedge
     // instead, which is legible enough for something that hits for 7.
-    packs: ["schleim", "schleimspur", "schleimnest"],
+    //
+    // Camp four is the second wedge (`schleimrudel`): three GROSSER SCHLEIM, no
+    // new body in it at all. It adds head count and splitting pressure, not a
+    // lesson — the chapter ends on the fullest floor it can make out of bodies
+    // that cannot punish a slow answer.
+    packs: ["schleim", "schleimspur", "schleimnest", "schleimrudel"],
   },
   {
     name: "Knochen",
