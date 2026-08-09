@@ -519,3 +519,54 @@
   .reward-screen .coin { color: var(--gold); }
   .reward-screen .study-btn { margin-top: 22px; }
   .reward-screen .dim { margin-top: 16px; }
+
+  /* ---------------------------------------------------------------------------
+     The tavern (see src/tavern.js) — the home room. A full-bleed pixel scene
+     with the station labels floating over it as chips: the picture is the
+     navigation, and the chips are what a thumb actually aims at.
+     --------------------------------------------------------------------------- */
+  .tavern-screen {
+    justify-content: flex-start; align-items: stretch;
+    overflow: hidden; background: #100c17;
+  }
+  .tav-top {
+    flex: 0 0 auto; z-index: 2;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: calc(env(safe-area-inset-top) + 8px) 16px 6px;
+  }
+  .tav-title {
+    font-family: var(--display-font); font-size: 18px; letter-spacing: 2px;
+    color: var(--ink); text-shadow: 0 0 18px rgba(242, 193, 78, 0.25);
+  }
+  .tav-gold {
+    font-size: 14px; font-weight: 700; color: var(--gold);
+    padding: 5px 11px; border-radius: var(--r-pill);
+    background: var(--gold-1); border: 1px solid var(--gold-2);
+  }
+  /* The stage is the positioning context the chips are placed in: their left/top
+     come from the room's own art coordinates, scaled by the canvas' CSS scale
+     (see placeTavernChips), so a chip always sits over the thing it names. */
+  .tav-stage {
+    position: relative; flex: 1 1 auto; min-height: 0; width: 100%;
+    line-height: 0; overflow: hidden;
+  }
+  canvas.tav-scene { display: block; image-rendering: pixelated; touch-action: manipulation; }
+  .tav-chips { position: absolute; inset: 0; pointer-events: none; }
+  .tav-chip {
+    position: absolute; transform: translate(-50%, -100%);
+    pointer-events: auto; cursor: pointer; white-space: nowrap;
+    padding: 5px 11px; border-radius: var(--r-pill);
+    font-size: 12px; font-weight: 700; letter-spacing: 0.6px; line-height: 1.1;
+    color: var(--arcane-pale);
+    background: rgba(18, 14, 26, 0.82); border: 1px solid var(--arcane-3);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+    transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease),
+                background var(--dur) var(--ease);
+  }
+  .tav-chip:active { background: rgba(40, 32, 58, 0.92); color: var(--ink); }
+  .tav-chip.on { color: #17121f; background: var(--arcane); border-color: var(--arcane-lt); }
+  /* A station that leads nowhere yet is quieter — it is furniture with a name,
+     not a door. */
+  .tav-chip.flavour { color: var(--ink-3); border-color: var(--edge); font-weight: 600; }
+  .tav-chip.flavour:active { color: var(--ink-2); }

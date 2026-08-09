@@ -12,7 +12,9 @@ window.addEventListener("pointerup", onRunePointerUp);
 window.addEventListener("pointercancel", onRunePointerCancel);
 
 window.addEventListener("resize", () => {
-  scene = null; // re-measure and rebuild the scene at the new integer scale
+  scene = null;   // re-measure and rebuild the corridor at the new integer scale
+  tavern = null;  // …and the tavern room, whose chips are placed off that scale
+  if (state && state.screen === "tavern") state._structuralDirty = true;
 });
 
 // ---------------------------------------------------------------------------

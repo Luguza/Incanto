@@ -1,16 +1,21 @@
 "use strict";
 // ==============================================================================
-// nav.js — bottom phase-switcher: a persistent, text-free panel of three
-// pixel-art buttons (study · forge · combat) that lets the player jump between
-// phases at will. Icons are hand-placed pixel grids rendered as crisp <rect>
-// cells so no fonts or glyphs are involved. Owns: renderNav, updateNav, navTo.
-// Renders into <nav id="bottom-nav"> (a sibling of #app, not inside it).
+// nav.js — bottom phase-switcher: a persistent, text-free panel of four
+// pixel-art buttons (tavern · study · forge · combat) that lets the player jump
+// between phases at will. Icons are hand-placed pixel grids rendered as crisp
+// <rect> cells so no fonts or glyphs are involved. Owns: renderNav, updateNav,
+// navTo. Renders into <nav id="bottom-nav"> (a sibling of #app, not inside it).
+//
+// The tavern sits FIRST, ahead of the three phases, because it is where the
+// navigation is meant to end up living: the room holds a station for each phase
+// (see tavern.js), and this bar is the shortcut past it rather than the only way
+// through. Everything else keeps its order and simply moves one place right.
 // ==============================================================================
 
 const NAV_PIX = {
   o: "#10151a", // outline / spine
-  p: "#f2ead0", // book parchment
-  g: "#c9a24a", // gold (book line, sword fittings)
+  p: "#f2ead0", // book parchment / tankard foam
+  g: "#c9a24a", // gold (book line, sword fittings, ale)
   c: "#4de3e0", // book teal cover
   s: "#b8c0cc", // anvil steel
   h: "#e6ecf3", // anvil top highlight
@@ -19,6 +24,26 @@ const NAV_PIX = {
   w: "#8a5a2b", // staff wood
   t: "#7ff0ed", // staff gem
 };
+
+// A foaming tankard — the "tavern" hub.
+const NAV_TANKARD = [
+  "................",
+  "................",
+  "....pppppppp....",
+  "...pppppppppp...",
+  "...ogggggggggo..",
+  "...ogggggggggo..",
+  "...ogggggggggoo.",
+  "...ogggggggggo.o",
+  "...ogggggggggo.o",
+  "...ogggggggggoo.",
+  "...ogggggggggo..",
+  "...ogggggggggo..",
+  "...ooooooooooo..",
+  "................",
+  "................",
+  "................",
+];
 
 // Open book — the "study" phase.
 const NAV_BOOK = [
@@ -98,6 +123,7 @@ function renderNav() {
   const nav = document.getElementById("bottom-nav");
   if (!nav) return;
   nav.innerHTML = `
+    <button class="nav-btn" data-phase="tavern" data-act="navTo" data-args='["tavern"]' aria-label="Taverne">${navPixSvg(NAV_TANKARD)}</button>
     <button class="nav-btn" data-phase="study" data-act="navTo" data-args='["study"]' aria-label="Studieren">${navPixSvg(NAV_BOOK)}</button>
     <button class="nav-btn" data-phase="upgrade" data-act="navTo" data-args='["upgrade"]' aria-label="Schmiede">${navPixSvg(NAV_ANVIL)}</button>
     <button class="nav-btn" data-phase="combat" data-act="navTo" data-args='["combat"]' aria-label="Kampf">${navPixSvg(navWeaponRows())}</button>`;
@@ -105,6 +131,7 @@ function renderNav() {
 
 // Map the internal screen name to the phase the nav highlights.
 const NAV_PHASE_FOR_SCREEN = {
+  tavern: "tavern",
   quiz: "study", history: "study",
   // binding the book and reading the ledger are both part of the forge
   upgrade: "upgrade", bookorder: "upgrade", stats: "upgrade",
@@ -125,7 +152,11 @@ function updateNav() {
 // wiping it, so hopping away and back never costs the player their progress.
 function navTo(phase) {
   if (!state) return;
-  if (phase === "study") {
+  if (phase === "tavern") {
+    if (state.screen === "tavern") return;
+    state.screen = "tavern";
+    state._structuralDirty = true;
+  } else if (phase === "study") {
     if (state.screen === "quiz") return;
     const quizInProgress = state.quizList.length > 0 && state.quizIndex < state.quizList.length;
     if (quizInProgress) {
@@ -149,4 +180,4 @@ function navTo(phase) {
   }
 }
 
-window.Incanto.nav = { renderNav, updateNav, navTo };
+window.Incanto.nav = { renderNav, updateNav, navTo, NAV_PHASE_FOR_SCREEN };
