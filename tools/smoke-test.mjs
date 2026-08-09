@@ -371,6 +371,42 @@ try {
   const inert = await page.evaluate(() => state.quizIndex);
   check(inert === 0, "keys do not drive the game — a stray Enter/Space changes nothing (index " + inert + ")");
 
+  // 8a2. The sentence exercises must not keep serving the same sentences. Three
+  //      questions of every session come out of SENTENCE_POOL, so the pool has
+  //      to be deep and the draw has to remember what it just showed (see
+  //      drawSentence + CONFIG.quizSentenceMemory). Drawn here the way a long
+  //      evening of play would draw it.
+  const sentences = await page.evaluate(() => {
+    const drawn = [];
+    const options = [];
+    for (let i = 0; i < 120; i++) {
+      const fc = Incanto.quiz.makeFill("fill-choose");
+      options.push(fc.options);
+      drawn.push(fc.tokens.join(" "),
+        Incanto.quiz.makeFill("fill-type").tokens.join(" "),
+        Incanto.quiz.makeArrange().answer.join(" "));
+    }
+    const last = {}; let minGap = Infinity;
+    drawn.forEach((s, i) => { if (s in last) minGap = Math.min(minGap, i - last[s]); last[s] = i; });
+    return {
+      pool: Incanto.SENTENCE_POOL.length,
+      memory: CONFIG.quizSentenceMemory,
+      optionCount: CONFIG.quizOptionCount,
+      distinct: new Set(drawn).size,
+      drawn: drawn.length,
+      minGap,
+      badOptions: options.filter((o) => o.length !== CONFIG.quizOptionCount || new Set(o).size !== o.length).length,
+    };
+  });
+  check(sentences.pool >= 200, "the sentence pool is deep enough to draw from (" + sentences.pool + " sentences)");
+  check(sentences.minGap > sentences.memory,
+    "a sentence never comes back inside the draw's memory (" + sentences.minGap + " draws apart, memory " + sentences.memory + ")");
+  check(sentences.distinct >= sentences.pool * 0.6,
+    "a long session works through most of the pool (" + sentences.distinct + " different sentences over " +
+    sentences.drawn + " draws)");
+  check(sentences.badOptions === 0,
+    "fill-the-blank always offers " + sentences.optionCount + " distinct options of the answer's own kind");
+
   // 8b. Conjugation drills (see quiz.js + CONFIG.conjugation). A ladder over one
   //     verb's present tense: tap the pairs together, pick a form, write a form,
   //     fill half a table, and at the top write the whole paradigm out from
@@ -874,6 +910,50 @@ try {
   check(hall.lastDebut > hall.end * 0.9,
     `the roster keeps opening up to the end (last new body at ${hall.lastDebut} m)`);
 
+  //     SPLITTING SLIMES. The opening chapter's bodies divide when they are hurt
+  //     (CONFIG.slimeTiers), and three things about that have to hold or the
+  //     corridor either fills with specks or quietly manufactures HP:
+  //       · a hit that leaves enough behind divides the body, and the two halves
+  //         add up to exactly what was left — never more;
+  //       · a hit that does NOT leave enough divides nothing. The body shrinks a
+  //         size and stays one body, which is what stops the floor filling with
+  //         1 HP fragments each still owed its own cast;
+  //       · the size and the damage follow the HP down, so a fragment is drawn
+  //         smaller and hits softer than the body it came off.
+  const split = await page.evaluate(async () => {
+    const P = window.Incanto.progression;
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const rungs = CONFIG.slimeTiers;
+    const floor = rungs[0].minHP;
+    // A body of exactly `hp`, hit for `dmg`, once the loop has carried the blow out.
+    const strike = async (hp, dmg) => {
+      startRun();
+      state.enemies = [];
+      state.packIndex = 999;                 // no camp may wander in mid-measurement
+      const e = P.spawnEnemy(performance.now(), 2, 3, "slime");
+      e.hp = e.maxHP = hp;
+      P.sizeBody(e, P.enemyTypeById("slime"));
+      const was = { w: e.w, dmg: e.dmg };
+      hitEnemy(e, dmg, performance.now());
+      await settle(120);                     // updateEnemies resolves it on the next beats
+      const live = livingEnemies();
+      return { was, bodies: live.length, hp: live.reduce((n, x) => n + x.hp, 0),
+               w: live[0] && live[0].w, dmg: live[0] && live[0].dmg, name: live[0] && live[0].name };
+    };
+    const big = await strike(44, 24);        // 20 left, and 20 is twice the floor
+    const shrink = await strike(24, 10);     // 14 left — half of it would be under the floor
+    const edge = await strike(2 * floor + 4, 4);  // exactly on the floor after the hit
+    return { floor, big, shrink, edge, rungs: rungs.length };
+  });
+  check(split.big.bodies === 2 && split.big.hp === 20,
+    `a hurt slime divides in two and the halves add up to what was left (2 bodies, ${split.big.hp} HP)`);
+  check(split.big.w < split.big.was.w && split.big.dmg < split.big.was.dmg,
+    `each half is drawn smaller and hits softer than the body it came off (${split.big.was.w}px/${split.big.was.dmg} → ${split.big.w}px/${split.big.dmg})`);
+  check(split.shrink.bodies === 1 && split.shrink.hp === 14 && split.shrink.w < split.shrink.was.w,
+    `too small to divide: it shrinks instead and stays ONE body (${split.shrink.name}, ${split.shrink.hp} HP)`);
+  check(split.edge.bodies === 2 && split.edge.hp === 2 * split.floor,
+    `the floor is exact — at twice the smallest rung it still divides, into two ${split.floor} HP halves`);
+
   //     A ranged body plants far short of the melee line and still lands hits;
   //     a healer puts HP back on a wounded ally; a summoner adds bodies.
   const roles = await page.evaluate(async () => {
@@ -925,6 +1005,52 @@ try {
     `its bolts cross the corridor and land (${roles.landed} of ${roles.sawShot} arrived, ${roles.heroLost} damage taken)`);
   check(roles.mended, "a healer puts HP back on the wounded body in front of it");
   check(roles.summoned > 0, `a summoner calls in bodies of its own (${roles.summoned})`);
+
+  //     A spell takes time to cross the hall, and a body it has already killed
+  //     must go on running until it ARRIVES — stopping dead and dissolving at the
+  //     moment the shape was drawn reads as dying of nothing.
+  const flight = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    startRun();
+    state.heroMaxHP = state.heroHP = 100000;
+    state.mods.regen = 0;
+    state.heroDmg = 100000;              // one-shot whatever it lands on
+    state.mods.castHaste = 1e6;          // no wind-up, so the flight IS the whole delay
+    state.enemies = [];
+    state.enemyShots = [];
+    const e = spawnEnemy(performance.now(), 1, 9, CONFIG.enemyTypes[0].id);
+    await settle(200);                   // let it get up to a walk out in the hall
+    const from = e.pos;
+    const kills0 = state.kills;
+    const t0 = performance.now();
+    onShapeComplete(t0);
+    const booked = e.deathAt ? Math.round(e.deathAt - t0) : null;
+    // Sample across the flight: it must still be walking, and still moving.
+    const seen = new Set();
+    let posAtLand = e.pos, earlyStop = false;
+    for (let i = 0; i < 40 && e.phase !== "dying"; i++) {
+      await settle(25);
+      if (performance.now() - t0 < CONFIG.spells.fireball.flightMs - 60) {
+        seen.add(e.phase);
+        posAtLand = e.pos;
+        if (e.phase === "dying") earlyStop = true;
+      }
+    }
+    await settle(700);                   // and the dissolve still finishes
+    return {
+      booked, flightMs: CONFIG.spells.fireball.flightMs,
+      phases: [...seen], earlyStop,
+      walked: +(from - posAtLand).toFixed(2),
+      kills: state.kills - kills0,
+      culled: !state.enemies.includes(e),
+    };
+  });
+  check(flight.booked !== null && Math.abs(flight.booked - flight.flightMs) < 40,
+    `a fatal hit books its death for the moment the spell arrives (+${flight.booked}ms of ${flight.flightMs}ms flight)`);
+  check(!flight.earlyStop && flight.phases.join() === "walk" && flight.walked > 0.15,
+    `the doomed body keeps running while the ball is in the air (${flight.walked} tiles, phase ${flight.phases.join("/")})`);
+  check(flight.kills === 1 && flight.culled,
+    "it then collapses, is culled, and is counted exactly once");
 
   //     And walking onto the hall's last metre ends the run the one way that
   //     isn't dying.

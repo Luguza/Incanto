@@ -69,6 +69,10 @@ const CONFIG = {
   quizQuestionCount: 10, // one of each Duolingo-style exercise per session, plus two conjugation drills
   quizOptionCount: 4,
   quizMatchPairs: 5,     // tap-to-match exercise: pairs per board
+  quizSentenceMemory: 90, // the three sentence exercises (fill ×2, build) skip the last N sentences
+                          // they served, so a session works through SENTENCE_POOL instead of
+                          // rolling the same few. Kept well under the pool size — the draw falls
+                          // back to the full pool if the memory ever swallowed all of it
   goldPerCorrect: 12,
   // CONJUGATION DRILLS (see quiz.js + content.js CONJ_POOL). A ladder rather
   // than one exercise: each rung asks for more of the verb's paradigm and pays
@@ -207,12 +211,17 @@ const CONFIG = {
   // LP — the far hall was not a grind, it was a queue.
   //
   // So `dmgMult` now climbs with DEPTH, at roughly the rate the pool it is
-  // spending does: ×1 for the bone the corridor opens with, ×5 by the time it
-  // reaches the door, geometrically across the fifteen chapters in between (a
-  // body's factor is its authored weight × 5^((chapter-1)/14) — the weights
-  // inside a tier are untouched, so an ogre still hits harder than its escort).
-  // A blow therefore stays a roughly constant BITE out of whatever pool is
-  // carrying it, and the grind reads the same at both ends of the hall.
+  // spending does: ×1 for the bone of chapter 2, ×5 by the time it reaches the
+  // door, geometrically across the chapters in between (a body's factor is its
+  // authored weight × 5^((chapter-2)/14) — the weights inside a tier are
+  // untouched, so an ogre still hits harder than its escort). A blow therefore
+  // stays a roughly constant BITE out of whatever pool is carrying it, and the
+  // grind reads the same at both ends of the hall.
+  //
+  // The ramp is measured from chapter 2 because chapter 1 is the slime
+  // prologue, which is deliberately NOT a fight and sits below the scale
+  // entirely (see the slime entries). Bone is the first thing that can kill
+  // anyone, so bone is the ×1.
   //
   // The important thing is that this lives HERE, baked into what each body is,
   // rather than as a depth multiplier applied on the way out in progression.js.
@@ -239,6 +248,47 @@ const CONFIG = {
     { id: "warden", name: "KNOCHENWACHE", sprite: "skelet",
       hpMult: 2.2, dmgMult: 2.68, attackSpeedMult: 0.85, armor: 9,
       scale: 1.15, walkMult: 0.75, filter: "sepia(1) saturate(1.8) hue-rotate(175deg) brightness(0.95)" },
+
+    // --- Schleim. What the hall opens with, ahead of the bone, and the one
+    // family in the game that DIVIDES when you hurt it (`split` — the ladder it
+    // walks down is `slimeTiers` below). A slime walks in big, comes apart into
+    // two middling ones, and those come apart into small ones, so the opening
+    // camps teach "hit the thing" with a body that answers back visibly and
+    // cannot punish a slow answer: even the big one nibbles for 6 against a
+    // 112 HP hero, and its fragments for 2.
+    //
+    // Their HP is set so a FRESH hero — 24 damage, one Feuerball, no tree —
+    // walks the whole ladder: 44 splits into two 10s, and 76 into two 26s, which
+    // are middling ones that then shrink to small rather than dividing again.
+    // Nothing later in the hall ever sends a slime, which is the point of them.
+    //
+    // ART: these two are the only bodies in the hall that are NOT cut from the
+    // tileset. The sheet's smallest creatures are the tiny zombie and the
+    // goblin, and shrinking either one to vermin height turns a drawn character
+    // into a smudge with feet, so the slimes are drawn at the size they are
+    // meant to be seen — 12x10 against a skeleton's 16x16 — in sprite-art.js,
+    // to the sheet's own rules and out of the sheet's own palette. That is also
+    // why the size ladder only ever scales UP from the drawing: enlarging keeps
+    // every pixel of the face, shrinking is what loses it. No `filter` on
+    // either: they are two colourways of one drawing, which is exactly how the
+    // tileset itself ships `muddy` and `swampy`.
+    //
+    // (Written here rather than at the head of the table because the FIRST entry
+    // is the fallback an unknown variant id resolves to — see enemyTypeById —
+    // and that has to stay the plain skeleton.)
+    // The two factors below were 0,12 and 0,15 when `enemyBaseDmg` was 48, and
+    // they are what they are now for exactly the same reason: they are a
+    // FRACTION of that base, so when it came down to 12 they had to come up to
+    // hold the figures this comment quotes. A slime that nibbled for 6 kept
+    // nibbling for 6. Left alone they would have paid out 1,44 — and the
+    // fragment tiers below them 0,5 — which `sizeBody` floors at 1, collapsing
+    // the whole ladder onto a single number and quietly deleting the "a fist
+    // must not hit like a barrel" rule that `slimeTiers` exists to state.
+    // Anything that moves `enemyBaseDmg` again has to come back here.
+    { id: "slime", name: "SCHLEIM", sprite: "slime", split: true,
+      hpMult: 0.55, dmgMult: 0.5, attackSpeedMult: 0.7, armor: 0, scale: 1, walkMult: 1.1 },
+    { id: "slimeBlue", name: "TROPFLING", sprite: "slimeBlue", split: true,
+      hpMult: 0.95, dmgMult: 0.625, attackSpeedMult: 0.6, armor: 0, scale: 1, walkMult: 0.9 },
 
     // --- Goblins. Small, fast, in numbers: the swarm chapter.
     { id: "goblin", name: "KOBOLD", sprite: "goblin",
@@ -393,6 +443,41 @@ const CONFIG = {
       summon: { type: "chort", count: 1, everyMs: 7000, firstMs: 4000, max: 6 },
       filter: "hue-rotate(265deg) saturate(1.3) brightness(1.1)" },
   ],
+  // ===========================================================================
+  // SPLITTING, AND THE SIZE LADDER IT WALKS DOWN (variants with `split: true` —
+  // today that is the two slimes). A slime is not a body with a fixed size. It
+  // is a POOL OF HP that keeps coming apart: hit one and it divides in two, each
+  // half carrying half of what the hit left behind, and hit those and they
+  // divide again.
+  //
+  // WHAT A SLIME *IS* IS READ OFF WHAT IT HAS LEFT. These rungs are HP bands
+  // rather than variants — a body sitting on 44 HP is drawn as the big one, and
+  // that same body worn down to 26 is drawn as the middle one, with nothing
+  // anywhere having to remember which it started as. It follows that a slime
+  // visibly SHRINKS as it is chewed on, which is most of the pleasure of
+  // fighting one.
+  //
+  // `scale` multiplies the variant's own drawn size and `dmgMult` its own
+  // damage, and the second of those is what keeps the mechanic honest: a slime
+  // the size of a fist must not hit like one the size of a barrel, or a floor
+  // covered in fragments would add up to more danger than the single body they
+  // came off. Split all the way down, a camp hits for LESS than it did intact.
+  //
+  // THE BOTTOM RUNG IS THE FLOOR, AND IT IS THE WHOLE RULE. A slime divides only
+  // while BOTH halves would still land on the ladder — at twice the bottom
+  // rung's HP or more. Below that the hit lands and the body just shrinks a
+  // size: a 24 HP slime taking 10 is one 14 HP slime, not two 7 HP ones. Without
+  // that floor a slime camp ends as a corridor of 1 HP specks, each still owed
+  // its own cast.
+  //
+  // No HP is created by any of it. Two halves always add up to exactly what was
+  // left after the hit, so a slime camp is a fixed pool however often it
+  // divides — splitting buys the player more targets, never more health.
+  slimeTiers: [
+    { minHP: 10, scale: 1,   dmgMult: 0.35, prefix: "KLEINER " },  // 10–20
+    { minHP: 21, scale: 1.3, dmgMult: 0.6,  prefix: "" },          // 21–40
+    { minHP: 41, scale: 1.6, dmgMult: 1,    prefix: "GROSSER " },  // 41–100, the top of the ladder
+  ],
   // ARMOUR. A body's armour turns aside a FRACTION of every hit that lands on
   // it, never a flat amount:
   //
@@ -417,7 +502,7 @@ const CONFIG = {
   armorK: 10,
   armorMaxReduction: 0.75,
   wrongPenaltyFraction: 0.15, // a wrong match backfires for this fraction of the hero's MAX HP
-  enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
+  enemyDeathMs: 600,         // how long a skeleton dissolves for, once the blow has landed on it
   // DESIGNED ENCOUNTERS. Skeletons don't trickle in on a timer — the hall is a
   // fixed sequence of packs laid out at fixed metre marks, and the hero walking
   // past a mark is what sends that pack in. The packs and the schedule are in

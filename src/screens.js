@@ -561,8 +561,12 @@ function patchCombatContinuous(now) {
   // pool would otherwise look like a bar that's stuck. Every variant is named
   // now that the hall holds thirty of them: "which of these am I hitting" is a
   // question the player asks constantly once the corridor stops being skeletons.
+  // The body's own name first, then its variant's: a splitting slime renames
+  // itself as it shrinks (GROSSER SCHLEIM → SCHLEIM → KLEINER SCHLEIM, see
+  // sizeBody), so the bar has to read the body rather than the table it came off.
   const frontType = front && enemyTypeById(front.type);
-  const frontLabel = frontType && frontType.name ? ` · ${frontType.name}` : "";
+  const frontName = front && (front.name || (frontType && frontType.name));
+  const frontLabel = frontName ? ` · ${frontName}` : "";
   // Armour is shown as the share of every hit it turns aside, not as raw points:
   // that's the number the player actually feels, and it visibly falls as
   // penetration nodes are bought (see armorReduction).
