@@ -978,6 +978,30 @@ try {
     "every station carries a chip, all of them on screen (" + room.chips.join(" · ") + ")");
   check(room.people === 7, "the room is peopled (" + room.people + " figures, the mage included)");
 
+  //      The tavern's furniture is the only art in the game not cut from the
+  //      sprite sheet, so it is the only art that can drift away from it. Every
+  //      colour it uses has to be a colour the sheet itself uses — a hand-mixed
+  //      brown standing next to 0x72's browns is what makes a drawn-in prop look
+  //      pasted on.
+  const palette = await page.evaluate(() => {
+    const cv = document.createElement("canvas");
+    cv.width = tilesetImg.naturalWidth; cv.height = tilesetImg.naturalHeight;
+    const cx = cv.getContext("2d");
+    cx.imageSmoothingEnabled = false;
+    cx.drawImage(tilesetImg, 0, 0);
+    const d = cx.getImageData(0, 0, cv.width, cv.height).data;
+    const sheet = new Set();
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 128) continue;
+      sheet.add("#" + [d[i], d[i + 1], d[i + 2]].map((v) => v.toString(16).padStart(2, "0")).join(""));
+    }
+    const strays = Object.entries(TAV_PAL).filter(([, hex]) => !sheet.has(hex.toLowerCase()));
+    return { count: Object.keys(TAV_PAL).length, strays: strays.map(([k, v]) => k + "=" + v) };
+  });
+  check(palette.strays.length === 0,
+    "every colour the tavern's own art uses is one the sheet uses (" + palette.count +
+    " checked" + (palette.strays.length ? ", stray: " + palette.strays.join(" ") : "") + ")");
+
   //      The mage is not a still picture: left alone he picks somewhere to be
   //      and walks there.
   const strolled = await page.evaluate(async () => {

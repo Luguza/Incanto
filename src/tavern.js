@@ -23,24 +23,31 @@ let tavern = null;
 // Baked art: cast frame sets, furniture canvases, glows. Built once, lazily.
 let TAV = null;
 
-// The room's own palette. Warm woods and brass against the game's cool dark —
-// the tavern is the one place in Incanto that is supposed to feel lit.
+// The room's palette IS the sprite sheet's palette. Every colour below was
+// sampled out of assets/dungeon_tiles.png, because the furniture in this room is
+// the only art in the game that isn't cut from that sheet — and a hand-mixed
+// brown next to 0x72's browns is exactly what makes a drawn-in prop look pasted
+// on. The sheet's own idiom comes with it: a hard #222222 outline round every
+// object, a three-step ramp per material, and one bright edge where the light
+// lands. Nothing here invents a shade.
 const TAV_PAL = {
-  o: "#150f1c",   // outline / recess
-  w: "#5d3a20",   // wood, dark
-  W: "#7d5129",   // wood
-  L: "#a3703c",   // wood, lit
-  s: "#6f7a88",   // steel, dark
-  S: "#b8c0cc",   // steel
-  H: "#e6ecf3",   // steel highlight
-  p: "#f2ead0",   // parchment
-  g: "#c9a24a",   // brass / gold
-  r: "#8d2f36",   // red leather, cloth
-  b: "#33518f",   // blue book
-  t: "#2f7a5a",   // green book
-  k: "#2b2436",   // stone, dark
-  K: "#4a4258",   // stone
-  e: "#120a08",   // firebox / soot
+  ink: "#222222",        // the outline every object on the sheet wears
+  pit: "#111111",        // deepest recess (a firebox, the inside of a case)
+  wood: "#8f4029",       // plank
+  woodDark: "#62232f",   // plank seam / shadow
+  woodLit: "#c56025",    // plank, lit
+  woodEdge: "#ee8e2e",   // the bright edge the sheet puts on lit wood and brass
+  gold: "#facb3e",
+  stone: "#483b3a",      // wall and floor base
+  stoneLit: "#775c55",
+  stoneHi: "#aa8d7a",
+  bone: "#d3bfa9",
+  steel: "#b6cbcf",
+  white: "#fdf7ed",
+  red: "#9f294e", redLit: "#da4e38",
+  green: "#3d734f", greenLit: "#4ba747",
+  blue: "#5956bd", blueLit: "#5698cc",
+  teal: "#72d6ce",
 };
 
 // Room geometry, in the sheet's own 16px tiles.
@@ -87,105 +94,147 @@ const tavFrames = (rect, opts) =>
   Array.from({ length: rect.f || 1 }, (_, i) => cutFrame(tilesetImg, rect, i, opts));
 
 // ---------------------------------------------------------------------------
-// The furniture. None of it exists on the tileset, so it is drawn here — once,
-// at load — and blitted like any other sprite afterwards.
+// The furniture. A dungeon tileset has no tavern in it — no table, no bar, no
+// stool — so these are drawn here, once, at load, and blitted like any other
+// sprite afterwards. They are drawn the way the SHEET draws a crate: outlined in
+// #222222, flat front face, plank seams in the darker wood, one lit edge along
+// the top, and a round object given a shallow top ellipse (the sheet's own cue —
+// see its column cap and its chest lid). Front-on, never in plan.
 // ---------------------------------------------------------------------------
 const TP = TAV_PAL;
 
+// A filled ellipse, row by row. Round tops — a table, a stool's seat, a barrel's
+// rim — are the one shape a stack of rectangles cannot fake.
+function tavOval(r, cx, cy, rx, ry, col) {
+  for (let y = -ry; y <= ry; y++) {
+    const w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (y / ry) ** 2)));
+    if (w <= 0) continue;
+    r(cx - w, cy + y, w * 2, 1, col);
+  }
+}
+
+// The anvil, on the same silhouette the bottom bar's forge icon uses — a slab
+// with a horn off the left, a narrow stem, a splayed base — since that shape is
+// what makes an anvil an anvil at sixteen pixels. Written as row spans so the
+// #222222 outline can be laid around the whole thing before it is filled, which
+// is how every object on the sheet is built.
 function tavAnvil() {
-  return tavArt(18, 13, (ctx, r) => {
-    r(2, 1, 14, 1, TP.H);          // lit top face
-    r(1, 2, 15, 3, TP.S);
-    r(0, 3, 2, 2, TP.S);           // horn
-    r(1, 5, 15, 1, TP.s);
-    r(6, 6, 6, 3, TP.s);           // waist
-    r(4, 9, 10, 1, TP.S);
-    r(3, 10, 12, 2, TP.s);         // base
-    r(2, 12, 14, 1, TP.o);
+  const spans = [
+    [3, 13], [3, 13], [1, 13], [4, 12],
+    [7, 10], [7, 10], [7, 10],
+    [4, 12], [2, 14], [2, 14],
+  ];
+  const shade = [TP.steel, TP.stoneHi, TP.stoneHi, TP.stone,
+    TP.stoneLit, TP.stoneLit, TP.stone,
+    TP.stoneHi, TP.stoneLit, TP.stone];
+  return tavArt(16, 12, (ctx, r) => {
+    spans.forEach(([x0, x1], y) => r(x0 - 1, y, x1 - x0 + 2, 3, TP.ink));
+    spans.forEach(([x0, x1], y) => r(x0, y + 1, x1 - x0, 1, shade[y]));
   });
 }
 
 function tavShelf() {
-  const w = 28, h = 48, books = [TP.r, TP.b, TP.t, TP.g, TP.p];
+  const w = 28, h = 48;
+  const books = [TP.red, TP.blueLit, TP.green, TP.gold, TP.bone, TP.blue, TP.greenLit];
   return tavArt(w, h, (ctx, r) => {
-    r(0, 0, w, h, TP.w);           // carcass
-    r(1, 1, w - 2, h - 4, TP.e);   // recess
-    for (let s = 0; s < 4; s++) {
-      const plankY = 10 + s * 11;
-      let x = 2, i = 0;
-      while (x < w - 3) {
-        const bw = 2 + (tileHash(s, i) % 2);
-        const bh = 5 + (tileHash(i + 3, s) % 4);
-        r(x, plankY - bh, bw, bh, books[tileHash(s * 7 + i, 13) % books.length]);
+    r(0, 0, w, h, TP.ink);              // outline
+    r(1, 1, w - 2, h - 2, TP.wood);     // carcass
+    r(1, 1, w - 2, 1, TP.woodLit);      // lit top
+    r(3, 3, w - 6, h - 8, TP.pit);      // the dark inside
+    for (let sh = 0; sh < 4; sh++) {
+      const plankY = 11 + sh * 10;
+      let x = 4, i = 0;
+      while (x < w - 5) {
+        const bw = 2 + (tileHash(sh, i) % 2);
+        const bh = 5 + (tileHash(i + 3, sh) % 3);
+        r(x, plankY - bh, bw, bh, books[tileHash(sh * 7 + i, 13) % books.length]);
+        // only the odd volume catches the light on its page edge
+        if ((tileHash(i, sh + 5) % 4) === 0) r(x, plankY - bh, bw, 1, TP.bone);
         x += bw + 1; i++;
       }
-      r(1, plankY, w - 2, 2, TP.W);
-      r(1, plankY + 2, w - 2, 1, TP.o);
+      r(3, plankY, w - 6, 1, TP.woodLit);            // the shelf itself
+      r(3, plankY + 1, w - 6, 1, TP.woodDark);
     }
-    r(0, h - 4, w, 3, TP.W);       // plinth
-    r(0, h - 1, w, 1, TP.o);
+    r(1, h - 4, w - 2, 3, TP.woodDark);              // plinth
   });
 }
 
 function tavCounter(w) {
   const h = 20;
   return tavArt(w, h, (ctx, r) => {
-    r(0, 4, w, h - 5, TP.w);                      // front panel
-    for (let x = 4; x < w - 2; x += 8) r(x, 7, 1, h - 12, TP.o);
-    r(0, 0, w, 3, TP.L);                          // top plank
-    r(0, 3, w, 1, TP.W);
-    r(0, 4, w, 1, TP.o);                          // under-lip shadow
-    r(0, h - 1, w, 1, TP.o);                      // floor contact
+    r(0, 0, w, h, TP.ink);              // outline
+    r(1, 1, w - 2, 3, TP.wood);         // the top, seen a little from above
+    r(1, 1, w - 2, 1, TP.woodLit);      // its lit edge
+    r(1, 4, w - 2, 1, TP.woodDark);     // under-lip
+    r(1, 5, w - 2, 13, TP.wood);        // front panel
+    for (let x = 4; x < w - 2; x += 7) r(x, 6, 1, 11, TP.woodDark);   // plank seams
+    r(1, 17, w - 2, 2, TP.woodDark);    // foot rail in shadow
   });
 }
 
 function tavTable() {
-  return tavArt(22, 18, (ctx, r) => {
-    r(4, 1, 14, 2, TP.L);
-    r(1, 3, 20, 3, TP.W);
-    r(1, 6, 20, 1, TP.o);
-    r(9, 7, 4, 7, TP.w);            // stem
-    r(6, 14, 10, 2, TP.W);          // foot
-    r(5, 16, 12, 1, TP.o);
+  return tavArt(26, 19, (ctx, r) => {
+    tavOval(r, 13, 5, 13, 5, TP.ink);            // outlined top
+    tavOval(r, 13, 5, 12, 4, TP.wood);
+    tavOval(r, 13, 4, 10, 3, TP.woodLit);        // the lit half of the top
+    r(7, 2, 9, 1, TP.woodEdge);
+    r(4, 8, 18, 1, TP.woodDark);                 // the lip's shadow
+    r(11, 10, 4, 5, TP.wood);                    // pedestal
+    r(11, 10, 1, 5, TP.woodDark);
+    tavOval(r, 13, 16, 7, 2, TP.ink);            // foot
+    tavOval(r, 13, 16, 6, 1, TP.wood);
   });
 }
 
 function tavStool() {
-  return tavArt(10, 12, (ctx, r) => {
-    r(1, 1, 8, 2, TP.L);
-    r(1, 3, 8, 1, TP.o);
-    r(2, 4, 2, 6, TP.w);
-    r(6, 4, 2, 6, TP.w);
-    r(1, 10, 8, 1, TP.o);
+  return tavArt(13, 14, (ctx, r) => {
+    tavOval(r, 6, 3, 6, 3, TP.ink);
+    tavOval(r, 6, 3, 5, 2, TP.wood);
+    tavOval(r, 6, 2, 4, 1, TP.woodLit);
+    r(2, 6, 2, 6, TP.woodDark);                  // legs
+    r(9, 6, 2, 6, TP.woodDark);
+    r(5, 7, 2, 5, TP.wood);
+    r(2, 12, 9, 1, TP.ink);
   });
 }
 
 function tavBarrel() {
-  return tavArt(14, 18, (ctx, r) => {
-    r(1, 1, 12, 16, TP.W);
-    r(1, 1, 2, 16, TP.w);
-    r(11, 1, 2, 16, TP.w);
-    r(2, 0, 10, 1, TP.L);
-    r(0, 3, 14, 2, TP.g);           // hoops
-    r(0, 11, 14, 2, TP.g);
-    r(1, 17, 12, 1, TP.o);
+  return tavArt(14, 19, (ctx, r) => {
+    r(0, 2, 14, 17, TP.ink);                     // outline
+    r(1, 3, 12, 15, TP.wood);                    // body
+    r(4, 3, 1, 15, TP.woodDark);                 // staves
+    r(9, 3, 1, 15, TP.woodDark);
+    r(1, 5, 12, 2, TP.stoneLit);                 // iron hoops
+    r(1, 5, 12, 1, TP.stoneHi);
+    r(1, 13, 12, 2, TP.stoneLit);
+    r(1, 13, 12, 1, TP.stoneHi);
+    tavOval(r, 7, 2, 7, 2, TP.ink);              // rim, seen a little from above
+    tavOval(r, 7, 2, 6, 1, TP.woodLit);
+    r(5, 1, 4, 1, TP.woodEdge);
+    r(1, 18, 12, 1, TP.pit);
   });
 }
 
-// The hearth stands against the back wall and is the room's light. Its firebox
-// is left empty here — the fire itself is drawn per frame, so it flickers.
+// The hearth is built into the back wall, and its stonework is the wall's own
+// ramp so it reads as part of the masonry rather than a block parked against it.
+// The firebox is left empty; the fire is drawn per frame, so it flickers.
 function tavHearth() {
-  const w = 34, h = 40;
+  const w = 36, h = 44;
   return tavArt(w, h, (ctx, r) => {
-    r(0, 0, w, 5, TP.K);            // mantel shelf
-    r(1, 5, w - 2, h - 5, TP.k);    // stone body
-    for (let y = 8; y < h - 4; y += 6) {
-      for (let x = 2 + ((y / 6) % 2) * 5; x < w - 3; x += 10) r(x, y, 9, 1, TP.K);
+    r(0, 0, w, h, TP.ink);
+    r(1, 1, w - 2, 5, TP.stoneLit);              // mantel
+    r(2, 1, w - 4, 1, TP.stoneHi);
+    r(1, 7, w - 2, h - 8, TP.stone);             // surround
+    for (let y = 9; y < h - 5; y += 5) {         // courses, as on wall_mid
+      r(2, y, w - 4, 1, TP.stoneLit);
+      for (let x = 3 + ((y / 5) % 2) * 6; x < w - 3; x += 12) r(x, y - 3, 1, 3, TP.stoneLit);
     }
-    r(6, 14, 22, h - 14, TP.e);     // firebox
-    r(8, 12, 18, 2, TP.e);          // arch
-    r(11, 10, 12, 2, TP.e);
-    r(5, h - 3, 24, 3, TP.K);       // hearth lip
+    r(8, 16, 20, h - 16, TP.pit);                // firebox
+    r(10, 13, 16, 3, TP.pit);                    // its arch
+    r(13, 11, 10, 2, TP.pit);
+    r(7, 15, 22, 1, TP.stoneHi);                 // lintel edge, catching the fire
+    r(4, h - 3, 28, 2, TP.stoneLit);             // hearthstone
+    r(4, h - 1, 28, 1, TP.ink);
   });
 }
 
@@ -432,12 +481,14 @@ function buildTavernBg() {
   // The rug: the middle of the room, with the tables scattered over it.
   const rugX = Math.round(artW * 0.16), rugW = Math.round(artW * 0.66);
   const rugY = tavern.floorY + Math.round(tavern.depth * 0.44), rugH = Math.round(tavern.depth * 0.3);
-  rect(rugX, rugY, rugW, rugH, "#59202a");
-  rect(rugX + 2, rugY + 2, rugW - 4, rugH - 4, "#6d2a34");
-  rect(rugX + 5, rugY + 5, rugW - 10, rugH - 10, "#8d2f36");
-  for (let x = rugX + 10; x < rugX + rugW - 10; x += 12) rect(x, rugY + 9, 5, rugH - 18, "#6d2a34");
-  for (let x = rugX + 4; x < rugX + rugW - 4; x += 6) rect(x, rugY + 1, 3, 1, "#c9a24a");
-  for (let x = rugX + 4; x < rugX + rugW - 4; x += 6) rect(x, rugY + rugH - 2, 3, 1, "#c9a24a");
+  rect(rugX, rugY, rugW, rugH, TP.ink);
+  rect(rugX + 1, rugY + 1, rugW - 2, rugH - 2, TP.red);
+  rect(rugX + 3, rugY + 3, rugW - 6, rugH - 6, TP.woodDark);
+  for (let x = rugX + 9; x < rugX + rugW - 10; x += 11) rect(x, rugY + 7, 4, rugH - 14, TP.red);
+  for (let x = rugX + 4; x < rugX + rugW - 5; x += 6) {
+    rect(x, rugY + 2, 3, 1, TP.gold);
+    rect(x, rugY + rugH - 3, 3, 1, TP.gold);
+  }
 
   // Hanging on the wall: the hearth, the door out to the corridor, the plank of
   // bottles over the bar, and — only where the wall has the room for them, since
@@ -449,8 +500,9 @@ function buildTavernBg() {
     blit(SHEET.bannerGreen, tavern.bannerX + TILE, TILE);
   }
   const bx = tavern.bottleX, bw = Math.min(46, Math.max(24, tavern.counterW - 8));
-  rect(bx, floorY - 13, bw, 2, TP.W);
-  rect(bx, floorY - 11, bw, 1, TP.o);
+  rect(bx, floorY - 14, bw, 1, TP.woodLit);
+  rect(bx, floorY - 13, bw, 1, TP.wood);
+  rect(bx, floorY - 12, bw, 1, TP.ink);
   TAV.flasks.forEach((fl, i) => {
     if (bx + 1 + i * 11 + 16 <= bx + bw) ctx.drawImage(fl, bx + 1 + i * 11, floorY - 26);
   });
@@ -541,8 +593,12 @@ function tavUpdateActor(a, now, dt) {
     }
     const nx = a.x + (dx / dist) * step, ny = a.y + (dy / dist) * step;
     // Slide along whichever axis is free rather than walking into a table; if
-    // both are blocked the destination is unreachable, so give it up.
-    if (!tavBlocked(nx, ny)) { a.x = nx; a.y = ny; }
+    // both are blocked the destination is unreachable, so give it up. Standing
+    // inside something is the one case that ignores all of it and simply walks
+    // out — a room rebuilt at another size can leave a figure inside a stool
+    // that wasn't there a frame ago, and being stuck for ever is not an option.
+    if (tavBlocked(a.x, a.y)) { a.x = nx; a.y = ny; }
+    else if (!tavBlocked(nx, ny)) { a.x = nx; a.y = ny; }
     else if (!tavBlocked(nx, a.y)) { a.x = nx; }
     else if (!tavBlocked(a.x, ny)) { a.y = ny; }
     else { a.moving = false; a.goal = null; a.waitUntil = now + 500; return; }
@@ -578,9 +634,18 @@ function tavernTapPoint(artX, artY) {
   for (const st of tavern.stations) {
     if (Math.abs(artX - st.x) < 22 && artY > st.y - 34 && artY < st.y + 14) { tavernGo(st.id); return; }
   }
-  if (tavBlocked(artX, artY)) return;
+  // A tap that lands ON something walks to the nearest clear floor instead of
+  // being swallowed: the thumb aimed at a place, not at a pixel.
+  let tx = artX, ty = artY;
+  if (tavBlocked(tx, ty)) {
+    const spot = [[0, 14], [0, -14], [-18, 0], [18, 0], [-18, 14], [18, 14], [0, 28]]
+      .map(([dx, dy]) => ({ x: artX + dx, y: artY + dy }))
+      .find((q) => !tavBlocked(q.x, q.y));
+    if (!spot) return;
+    tx = spot.x; ty = spot.y;
+  }
   const m = tavern.mage;
-  m.tx = artX; m.ty = artY; m.goal = null; m.arriveAt = 0; m.waitUntil = 0; m.moving = true;
+  m.tx = tx; m.ty = ty; m.goal = null; m.arriveAt = 0; m.waitUntil = 0; m.moving = true;
   tavern.focus = null;
 }
 
@@ -616,7 +681,7 @@ function renderTavern(now) {
   // tavern that is never still. Two logs, three tongues of flame on their own
   // clocks, embers, and the pool it throws across the boards.
   const hx = tavern.hearth.x + 17, hy = tavern.hearth.y + TAV.hearth.height - 6;
-  ctx.fillStyle = TP.w;
+  ctx.fillStyle = TP.woodDark;
   ctx.fillRect(hx - 9, hy - 2, 18, 3);
   ctx.fillRect(hx - 6, hy - 5, 13, 3);
   ctx.save();
@@ -677,7 +742,8 @@ function renderTavern(now) {
     if (p.candle) {
       // A candle on the table: a stub, a flame, and the light it throws.
       const cx = Math.round(p.x + p.w / 2), cy = Math.round(p.feet - p.h + 1);
-      ctx.fillStyle = TP.p; ctx.fillRect(cx - 1, cy - 4, 2, 4);
+      ctx.fillStyle = TP.white; ctx.fillRect(cx - 1, cy - 4, 2, 4);
+      ctx.fillStyle = TP.bone; ctx.fillRect(cx, cy - 3, 1, 3);
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.fillStyle = "rgba(255, 226, 150, 0.95)";
