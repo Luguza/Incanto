@@ -111,6 +111,23 @@ errors, confirms the scene renders, and exercises the delegated UI dispatch:
 node tools/smoke-test.mjs        # exits non-zero on any failure
 ```
 
+For anything that touches how hard the hall hits — `enemyBaseDmg`, a variant's
+`dmgMult`, the attack cadence, hero HP or regen — run the attrition tool, which
+walks a build down all 160 camps and reports how deep it gets before it falls:
+
+```bash
+node tools/attrition.mjs                      # the committed balance
+node tools/attrition.mjs enemyBaseDmg=20      # try a number without editing config
+```
+
+Two things to read off it. The **Skelettschläge** column is how many plain
+skeleton blows the pool is worth — under ~8 and a single camp settles the run
+instead of grinding it down. The **chapter table** is the grind itself: LP lost
+per camp should climb steadily with depth, and a chapter costing a grown hero 0
+LP means the hall has stopped threatening him there. Its model is an upper bound
+on the hero (no rune misses, no healers mending, no summons), so read it for
+comparison between two sets of numbers, not as a prediction.
+
 For scene/visual changes, don't rely on code-reading alone. Drive the game
 headlessly with the pre-installed Chromium (Playwright, `executablePath` under
 `/opt/pw-browsers/`) and screenshot `canvas.scene`. Note: canvas asset building
