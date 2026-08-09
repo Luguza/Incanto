@@ -44,8 +44,24 @@ const TAV_PAL = {
 };
 
 // Room geometry, in the sheet's own 16px tiles.
-const TAV_WALL_ROWS = 3;                    // 1 cap row + 2 rows of brick face
-const TAV_FLOOR_Y = TAV_WALL_ROWS * TILE;   // wall → floor line, in art px
+//
+// THE PERSPECTIVE IS THE CORRIDOR'S. This tileset is drawn flat and side-on: a
+// wall is seen face-on and a floor is a SHALLOW band beneath it, three rows deep
+// in combat (see render-scene.js), with every figure standing on it at 1:1 — no
+// foreshortening, no scaling with depth. A deep floor turns the same tiles into
+// a floor plan seen from above, which is the one thing the art can't sell, so
+// the tavern is a wide, shallow stage: a tall wall face to hang the hearth, the
+// bottles and the door on, and a few rows of boards in front of it to stand on.
+// The floor stays shallow whatever the screen and the wall stays a wall — a
+// tavern's brick does not run up for ever. What fills the rest of a tall phone
+// is the DARK ABOVE: unlit rafters, with the lanterns and the house sign hanging
+// out of them on chains. That reads as a high hall instead of a bare warehouse,
+// and it costs the perspective nothing, because unlit air has no perspective.
+const TAV_WALL_ROWS_MIN = 4;                // 1 cap row + 3 rows of wall face
+const TAV_WALL_ROWS_MAX = 6;
+const TAV_FLOOR_ROWS_MIN = 3;               // the corridor's own depth …
+const TAV_FLOOR_ROWS_MAX = 5;               // … and as deep as this room ever gets
+const TAV_ROOM_W_MIN = 165;                 // narrowest the room may be, in art px
 const TAV_WALK_MS = 0.024;                  // art px per ms — an unhurried stroll
 
 // Frame rects for the tavern's cast, lifted from assets/tiles_list.txt. The mage
@@ -60,6 +76,18 @@ const TAV_CAST_SHEET = {
   guest:   { idle: { x: 128, y: 205, w: 16, h: 19, f: 4 }, run: { x: 192, y: 205, w: 16, h: 19, f: 4 } },
   guest2:  { idle: { x: 128, y: 74,  w: 16, h: 22, f: 4 }, run: { x: 192, y: 74,  w: 16, h: 22, f: 4 } },
 };
+
+// The stations, in the order the room reads left to right. WHAT they are is
+// fixed here; WHERE they stand is worked out per room in setupTavern, because
+// that depends on the size of the screen. Keeping the two apart is what lets the
+// board below be laid out before the canvas is measured — the board's height is
+// what decides how much stage the room has to fill.
+const TAV_STATIONS = [
+  { id: "forge", name: "Schmiede", phase: "upgrade", blurb: "Runen setzen" },
+  { id: "bar", name: "Schänke", phase: null, blurb: "Ein Krug Ruhe" },
+  { id: "hall", name: "Gang", phase: "combat", blurb: "In den Gang" },
+  { id: "study", name: "Bücherei", phase: "study", blurb: "Vokabeln üben" },
+];
 
 // Bottles for the bar top — the sheet's flasks, which read as tavern glassware
 // once they stand on a counter instead of in a dungeon.
@@ -172,20 +200,75 @@ function tavBarrel() {
   });
 }
 
-// The hearth stands against the back wall and is the room's light. Its firebox
-// is left empty here — the fire itself is drawn per frame, so it flickers.
+// The hearth is BUILT INTO the wall — a stone surround around a dark firebox,
+// seen face-on like every other thing hanging on that wall. Its firebox is left
+// empty here; the fire itself is drawn per frame, so it flickers.
 function tavHearth() {
-  const w = 34, h = 40;
+  const w = 36, h = 46;
   return tavArt(w, h, (ctx, r) => {
-    r(0, 0, w, 5, TP.K);            // mantel shelf
-    r(1, 5, w - 2, h - 5, TP.k);    // stone body
-    for (let y = 8; y < h - 4; y += 6) {
+    r(0, 0, w, 6, TP.K);            // mantel shelf
+    r(0, 6, w, 1, TP.k);
+    r(1, 7, w - 2, h - 7, TP.k);    // stone surround
+    for (let y = 10; y < h - 4; y += 6) {
       for (let x = 2 + ((y / 6) % 2) * 5; x < w - 3; x += 10) r(x, y, 9, 1, TP.K);
     }
-    r(6, 14, 22, h - 14, TP.e);     // firebox
-    r(8, 12, 18, 2, TP.e);          // arch
-    r(11, 10, 12, 2, TP.e);
-    r(5, h - 3, 24, 3, TP.K);       // hearth lip
+    r(7, 18, 22, h - 18, TP.e);     // firebox
+    r(9, 15, 18, 3, TP.e);          // its arch
+    r(12, 13, 12, 2, TP.e);
+    r(5, h - 3, 26, 3, TP.K);       // hearth lip on the floor line
+  });
+}
+
+// The way out to the corridor. The sheet's whole gate is 64 px wide — a third
+// of this room — so only its LEAF is cut, and the frame around it is painted to
+// match the hearth's stonework. Same door, narrower doorway.
+function tavDoor() {
+  const leaf = cutFrame(tilesetImg, { x: 32, y: 224, w: 32, h: 32 }, 0);
+  return tavArt(38, 36, (ctx, r) => {
+    r(0, 0, 38, 4, TP.K);                        // lintel
+    r(0, 4, 3, 32, TP.K);                        // jambs
+    r(35, 4, 3, 32, TP.K);
+    r(0, 3, 38, 1, TP.k);
+    ctx.drawImage(leaf, 3, 4);
+    r(0, 35, 38, 1, TP.o);                       // threshold
+  });
+}
+
+// A hanging lantern: the tall wall's own light, on a chain from the beam.
+function tavLantern(chain) {
+  const h = chain + 11;
+  return tavArt(9, h, (ctx, r) => {
+    r(4, 0, 1, chain, TP.s);                     // chain
+    r(3, chain, 3, 1, TP.g);                     // hanger
+    r(1, chain + 1, 7, 1, TP.g);                 // cap
+    r(1, chain + 2, 1, 7, TP.g);                 // frame
+    r(7, chain + 2, 1, 7, TP.g);
+    r(2, chain + 2, 5, 7, "#3a2a14");            // glass
+    r(3, chain + 4, 3, 4, "#ffd68a");            // flame behind it
+    r(1, chain + 9, 7, 1, TP.g);                 // base
+  });
+}
+
+// The house sign, hanging over the bar: a plank with a tankard painted on it.
+function tavSign() {
+  const w = 46, h = 26, chain = 7;
+  return tavArt(w, h, (ctx, r) => {
+    r(9, 0, 1, chain, TP.s);
+    r(w - 10, 0, 1, chain, TP.s);
+    r(0, chain, w, 2, TP.L);                     // top edge
+    r(0, chain + 2, w, h - chain - 3, TP.W);     // board
+    r(0, h - 1, w, 1, TP.o);
+    r(1, chain + 3, w - 2, 1, TP.L);
+    // a tankard, painted small and centred
+    const cx = Math.round(w / 2) - 5, cy = chain + 6;
+    r(cx, cy, 9, 2, TP.p);                       // foam
+    r(cx, cy + 2, 9, 8, TP.g);                   // ale
+    r(cx - 1, cy + 1, 1, 9, TP.o);
+    r(cx + 9, cy + 1, 1, 9, TP.o);
+    r(cx + 10, cy + 3, 2, 1, TP.o);              // handle
+    r(cx + 11, cy + 4, 1, 2, TP.o);
+    r(cx + 10, cy + 6, 2, 1, TP.o);
+    r(cx, cy + 10, 9, 1, TP.o);
   });
 }
 
@@ -203,7 +286,7 @@ function buildTavernArt() {
   }
   TAV = {
     cast,
-    door: cutFrame(tilesetImg, SHEET.doorsAll, 0),
+    door: tavDoor(),
     bannerRed: cutFrame(tilesetImg, SHEET.bannerRed, 0),
     bannerGreen: cutFrame(tilesetImg, SHEET.bannerGreen, 0),
     crate: cutFrame(tilesetImg, SHEET.crate, 0),
@@ -214,7 +297,9 @@ function buildTavernArt() {
     stool: tavStool(),
     barrel: tavBarrel(),
     hearth: tavHearth(),
+    sign: tavSign(),
     counter: null,                                  // sized with the room
+    lantern: null,                                  // chained to the wall's height
     shadow: shadowToCanvas(8, 3, 0.42),
     shadowSm: shadowToCanvas(6, 2, 0.36),
     glowFire: glowToCanvas(30, "255, 156, 66", 0.42),
@@ -225,9 +310,10 @@ function buildTavernArt() {
 }
 
 // ---------------------------------------------------------------------------
-// The room. Everything is placed off the art size, so the same tavern lays
-// itself out on a tall phone and a short landscape window alike: x from the
-// room's width, y as a fraction of the floor's depth.
+// The room, laid out the way the corridor is: a wall face across the top and a
+// shallow floor band under it. x comes off the room's width, y is a fraction of
+// that band's depth — never more than a few tile rows, so the floor stays a
+// floor rather than becoming a map.
 // ---------------------------------------------------------------------------
 function setupTavern(cv) {
   if (!tilesetImg.complete || !tilesetImg.naturalWidth) return false;
@@ -238,116 +324,118 @@ function setupTavern(cv) {
   const cssH = (box && box.clientHeight) || window.innerHeight || 560;
   // Integer device-pixel scale, the same rule the corridor uses: every art pixel
   // renders at exactly `px` device pixels, so nothing is drawn at uneven widths.
-  // ~175 art px across is the room's working width: the cast is 16px wide, so a
-  // wider room would leave the people too small to read on a phone and the floor
-  // too empty to furnish.
-  let px = Math.round((cssW * dpr) / 175) || 1;
-  px = Math.max(1, Math.min(px, Math.floor((cssH * dpr) / 175) || 1, 12));
+  // Zoom in as far as the room's narrowest workable width allows — the people
+  // are 16 px wide and have to read on a phone — then spend whatever height is
+  // left on floor rows first (up to the shallow ceiling) and wall rows after.
+  let px = Math.floor((cssW * dpr) / TAV_ROOM_W_MIN) || 1;
+  px = Math.max(1, Math.min(px, 12));
   const artW = Math.ceil((cssW * dpr) / px);
-  const artH = Math.ceil((cssH * dpr) / px);
+  // The canvas fills the stage; the room is then built UP from its bottom edge —
+  // boards, wall, and whatever is left over on top is the dark of the rafters.
+  const artH = Math.max((TAV_WALL_ROWS_MIN + TAV_FLOOR_ROWS_MIN) * TILE,
+    Math.floor((cssH * dpr) / px));
+  const rows = Math.floor(artH / TILE);
+  const floorRows = Math.max(TAV_FLOOR_ROWS_MIN,
+    Math.min(TAV_FLOOR_ROWS_MAX, rows - TAV_WALL_ROWS_MIN));
+  const wallRows = Math.max(TAV_WALL_ROWS_MIN,
+    Math.min(TAV_WALL_ROWS_MAX, rows - floorRows));
+  const depth = floorRows * TILE;
+  const floorY = artH - depth;                     // wall → floor line
+  const wallTop = Math.max(0, floorY - wallRows * TILE);
   cv.width = artW;
   cv.height = artH;
   cv.style.width = `${(artW * px) / dpr}px`;
   cv.style.height = `${(artH * px) / dpr}px`;
 
-  const floorY = TAV_FLOOR_Y;
-  const depth = Math.max(60, artH - floorY);
-  const fy = (frac) => Math.round(floorY + depth * frac);
+  // A spot on the floor band, as a fraction from the back wall to the front edge.
+  const fy = (frac) => Math.round(floorY + 6 + (depth - 12) * frac);
 
   // --- where everything stands -------------------------------------------
-  // Four corners of business: the forge back left, the bar across the middle,
-  // the door out to the corridor up on the right, and the books down in the
-  // right-hand corner. The open floor between them is what the mage strolls
-  // across and what the tables are scattered over.
-  const hearthX = 6;
-  const doorX = Math.max(hearthX + 46, artW - 70);
-  const counterW = Math.max(52, Math.min(88, Math.round(artW * 0.46)));
-  const counterX = Math.round(artW * 0.28);
-  const counterY = fy(0.26);                       // top plank, in art px
-  const counterFeet = counterY + 20;
+  // Read the room left to right, the way the wall is read: the forge in the
+  // corner by the fire, the bar across the middle under its bottles, the door
+  // out to the corridor, and the books at the far end. Depth is only ever used
+  // to put someone BEHIND something — the keeper behind his bar, a stool in
+  // front of it — never to spread the room out into a plan.
+  const hearthX = 4;
+  const doorX = artW - 46;
+  const counterW = Math.max(48, Math.min(78, Math.round(artW * 0.38)));
+  const counterX = Math.round(artW * 0.27);
+  const counterFeet = fy(0.5);
+  const counterY = counterFeet - 20;               // top plank, in art px
+  // The books stand in the FRONT-right corner rather than against the wall: the
+  // wall's right end is the doorway, and a 48px shelf parked in front of it
+  // would board the door up.
   const shelfX = artW - 32;
-  const shelfFeet = fy(0.80);
+  const shelfFeet = fy(0.88);
   const bottleX = counterX + 2;                    // the plank of bottles, on the wall
-  const bannerX = doorX > 132 ? 100 : 0;           // only where the wall has room for it
+  // Banners only where the wall has a gap left for them between the bottles and
+  // the door — on a narrow phone it hasn't.
+  const bannerGap = doorX - (bottleX + counterW);
+  const bannerX = bannerGap > 40 ? bottleX + counterW + Math.round((bannerGap - 32) / 2) : 0;
 
   TAV.counter = tavCounter(counterW);
+  // The rafters, and the beam everything hangs from — the lower of the two, so
+  // a chain starts on timber instead of in mid-air.
+  const rafterY = [Math.round(wallTop * 0.26), Math.round(wallTop * 0.66)];
+  const beamY = rafterY[1] >= 6 ? rafterY[1] + 4 : Math.max(2, wallTop - 24);
+  TAV.lantern = tavLantern(Math.max(8, wallTop + 34 - beamY));
 
   // Furniture that stands ON the floor: drawn in the depth-sorted pass with the
   // people, so the mage can walk behind a table and in front of the next one.
   const props = [
-    // the forge corner
-    { art: TAV.anvil, x: Math.round(artW * 0.05), feet: fy(0.11) },
-    { art: TAV.crate, x: Math.round(artW * 0.05) + 46, feet: fy(0.06) },
-    { art: TAV.barrel, x: Math.round(artW * 0.05), feet: fy(0.20) },
+    // the forge, in the corner by the fire
+    { art: TAV.anvil, x: hearthX + 8, feet: fy(0.34) },
+    { art: TAV.barrel, x: hearthX + 36, feet: fy(0.1) },
+    { art: TAV.table, x: hearthX + 6, feet: fy(0.94), candle: true },
+    { art: TAV.stool, x: hearthX + 26, feet: fy(0.99) },
     // the bar
-    { art: TAV.barrel, x: counterX + counterW + 2, feet: counterY + 4 },
-    { art: TAV.crate, x: doorX - 22, feet: fy(0.12) },
     { art: TAV.counter, x: counterX, feet: counterFeet },
-    { art: TAV.stool, x: counterX + 6, feet: counterFeet + 11 },
-    { art: TAV.stool, x: counterX + counterW - 24, feet: counterFeet + 12 },
-    // the tables
-    { art: TAV.table, x: Math.round(artW * 0.03), feet: fy(0.48), candle: true },
-    { art: TAV.stool, x: Math.round(artW * 0.03) + 24, feet: fy(0.52) },
-    { art: TAV.table, x: Math.round(artW * 0.44), feet: fy(0.64), candle: true },
-    { art: TAV.stool, x: Math.round(artW * 0.44) + 24, feet: fy(0.68) },
-    { art: TAV.stool, x: Math.round(artW * 0.44) - 12, feet: fy(0.67) },
-    // the reading corner
+    { art: TAV.barrel, x: counterX - 17, feet: counterFeet - 10 },
+    { art: TAV.stool, x: counterX + 8, feet: counterFeet + 14 },
+    { art: TAV.stool, x: counterX + counterW - 22, feet: counterFeet + 15 },
+    { art: TAV.crate, x: doorX - 26, feet: fy(0.14) },
+    // the middle of the room
+    { art: TAV.table, x: Math.round(artW * 0.46), feet: fy(0.99), candle: true },
+    // the reading corner, in the front right
     { art: TAV.shelf, x: shelfX, feet: shelfFeet },
-    { art: TAV.table, x: artW - 76, feet: fy(0.94), candle: true },
-    { art: TAV.stool, x: artW - 88, feet: fy(0.97) },
-    // odds and ends
-    { art: TAV.barrel, x: Math.round(artW * 0.06), feet: fy(0.86) },
-    { art: TAV.crate, x: Math.round(artW * 0.22), feet: fy(0.92) },
+    { art: TAV.stool, x: shelfX - 22, feet: fy(0.99) },
   ];
   for (const p of props) {
     p.w = p.art.width; p.h = p.art.height;
     // What the mage may not walk through: the prop's own footprint, widened a
-    // little so he rounds a table rather than clipping its corner.
-    p.block = { x0: p.x - 3, x1: p.x + p.w + 3, y0: p.feet - Math.min(p.h, 14), y1: p.feet + 7 };
+    // little so he rounds a table rather than clipping its corner. The band is
+    // shallow, so a prop only ever blocks a few rows of it.
+    p.block = { x0: p.x - 3, x1: p.x + p.w + 3, y0: p.feet - 7, y1: p.feet + 5 };
   }
 
-  const walk = {
-    x0: 10, x1: artW - 10,
-    y0: floorY + Math.round(depth * 0.16),
-    y1: floorY + Math.round(depth * 0.98),
-  };
+  const walk = { x0: 10, x1: artW - 10, y0: fy(0.1), y1: fy(1) };
 
   // Where the mage plants to use a station. Authored by hand and then nudged out
   // of the furniture, because a stand point that lands inside a stool is a walk
   // that can never finish — the layout shifts with the room's size, so the spot
   // has to be checked rather than trusted.
+  // The band is shallow, so a spot is looked for sideways as well as forward —
+  // stepping back out of a stool is rarely an option in three rows of floor.
   const freeSpot = (x, y) => {
-    for (let i = 0; i < 8; i++) {
-      const cy = Math.min(walk.y1, Math.max(walk.y0, y + i * 7));
-      const cx = Math.min(walk.x1, Math.max(walk.x0, x));
+    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    for (const [dx, dy] of [[0, 0], [0, 8], [-14, 0], [14, 0], [-14, 8], [14, 8], [0, -8], [24, 0]]) {
+      const cx = clamp(x + dx, walk.x0, walk.x1), cy = clamp(y + dy, walk.y0, walk.y1);
       if (!tavBlockedIn(props, walk, cx, cy)) return { x: cx, y: cy };
     }
-    return { x: Math.min(walk.x1, Math.max(walk.x0, x)), y: Math.min(walk.y1, Math.max(walk.y0, y)) };
+    return { x: clamp(x, walk.x0, walk.x1), y: clamp(y, walk.y0, walk.y1) };
   };
 
-  // --- the stations, and where the mage stands to use one -----------------
-  const stations = [
-    {
-      id: "forge", name: "Schmiede", phase: "upgrade",
-      x: Math.round(artW * 0.05) + 9, y: fy(0.11),
-      stand: freeSpot(Math.round(artW * 0.05) + 12, fy(0.11) + 16), face: -1,
-    },
-    {
-      id: "bar", name: "Schänke", phase: null,
+  // --- where each station stands, and where the mage stands to use it -----
+  const placed = {
+    forge: { x: hearthX + 17, y: fy(0.34), stand: freeSpot(hearthX + 30, fy(0.52)), face: -1 },
+    bar: {
       x: counterX + counterW / 2, y: counterFeet,
-      stand: freeSpot(counterX + counterW / 2, counterFeet + 20), face: 1,
+      stand: freeSpot(counterX + counterW / 2, counterFeet + 24), face: 1,
     },
-    {
-      id: "hall", name: "Gang", phase: "combat",
-      x: doorX + 32, y: floorY + 3,
-      stand: freeSpot(doorX + 32, floorY + Math.round(depth * 0.18)), face: 1,
-    },
-    {
-      id: "study", name: "Bücherei", phase: "study",
-      x: shelfX + 14, y: shelfFeet,
-      stand: freeSpot(shelfX - 26, shelfFeet + 10), face: 1,
-    },
-  ];
+    hall: { x: doorX + 19, y: floorY + 3, stand: freeSpot(doorX + 19, fy(0.24)), face: 1 },
+    study: { x: shelfX + 14, y: shelfFeet, stand: freeSpot(shelfX - 12, fy(0.72)), face: 1 },
+  };
+  const stations = TAV_STATIONS.map((st) => Object.assign({}, st, placed[st.id]));
 
   // --- the room's people ---------------------------------------------------
   // Three stand at their post and one carries drinks around; the mage is the
@@ -358,20 +446,20 @@ function setupTavern(cv) {
     roam: null, speed: TAV_WALK_MS,
   }, extra || {});
 
-  const mage = actor("mage", Math.round(artW * 0.5), fy(0.42), {
+  const mage = actor("mage", Math.round(artW * 0.42), fy(0.82), {
     roam: walk, wander: true, waitUntil: 0,
   });
   const people = [
-    actor("smith", Math.round(artW * 0.05) + 28, fy(0.10), { facing: -1 }),
-    // Behind the bar: his feet are above the counter's, so the depth sort draws
-    // the counter over his legs and he reads as standing behind it.
-    actor("keeper", counterX + Math.round(counterW * 0.6), counterY + 6, { facing: 1 }),
-    actor("scholar", shelfX - 12, shelfFeet + 3, { facing: 1 }),
-    actor("guest", counterX + 22, counterFeet + 13, { facing: 1 }),
-    actor("guest2", Math.round(artW * 0.03) + 30, fy(0.50), { facing: -1 }),
+    actor("smith", hearthX + 32, fy(0.3), { facing: -1 }),
+    // Behind the bar: his feet are further back than the counter's, so the depth
+    // sort draws the counter over his legs and he reads as standing behind it.
+    actor("keeper", counterX + Math.round(counterW * 0.62), counterFeet - 14, { facing: 1 }),
+    actor("scholar", shelfX - 12, shelfFeet + 4, { facing: 1 }),
+    actor("guest", counterX + 26, counterFeet + 15, { facing: 1 }),
+    actor("guest2", hearthX + 32, fy(0.96), { facing: -1 }),
     actor("maid", Math.round(artW * 0.5), fy(0.72), {
       wander: true, speed: TAV_WALK_MS * 1.15,
-      roam: { x0: 16, x1: artW - 26, y0: fy(0.34), y1: fy(0.96) },
+      roam: { x0: counterX - 20, x1: artW - 52, y0: fy(0.6), y1: fy(0.98) },
     }),
   ];
 
@@ -381,7 +469,9 @@ function setupTavern(cv) {
     props, stations, walk, mage, people,
     hearth: { x: hearthX, y: floorY + 2 - TAV.hearth.height },
     door: { x: doorX, y: floorY + 3 - TAV.door.height },
-    bottleX, bannerX, counterX, counterW, counterY,
+    bottleX, bannerX, counterX, counterW, counterY, wallTop, beamY, rafterY,
+    // The two hanging lanterns, out of the way of the sign and the fire.
+    lanternX: [Math.round(artW * 0.18), Math.round(artW * 0.78)],
     focus: null,
     lastNow: 0,
     bg: null,
@@ -406,9 +496,24 @@ function buildTavernBg() {
 
   rect(0, 0, artW, artH, "#120d18");
   const cols = Math.ceil(artW / TILE);
+  const wallTop = tavern.wallTop;
+  // The rafters: unlit air above the wall, with two beams crossing it. Drawn
+  // face-on like everything else, and dark enough that the eye reads depth
+  // rather than a ceiling it has to believe in.
+  const roof = ctx.createLinearGradient(0, 0, 0, wallTop + 4);
+  roof.addColorStop(0, "#08060d");
+  roof.addColorStop(1, "#150f1e");
+  ctx.fillStyle = roof;
+  ctx.fillRect(0, 0, artW, Math.max(0, wallTop));
+  for (const by of tavern.rafterY) {
+    if (by < 6) continue;
+    rect(0, by, artW, 4, "#2f1e0b");
+    rect(0, by, artW, 1, "#4d3216");
+    rect(0, by + 4, artW, 1, "rgba(0, 0, 0, 0.5)");
+  }
   for (let c = 0; c < cols; c++) {
-    blit(SHEET.wallTopMid, c * TILE, 0);
-    for (let y = TILE; y < floorY; y += TILE) blit(SHEET.wallMid, c * TILE, y);
+    blit(SHEET.wallTopMid, c * TILE, wallTop);
+    for (let y = wallTop + TILE; y < floorY; y += TILE) blit(SHEET.wallMid, c * TILE, y);
   }
   for (let r = 0; r * TILE + floorY < artH; r++) {
     for (let c = 0; c < cols; c++) {
@@ -417,37 +522,80 @@ function buildTavernBg() {
       blit(tile, c * TILE, floorY + r * TILE);
     }
   }
-  // Floorboards: the dungeon's flagstones washed with wood and lined, so the
-  // tavern reads as a built room rather than the corridor with furniture in it.
+  // The boards. A tavern floor is wood, so the flagstones are washed warm — but
+  // the PLANKS have to run into the room, not across it: on a floor seen this
+  // flat, lines that recede are what say "floor" instead of "map". They are laid
+  // out from the room's vanishing centre, so they fan very slightly apart toward
+  // the front edge, and the seams between planks step in from the wall.
   ctx.save();
   ctx.globalCompositeOperation = "source-atop";
-  ctx.fillStyle = "rgba(96, 58, 28, 0.42)";
+  ctx.fillStyle = "rgba(104, 62, 30, 0.5)";
   ctx.fillRect(0, floorY, artW, artH - floorY);
   ctx.restore();
-  for (let y = floorY + 7; y < artH; y += 8) rect(0, y, artW, 1, "rgba(20, 12, 8, 0.35)");
+  const vanish = artW / 2, depth = artH - floorY;
+  for (let i = -14; i <= 14; i++) {
+    const back = vanish + i * 13;
+    const front = vanish + i * 13 * 1.34;           // planks widen toward the viewer
+    for (let y = 0; y < depth; y++) {
+      const t = y / depth;
+      rect(Math.round(back + (front - back) * t), floorY + y, 1, 1, "rgba(24, 14, 9, 0.34)");
+    }
+  }
+  // Cross-seams, spaced out as they come forward — the one honest depth cue a
+  // flat floor has.
+  let seam = floorY + Math.round(depth * 0.22);
+  for (let step = Math.round(depth * 0.26); seam < artH; step = Math.round(step * 1.35)) {
+    rect(0, seam, artW, 1, "rgba(24, 14, 9, 0.3)");
+    seam += step;
+  }
 
   // The wall→floor contact shadow.
   for (let y = 0; y < 7; y++) rect(0, floorY + y, artW, 1, `rgba(0, 0, 0, ${(0.45 * (1 - y / 7)).toFixed(3)})`);
 
-  // The rug: the middle of the room, with the tables scattered over it.
-  const rugX = Math.round(artW * 0.16), rugW = Math.round(artW * 0.66);
-  const rugY = tavern.floorY + Math.round(tavern.depth * 0.44), rugH = Math.round(tavern.depth * 0.3);
-  rect(rugX, rugY, rugW, rugH, "#59202a");
-  rect(rugX + 2, rugY + 2, rugW - 4, rugH - 4, "#6d2a34");
-  rect(rugX + 5, rugY + 5, rugW - 10, rugH - 10, "#8d2f36");
-  for (let x = rugX + 10; x < rugX + rugW - 10; x += 12) rect(x, rugY + 9, 5, rugH - 18, "#6d2a34");
-  for (let x = rugX + 4; x < rugX + rugW - 4; x += 6) rect(x, rugY + 1, 3, 1, "#c9a24a");
-  for (let x = rugX + 4; x < rugX + rugW - 4; x += 6) rect(x, rugY + rugH - 2, 3, 1, "#c9a24a");
+  // The rug, drawn in the floor's perspective: a band that widens as it comes
+  // forward, not the rectangle a plan view would put here.
+  const rugTop = floorY + Math.round(depth * 0.5), rugH = Math.round(depth * 0.44);
+  const halfBack = artW * 0.24, halfFront = artW * 0.34;
+  for (let y = 0; y < rugH; y++) {
+    const t = y / rugH;
+    const half = halfBack + (halfFront - halfBack) * t;
+    const edge = y < 2 || y > rugH - 3;
+    rect(Math.round(vanish - half), rugTop + y, Math.round(half * 2), 1, edge ? "#59202a" : "#8d2f36");
+    if (!edge) {
+      rect(Math.round(vanish - half), rugTop + y, 3, 1, "#59202a");
+      rect(Math.round(vanish + half) - 3, rugTop + y, 3, 1, "#59202a");
+    }
+  }
+  // Its pattern runs into the room with the boards.
+  for (const i of [-2, -1, 0, 1, 2]) {
+    for (let y = 3; y < rugH - 3; y++) {
+      const t = y / rugH;
+      const half = halfBack + (halfFront - halfBack) * t;
+      const x = vanish + i * half * 0.42;
+      rect(Math.round(x - 1), rugTop + y, 3, 1, "#6d2a34");
+    }
+  }
 
-  // Hanging on the wall: the hearth, the door out to the corridor, the plank of
-  // bottles over the bar, and — only where the wall has the room for them, since
-  // a narrow phone's wall is already full — a pair of banners.
+  // --- what hangs on the wall ---------------------------------------------
+  // A beam under the cap row, and everything else hangs off it: that is what
+  // keeps a tall wall from reading as bare brick, and it is all face-on, which
+  // is the only way this tileset lets a wall be drawn.
+  const beamY = tavern.beamY;
+
   ctx.drawImage(TAV.hearth, tavern.hearth.x, tavern.hearth.y);
   ctx.drawImage(TAV.door, tavern.door.x, tavern.door.y);
   if (tavern.bannerX) {
-    blit(SHEET.bannerRed, tavern.bannerX, TILE);
-    blit(SHEET.bannerGreen, tavern.bannerX + TILE, TILE);
+    blit(SHEET.bannerRed, tavern.bannerX, wallTop + TILE);
+    blit(SHEET.bannerGreen, tavern.bannerX + TILE, wallTop + TILE);
   }
+  // The house sign over the bar, and a lantern to each side of the room. Both
+  // only where the wall is tall enough to hang something from without it landing
+  // on the bottles.
+  ctx.drawImage(TAV.sign, Math.round(tavern.counterX + tavern.counterW / 2 - TAV.sign.width / 2), beamY);
+  for (const lx of tavern.lanternX) ctx.drawImage(TAV.lantern, lx, beamY);
+  // A skull, nailed up by the door the way the corridor's are strewn across it.
+  blit(SHEET.skull, tavern.door.x - 20, floorY - 26);
+
   const bx = tavern.bottleX, bw = Math.min(46, Math.max(24, tavern.counterW - 8));
   rect(bx, floorY - 13, bw, 2, TP.W);
   rect(bx, floorY - 11, bw, 1, TP.o);
@@ -541,8 +689,12 @@ function tavUpdateActor(a, now, dt) {
     }
     const nx = a.x + (dx / dist) * step, ny = a.y + (dy / dist) * step;
     // Slide along whichever axis is free rather than walking into a table; if
-    // both are blocked the destination is unreachable, so give it up.
-    if (!tavBlocked(nx, ny)) { a.x = nx; a.y = ny; }
+    // both are blocked the destination is unreachable, so give it up. Standing
+    // inside something is the one case that ignores all of it and simply walks
+    // out — a room rebuilt at another size can leave a figure inside a stool
+    // that wasn't there a frame ago, and being stuck for ever is not an option.
+    if (tavBlocked(a.x, a.y)) { a.x = nx; a.y = ny; }
+    else if (!tavBlocked(nx, ny)) { a.x = nx; a.y = ny; }
     else if (!tavBlocked(nx, a.y)) { a.x = nx; }
     else if (!tavBlocked(a.x, ny)) { a.y = ny; }
     else { a.moving = false; a.goal = null; a.waitUntil = now + 500; return; }
@@ -578,9 +730,18 @@ function tavernTapPoint(artX, artY) {
   for (const st of tavern.stations) {
     if (Math.abs(artX - st.x) < 22 && artY > st.y - 34 && artY < st.y + 14) { tavernGo(st.id); return; }
   }
-  if (tavBlocked(artX, artY)) return;
+  // A tap that lands ON something walks to the nearest clear boards instead of
+  // being swallowed: the thumb aimed at a place, not at a pixel.
+  let tx = artX, ty = artY;
+  if (tavBlocked(tx, ty)) {
+    const spot = [[0, 12], [0, -12], [-16, 0], [16, 0], [-16, 12], [16, 12], [0, 24]]
+      .map(([dx, dy]) => ({ x: artX + dx, y: artY + dy }))
+      .find((p) => !tavBlocked(p.x, p.y));
+    if (!spot) return;
+    tx = spot.x; ty = spot.y;
+  }
   const m = tavern.mage;
-  m.tx = artX; m.ty = artY; m.goal = null; m.arriveAt = 0; m.waitUntil = 0; m.moving = true;
+  m.tx = tx; m.ty = ty; m.goal = null; m.arriveAt = 0; m.waitUntil = 0; m.moving = true;
   tavern.focus = null;
 }
 
@@ -648,6 +809,20 @@ function renderTavern(now) {
   ctx.fillRect(tavern.hearth.x - 8, tavern.floorY, 50, 46);
   ctx.restore();
 
+  // The two hanging lanterns, each breathing on its own clock.
+  if (TAV.lantern) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const lampY = tavern.beamY + TAV.lantern.height - 6;
+    tavern.lanternX.forEach((lx, i) => {
+      ctx.globalAlpha = 0.55 + 0.2 * Math.sin(now / (330 + i * 90) + i);
+      ctx.drawImage(TAV.glowCandle, lx + 4 - 9, lampY - 9);
+      ctx.globalAlpha = 0.3 + 0.1 * Math.sin(now / (410 + i * 70));
+      ctx.drawImage(TAV.glowEmber, lx + 4 - 13, lampY - 13);
+    });
+    ctx.restore();
+  }
+
   // Everything standing on the floor, back to front: a figure lower down the
   // room is nearer the camera, so it draws over what is behind it.
   const drawables = [];
@@ -695,6 +870,11 @@ function renderTavern(now) {
 // ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
+// The screen is the room plus the board under it. The room is a WIDE, SHALLOW
+// stage — that is what the tileset's perspective allows — so it can never fill a
+// portrait phone on its own, and the space under it is not padding to stretch
+// the picture into: it is where the stations are named and tapped, at the height
+// a thumb actually reaches. The picture above stays the picture.
 function renderTavernFull() {
   app.innerHTML = `
     <div class="screen tavern-screen" id="tavern-root">
@@ -704,44 +884,49 @@ function renderTavernFull() {
       </header>
       <div class="tav-stage" id="tav-stage">
         <canvas class="tav-scene" id="tav-scene"></canvas>
-        <div class="tav-chips" id="tav-chips"></div>
+      </div>
+      <div class="tav-board">
+        <div class="tav-cards" id="tav-cards"></div>
       </div>
     </div>`;
   tavern = null;                       // the canvas is new, so the room is rebuilt on it
   const cv = document.getElementById("tav-scene");
   if (cv) cv.addEventListener("click", onTavernCanvasTap);
-  if (setupTavern(cv)) placeTavernChips();
+  // The board first: it is content-sized, and the room is measured against
+  // whatever height it leaves — the other way round the canvas would be built
+  // against a stage that then shrinks under it.
+  renderTavernCards();
+  setupTavern(cv);
 }
 
-// The station labels: DOM chips over the canvas rather than text drawn into it,
-// so they stay crisp at any scale and go through the same delegated dispatch as
-// every other button in the game.
-function placeTavernChips() {
-  const host = document.getElementById("tav-chips");
-  if (!host || !tavern) return;
-  const s = tavern.cssScale;
-  host.innerHTML = tavern.stations.map((st) => {
-    const left = (st.x * s).toFixed(1), top = ((st.y - 30) * s).toFixed(1);
-    return `<button class="tav-chip${st.phase ? "" : " flavour"}" data-act="tavernGo"
-      data-args='["${st.id}"]' data-station="${st.id}"
-      style="left:${left}px; top:${top}px">${st.name}</button>`;
-  }).join("");
-  // A chip is centred on the thing it names, so one at the room's edge would
-  // hang off the screen — the door and the bookshelf both stand right against a
-  // wall. Measured after insertion and pulled back inside the stage.
-  const stageW = host.clientWidth;
-  for (const el of host.children) {
-    const half = el.offsetWidth / 2 + 6;
-    el.style.left = `${Math.min(Math.max(parseFloat(el.style.left), half), stageW - half).toFixed(1)}px`;
-  }
+// The board: one card per station, carrying the same pixel icon the bottom bar
+// uses for that phase, so the room's door and the bar's button are visibly the
+// same errand. Built once per structural render — nothing on it changes per
+// frame except which card is lit.
+const TAV_CARD_ICON = {
+  forge: () => navPixSvg(NAV_ANVIL),
+  study: () => navPixSvg(NAV_BOOK),
+  hall: () => navPixSvg(navWeaponRows()),
+  bar: () => navPixSvg(NAV_TANKARD),
+};
+
+function renderTavernCards() {
+  const host = document.getElementById("tav-cards");
+  if (!host) return;
+  host.innerHTML = TAV_STATIONS.map((st) => `
+    <button class="tav-card${st.phase ? "" : " flavour"}" data-act="tavernGo"
+      data-args='["${st.id}"]' data-station="${st.id}">
+      <span class="tav-card-icon">${(TAV_CARD_ICON[st.id] || (() => ""))()}</span>
+      <span class="tav-card-text"><b>${st.name}</b><i>${st.blurb}</i></span>
+    </button>`).join("");
 }
 
 function patchTavernContinuous(now) {
   const cv = document.getElementById("tav-scene");
   if (!cv) return;
   if (!tavern || tavern.cv !== cv) {
+    renderTavernCards();
     if (!setupTavern(cv)) return;      // sheet still loading — try again next frame
-    placeTavernChips();
   }
   const dt = tavern.lastNow ? Math.min(64, now - tavern.lastNow) : 16;
   tavern.lastNow = now;
@@ -749,14 +934,13 @@ function patchTavernContinuous(now) {
   tavUpdateActor(tavern.mage, now, dt);
   if (state.screen !== "tavern") return;   // a station handed off mid-frame
   renderTavern(now);
-  const chips = document.getElementById("tav-chips");
-  if (chips) {
-    for (const el of chips.children) {
-      el.classList.toggle("on", el.dataset.station === tavern.focus);
-    }
+  const cards = document.getElementById("tav-cards");
+  if (cards) {
+    for (const el of cards.children) el.classList.toggle("on", el.dataset.station === tavern.focus);
   }
 }
 
 window.Incanto.tavern = {
   renderTavernFull, patchTavernContinuous, tavernGo, tavernTapPoint, setupTavern,
+  renderTavernCards,
 };

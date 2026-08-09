@@ -521,13 +521,15 @@
   .reward-screen .dim { margin-top: 16px; }
 
   /* ---------------------------------------------------------------------------
-     The tavern (see src/tavern.js) — the home room. A full-bleed pixel scene
-     with the station labels floating over it as chips: the picture is the
-     navigation, and the chips are what a thumb actually aims at.
+     The tavern (see src/tavern.js) — the home room. The scene is a WIDE, SHALLOW
+     stage in the tileset's own flat perspective, so it fills the width and sits
+     on the floor of the stage with dark air above it; the station board under it
+     is where the thumb actually works.
      --------------------------------------------------------------------------- */
   .tavern-screen {
     justify-content: flex-start; align-items: stretch;
-    overflow: hidden; background: #100c17;
+    overflow: hidden;
+    background: linear-gradient(180deg, #0b0810 0%, #140f1c 46%, #17131e 100%);
   }
   .tav-top {
     flex: 0 0 auto; z-index: 2;
@@ -543,30 +545,50 @@
     padding: 5px 11px; border-radius: var(--r-pill);
     background: var(--gold-1); border: 1px solid var(--gold-2);
   }
-  /* The stage is the positioning context the chips are placed in: their left/top
-     come from the room's own art coordinates, scaled by the canvas' CSS scale
-     (see placeTavernChips), so a chip always sits over the thing it names. */
+  /* The room is bottom-anchored in whatever height is left over: the wall's top
+     cap ends the picture, exactly as the corridor's does, and the space above is
+     the dark of the rafters rather than a gap. */
   .tav-stage {
     position: relative; flex: 1 1 auto; min-height: 0; width: 100%;
+    display: flex; align-items: flex-end; justify-content: center;
     line-height: 0; overflow: hidden;
   }
   canvas.tav-scene { display: block; image-rendering: pixelated; touch-action: manipulation; }
-  .tav-chips { position: absolute; inset: 0; pointer-events: none; }
-  .tav-chip {
-    position: absolute; transform: translate(-50%, -100%);
-    pointer-events: auto; cursor: pointer; white-space: nowrap;
-    padding: 5px 11px; border-radius: var(--r-pill);
-    font-size: 12px; font-weight: 700; letter-spacing: 0.6px; line-height: 1.1;
-    color: var(--arcane-pale);
-    background: rgba(18, 14, 26, 0.82); border: 1px solid var(--arcane-3);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
-    transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease),
-                background var(--dur) var(--ease);
+
+  /* The board: the four stations, named. */
+  .tav-board {
+    flex: 0 0 auto; z-index: 2;
+    padding: 12px 12px calc(env(safe-area-inset-bottom) + 4px);
+    background: linear-gradient(180deg, rgba(11, 8, 16, 0) 0%, rgba(11, 8, 16, 0.92) 22%, #100c17 100%);
   }
-  .tav-chip:active { background: rgba(40, 32, 58, 0.92); color: var(--ink); }
-  .tav-chip.on { color: #17121f; background: var(--arcane); border-color: var(--arcane-lt); }
-  /* A station that leads nowhere yet is quieter — it is furniture with a name,
-     not a door. */
-  .tav-chip.flavour { color: var(--ink-3); border-color: var(--edge); font-weight: 600; }
-  .tav-chip.flavour:active { color: var(--ink-2); }
+  .tav-cards {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    width: 100%; max-width: var(--measure); margin: 0 auto;
+  }
+  .tav-card {
+    display: flex; align-items: center; gap: 9px; text-align: left;
+    min-width: 0;                      /* grid items must be free to shrink */
+    padding: 9px 11px; cursor: pointer;
+    border: 1px solid var(--edge); border-radius: var(--r-2);
+    background: var(--panel); color: var(--ink);
+    box-shadow: var(--shadow-1);
+    transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
+                box-shadow var(--dur) var(--ease);
+  }
+  .tav-card:active { background: var(--raised); border-color: var(--arcane-3); }
+  .tav-card.on { border-color: var(--arcane); box-shadow: var(--glow-arcane), var(--shadow-1); }
+  .tav-card-icon { flex: 0 0 auto; line-height: 0; }
+  .tav-card-icon .nav-icon { width: 24px; height: 24px; opacity: 0.85; }
+  .tav-card.on .nav-icon { opacity: 1; filter: drop-shadow(0 0 5px rgba(127, 244, 241, 0.55)); }
+  .tav-card-text { display: flex; flex-direction: column; min-width: 0; }
+  .tav-card-text b {
+    font-size: 14px; font-weight: 700; letter-spacing: 0.4px; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tav-card-text i {
+    font-style: normal; font-size: 11px; color: var(--ink-4); letter-spacing: 0.2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* A station that leads nowhere yet is furniture with a name, not a door. */
+  .tav-card.flavour { background: var(--sunk); border-style: dashed; }
+  .tav-card.flavour .tav-card-text b { color: var(--ink-3); font-weight: 600; }
