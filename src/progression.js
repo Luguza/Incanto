@@ -201,7 +201,10 @@ function splitOrShrink(e, at) {
   const type = enemyTypeById(e.type);
   if (!type.split || e.hp <= 0) return null;
   sizeBody(e, type);                                    // it is whatever is left of it
-  if (e.phase === "struck" || e.phase === "dying") return null;
+  // A body with a killing blow already booked does not divide — but note the
+  // re-size above still ran, and should have: a non-fatal hit that landed first
+  // really did take it down a size, and it wears that for the moment it has left.
+  if (doomed(e)) return null;
   // The floor: below twice the bottom rung there is no pair of slimes to become,
   // so the shrink above was the whole of it.
   if (e.hp < 2 * CONFIG.slimeTiers[0].minHP) return null;
@@ -293,12 +296,12 @@ function spawnEnemy(now, lane, pos, typeId) {
     slot: id,                     // per-enemy constant, only used to de-sync the idle animation
     lane,
     pos,
-    phase: "walk",                // walk | idle | attack | struck | dying
+    phase: "walk",                // walk | idle | attack | frozen | dying
     phaseAt: now,
     attackAt: 0,                  // next time this body lands a hit
     attackAnimAt: 0,              // start of the current forward-jab animation
-    struckUntil: 0,               // while `struck`: when the bolt lands and it collapses
-    splitAt: 0,                   // a splitting body: when the blow that hurt it arrives (see splitOrShrink)
+    deathAt: 0,                   // >0: already killed, but only collapses when the blow ARRIVES
+    splitAt: 0,                   // >0: a splitting body, waiting on the same arrival (see splitOrShrink)
     frozenUntil: 0,               // held fast by a Frostkegel until this moment (see updateEnemies)
     actAt: 0,                     // next summon/mend (0 = hasn't planted yet — see updateSupport)
     actFxAt: 0,                   // when the rune/beam of that act was thrown, for the draw

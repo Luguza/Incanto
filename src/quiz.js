@@ -46,6 +46,25 @@ function synonymsFor(pair, promptKey, answerKey) {
   return [...new Set(WORD_POOL.filter((p) => p[promptKey] === pair[promptKey]).map((p) => p[answerKey]))];
 }
 
+// The three sentence exercises share one pool, and a random draw out of it
+// repeats far sooner than it feels like it should — two draws in the same
+// session landing on the same sentence is the birthday problem, not bad luck.
+// So the sentences just served are remembered and skipped: a ring of the last
+// CONFIG.quizSentenceMemory of them, which spans many sessions' worth of draws.
+// Memory only — a reload starts the pool fresh, which is the point at which a
+// repeat no longer reads as one.
+const recentSentences = [];
+function drawSentence() {
+  const memory = Math.min(CONFIG.quizSentenceMemory, SENTENCE_POOL.length - 1);
+  const recent = new Set(recentSentences.slice(-memory));
+  // Falls back to the whole pool if the filter left nothing (a pool smaller than
+  // the memory, say) so a draw can never come back empty.
+  const s = sampleN(SENTENCE_POOL, 1, (x) => !recent.has(x))[0] || sampleN(SENTENCE_POOL, 1)[0];
+  recentSentences.push(s);
+  if (recentSentences.length > memory) recentSentences.splice(0, recentSentences.length - memory);
+  return s;
+}
+
 // Which WORD_POOL entry a question is drilling. Every question carries its
 // `words` (pool indices) so the learning history can tally the outcome against
 // the vocabulary itself rather than the exercise — see vocab-history.js. The
@@ -96,7 +115,7 @@ function makeMatch() {
 
 function makeFill(kind) {
   // kind: "fill-choose" (word bank) or "fill-type" (keyboard)
-  const s = sampleN(SENTENCE_POOL, 1)[0];
+  const s = drawSentence();
   const tokens = s.it.split(" ");
   const blankIdx = tokens.indexOf(s.blank);
   const blankWord = wordIndexByIt(s.blank);
@@ -110,7 +129,7 @@ function makeFill(kind) {
 }
 
 function makeArrange() {
-  const s = sampleN(SENTENCE_POOL, 1)[0];
+  const s = drawSentence();
   const answer = s.it.split(" ");
   const distractors = sampleN(SENTENCE_WORDS, 2, (w) => !answer.includes(w));
   // Bank tiles are shuffled; each carries the token plus a stable tile id so a
@@ -527,4 +546,4 @@ function advanceQuiz() {
   state._structuralDirty = true;
 }
 
-window.Incanto.quiz = { buildQuiz, goToQuiz, advanceQuiz, quizChoose, quizTypeInput, quizCheckType, quizFillCheckType, quizMatchTap, quizArrangeAdd, quizArrangeRemove, quizCheckArrange, quizReveal, quizConjInput, quizCheckConjTable, conjRowCorrect, conjLevels, conjTopLevel, makeConj };
+window.Incanto.quiz = { buildQuiz, goToQuiz, advanceQuiz, quizChoose, quizTypeInput, quizCheckType, quizFillCheckType, quizMatchTap, quizArrangeAdd, quizArrangeRemove, quizCheckArrange, quizReveal, quizConjInput, quizCheckConjTable, conjRowCorrect, conjLevels, conjTopLevel, makeConj, makeFill, makeArrange };

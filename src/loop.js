@@ -95,13 +95,20 @@ function laneSpacing(front, behind) {
 // own steady cadence) once it settles within attack range. No shared windup bar
 // — each keeps its own timer. Finished deaths are culled.
 function updateEnemies(now, dt) {
-  // A struck skeleton stands its ground until the bolt lands, then it collapses:
-  // that's when the death animation begins (phaseAt resets so the dissolve runs
-  // cleanly from here).
+  // A doomed skeleton runs, swings and slides like any other until the blow that
+  // killed it actually reaches it. `deathAt` is that arrival (booked by
+  // applySpellHit), and it is the ONE thing that starts the collapse — a
+  // fireball crosses the hall in nearly half a second and a meteor takes longer
+  // still, so a body that halted and began dissolving when the shape was drawn
+  // read as dying of nothing, with its own spell still in the air behind it.
+  //
+  // The dissolve is timed off `deathAt` rather than off `now`, so it starts on
+  // the same instant the hit flash punches instead of a frame or two later.
   for (const e of state.enemies) {
-    if (e.phase === "struck" && now >= e.struckUntil) {
+    if (e.deathAt && now >= e.deathAt) {
       e.phase = "dying";
-      e.phaseAt = now;
+      e.phaseAt = e.deathAt;
+      e.deathAt = 0;
     }
   }
   // …and a slime that survived one comes apart on the same beat, for the same
@@ -192,9 +199,11 @@ function updateEnemies(now, dt) {
         e.shunted = (e.shunted || 0) + (shoved - e.pos);
       }
       e.pos = shoved;
-      if (e.phase === "dying" || e.phase === "struck") {
-        // a doomed/crumbling skeleton still holds its tile until it's culled, so
-        // the ranks behind it can't walk through the corpse
+      if (e.phase === "dying") {
+        // a crumbling skeleton still holds its tile until it's culled, so the
+        // ranks behind it can't walk through the corpse. A body whose killing
+        // blow is still in the air is NOT held here — it marches on with the
+        // rest of its rank and only stops when the blow lands.
         limit = e.pos + laneSpacing(e, behind);
         chainSettled = false;
         continue;
@@ -312,7 +321,11 @@ function enemyMeleeStrike(now, e) {
         y: (scene.laneY[e.lane] ?? scene.feetY) - enemyArt(e).h - 3,
       });
     }
-    if (e.hp <= 0) { e.phase = "dying"; e.phaseAt = now; creditKill(); }
+    // Thorns are CONTACT damage — there is nothing in flight to wait for, so a
+    // body it finishes drops on the spot. A body already doomed by a spell still
+    // crossing the hall is left alone: its death is booked (and counted) for the
+    // moment that spell arrives, and killing it twice would credit two kills.
+    if (e.hp <= 0 && !doomed(e)) { e.phase = "dying"; e.phaseAt = now; creditKill(); }
   }
 }
 
@@ -428,7 +441,7 @@ function summonBodies(now, e, spec) {
 function mendAlly(now, e, spec) {
   let best = null, worst = 1;
   for (const other of state.enemies) {
-    if (other.phase === "dying" || other.phase === "struck") continue;
+    if (doomed(other)) continue;   // no mending a body with a bolt already in the air
     if (other.hp >= other.maxHP) continue;
     if (Math.abs(other.pos - e.pos) > spec.radius) continue;
     const frac = other.hp / other.maxHP;

@@ -165,6 +165,30 @@ try {
   check(bought.rank === 1, "delegated data-act='treeBuy' fired treeBuy() (migp0 rank=" + bought.rank + ")");
   check(bought.gold < before, "buying the node spent gold (" + before + " -> " + bought.gold + ")");
 
+  //    …and picking nodes never moves the web. The info panel under the canvas
+  //    is as tall as whatever it describes, so the canvas box changes height on
+  //    every tap. It used to carry a fixed 900-unit viewBox, which meant the SVG
+  //    rescaled and re-centred its contents to fit that box — so choosing a node
+  //    visibly resized and jumped the whole tree. The viewBox now tracks the box
+  //    in CSS pixels instead (see syncTreeViewport), pinning the picture where it
+  //    is. Guard: the camera's on-screen matrix must be identical for every
+  //    selection, even though the panel below is demonstrably changing height.
+  const still = await page.evaluate(() => {
+    const ids = Object.keys(Incanto.skilltree.TREE_NODES);
+    const read = () => {
+      const m = document.getElementById("tree-cam").getScreenCTM();
+      return {
+        cam: [m.a, m.d, m.e, m.f].map((v) => +v.toFixed(3)).join(","),
+        info: +document.querySelector(".tree-info").getBoundingClientRect().height.toFixed(1),
+      };
+    };
+    const seen = [];
+    for (const id of ["root", ids[3], ids[40], ids[200], ids[600]]) { selectNode(id); seen.push(read()); }
+    return { cams: [...new Set(seen.map((s) => s.cam))], panels: [...new Set(seen.map((s) => s.info))] };
+  });
+  check(still.panels.length > 1, "the info panel really does change height per node (" + still.panels.join(" / ") + "px)");
+  check(still.cams.length === 1, "…yet the tree's camera never moves with it (" + still.cams.length + " distinct transforms: " + still.cams.join(" | ") + ")");
+
   // 5. The skill tree is authored, not grown (see skilltree.js): twelve arms out
   //    of one seed, one connected acyclic graph, every sealed page reachable by
   //    exactly one unlock node, and no node overlapping another on screen.
@@ -347,6 +371,42 @@ try {
   const inert = await page.evaluate(() => state.quizIndex);
   check(inert === 0, "keys do not drive the game — a stray Enter/Space changes nothing (index " + inert + ")");
 
+  // 8a2. The sentence exercises must not keep serving the same sentences. Three
+  //      questions of every session come out of SENTENCE_POOL, so the pool has
+  //      to be deep and the draw has to remember what it just showed (see
+  //      drawSentence + CONFIG.quizSentenceMemory). Drawn here the way a long
+  //      evening of play would draw it.
+  const sentences = await page.evaluate(() => {
+    const drawn = [];
+    const options = [];
+    for (let i = 0; i < 120; i++) {
+      const fc = Incanto.quiz.makeFill("fill-choose");
+      options.push(fc.options);
+      drawn.push(fc.tokens.join(" "),
+        Incanto.quiz.makeFill("fill-type").tokens.join(" "),
+        Incanto.quiz.makeArrange().answer.join(" "));
+    }
+    const last = {}; let minGap = Infinity;
+    drawn.forEach((s, i) => { if (s in last) minGap = Math.min(minGap, i - last[s]); last[s] = i; });
+    return {
+      pool: Incanto.SENTENCE_POOL.length,
+      memory: CONFIG.quizSentenceMemory,
+      optionCount: CONFIG.quizOptionCount,
+      distinct: new Set(drawn).size,
+      drawn: drawn.length,
+      minGap,
+      badOptions: options.filter((o) => o.length !== CONFIG.quizOptionCount || new Set(o).size !== o.length).length,
+    };
+  });
+  check(sentences.pool >= 200, "the sentence pool is deep enough to draw from (" + sentences.pool + " sentences)");
+  check(sentences.minGap > sentences.memory,
+    "a sentence never comes back inside the draw's memory (" + sentences.minGap + " draws apart, memory " + sentences.memory + ")");
+  check(sentences.distinct >= sentences.pool * 0.6,
+    "a long session works through most of the pool (" + sentences.distinct + " different sentences over " +
+    sentences.drawn + " draws)");
+  check(sentences.badOptions === 0,
+    "fill-the-blank always offers " + sentences.optionCount + " distinct options of the answer's own kind");
+
   // 8b. Conjugation drills (see quiz.js + CONFIG.conjugation). A ladder over one
   //     verb's present tense: tap the pairs together, pick a form, write a form,
   //     fill half a table, and at the top write the whole paradigm out from
@@ -487,6 +547,33 @@ try {
   });
   check(kept.saved === 2 && kept.level === 2 && kept.streak === 1,
     "the rung the learner reached survives a reload (Stufe " + (kept.level + 1) + ")");
+
+  // 8c. Every node has to print a real number. The tree divides
+  //     CONFIG.treeTotals across a thousand-odd nodes and three thousand ranks,
+  //     so the smallest slices are genuinely tiny — and rounded to whole percent
+  //     they came out as "+0 % Krit-Chance" on a node costing real gold. Two
+  //     things keep that from happening and this guards both: the floors in
+  //     applyTreeTotals, under which no node's share may fall, and the tooltip's
+  //     decimal place (treeNum). So: read what ONE rank of every node in the
+  //     tree would say, and let no zero through.
+  const worthless = await page.evaluate(() => {
+    const { TREE_NODES: N, effectText } = Incanto.skilltree;
+    const bad = [];
+    for (const id in N) {
+      if (id === "root") continue;
+      const n = N[id];
+      for (const k in n.effect) {
+        const says = effectText({ [k]: n.effect[k] }, 1);
+        // A whole figure that is nothing but zeros — "+0%", "+0 LP", "0,0s".
+        // "+0,3%" is a real number and must pass, so the token has to END here.
+        if (/(^|[^\d])0(?:[,.]0+)?(?![\d,.])/.test(says)) bad.push(`${n.title} (${id}): ${says}`);
+      }
+    }
+    return { bad: bad.slice(0, 6), count: bad.length, nodes: Object.keys(N).length - 1 };
+  });
+  check(worthless.count === 0,
+    `no node in the tree sells a zero (${worthless.nodes} nodes read)` +
+    (worthless.count ? " — " + worthless.count + ": " + worthless.bad.join(", ") : ""));
 
   // 9. Binding the book (see book-order.js): the forge's book button opens the
   //    whole spell book as three open volumes, and a page dragged onto another
@@ -919,6 +1006,52 @@ try {
   check(roles.mended, "a healer puts HP back on the wounded body in front of it");
   check(roles.summoned > 0, `a summoner calls in bodies of its own (${roles.summoned})`);
 
+  //     A spell takes time to cross the hall, and a body it has already killed
+  //     must go on running until it ARRIVES — stopping dead and dissolving at the
+  //     moment the shape was drawn reads as dying of nothing.
+  const flight = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    startRun();
+    state.heroMaxHP = state.heroHP = 100000;
+    state.mods.regen = 0;
+    state.heroDmg = 100000;              // one-shot whatever it lands on
+    state.mods.castHaste = 1e6;          // no wind-up, so the flight IS the whole delay
+    state.enemies = [];
+    state.enemyShots = [];
+    const e = spawnEnemy(performance.now(), 1, 9, CONFIG.enemyTypes[0].id);
+    await settle(200);                   // let it get up to a walk out in the hall
+    const from = e.pos;
+    const kills0 = state.kills;
+    const t0 = performance.now();
+    onShapeComplete(t0);
+    const booked = e.deathAt ? Math.round(e.deathAt - t0) : null;
+    // Sample across the flight: it must still be walking, and still moving.
+    const seen = new Set();
+    let posAtLand = e.pos, earlyStop = false;
+    for (let i = 0; i < 40 && e.phase !== "dying"; i++) {
+      await settle(25);
+      if (performance.now() - t0 < CONFIG.spells.fireball.flightMs - 60) {
+        seen.add(e.phase);
+        posAtLand = e.pos;
+        if (e.phase === "dying") earlyStop = true;
+      }
+    }
+    await settle(700);                   // and the dissolve still finishes
+    return {
+      booked, flightMs: CONFIG.spells.fireball.flightMs,
+      phases: [...seen], earlyStop,
+      walked: +(from - posAtLand).toFixed(2),
+      kills: state.kills - kills0,
+      culled: !state.enemies.includes(e),
+    };
+  });
+  check(flight.booked !== null && Math.abs(flight.booked - flight.flightMs) < 40,
+    `a fatal hit books its death for the moment the spell arrives (+${flight.booked}ms of ${flight.flightMs}ms flight)`);
+  check(!flight.earlyStop && flight.phases.join() === "walk" && flight.walked > 0.15,
+    `the doomed body keeps running while the ball is in the air (${flight.walked} tiles, phase ${flight.phases.join("/")})`);
+  check(flight.kills === 1 && flight.culled,
+    "it then collapses, is culled, and is counted exactly once");
+
   //     And walking onto the hall's last metre ends the run the one way that
   //     isn't dying.
   const cleared = await page.evaluate(() => {
@@ -946,7 +1079,9 @@ try {
   await page.evaluate(() => {
     state.devMode = false;
     state.gold = 500;
-    state.nodeRanks = {}; Incanto.skilltree.treeBuy("migp0"); Incanto.skilltree.treeBuy("migp0");
+    // Two nodes rather than two ranks of one, so the check doesn't depend on
+    // how deep a particular archetype happens to rank.
+    state.nodeRanks = {}; Incanto.skilltree.treeBuy("migp0"); Incanto.skilltree.treeBuy("vigp0");
     state.screen = "upgrade"; state.tree = null;
     state._structuralDirty = true;
     render(performance.now());
@@ -985,7 +1120,8 @@ try {
   // Wiping the tree: the first tap only arms the button.
   await page.click(".dev-btn");
   await page.waitForTimeout(120);
-  check(await page.evaluate(() => state.nodeRanks.migp0 === 2 && /Wirklich/.test(document.querySelector(".dev-btn").textContent)),
+  check(await page.evaluate(() => state.nodeRanks.migp0 > 0 && state.nodeRanks.vigp0 > 0
+      && /Wirklich/.test(document.querySelector(".dev-btn").textContent)),
     "the first tap on the wipe asks instead of wiping");
   await page.click(".dev-btn");
   await page.waitForTimeout(120);

@@ -44,10 +44,13 @@ function freshState() {
     gold: 0,
     // Designed packs walk in from the right as the hero passes their metre marks
     // (see encounters.js). An enemy: {id, maxHP, hp, dmg, slot, lane, pos, phase,
-    // phaseAt, attackAt, attackAnimAt, struckUntil}. `pos` is in tiles to the
-    // right of the hero (0 = at him); `phase` is walk | idle | attack | struck |
-    // dying. `struck` = fatally hit, standing until the bolt lands, then it
-    // collapses.
+    // phaseAt, attackAt, attackAnimAt, deathAt, splitAt}. `pos` is in tiles to
+    // the right of the hero (0 = at him); `phase` is walk | idle | attack |
+    // frozen | dying and says only what the body is visibly DOING. Whether it is
+    // already dead is `deathAt`: a fatal hit books the moment the blow arrives,
+    // and until then the body keeps marching and swinging as though nothing had
+    // hit it. `splitAt` is the same clock for the other thing a blow can do —
+    // a slime coming apart (see progression.splitOrShrink).
     kills: 0,                 // bodies slain this run (the end-screen score)
     // Bolts a ranged body has in the air: {shooterId, dmg, rgb, born, landAt,
     // from, hit}. They carry their own damage and land on their own clock (see
@@ -256,8 +259,13 @@ function applySavedProgress() {
         // present-day equivalent so nobody's tree progress is silently wiped
         const mapped = nodes[id] ? id : legacy[id];
         const node = mapped ? nodes[mapped] : null;
-        if (node) ranks[mapped] = Math.min((ranks[mapped] || 0) + r, node.maxRank);
-        else orphanedRanks += r;
+        if (!node) { orphanedRanks += r; continue; }
+        // A node reshaped since the save was written can hold fewer ranks than
+        // the save bought. Those ranks were paid for, so they refund like any
+        // other rank the current tree has nowhere to put.
+        const want = (ranks[mapped] || 0) + r;
+        ranks[mapped] = Math.min(want, node.maxRank);
+        orphanedRanks += want - ranks[mapped];
       }
       state.nodeRanks = ranks;
       state.gold += orphanedRanks * REPLANT_REFUND;

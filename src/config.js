@@ -69,6 +69,10 @@ const CONFIG = {
   quizQuestionCount: 10, // one of each Duolingo-style exercise per session, plus two conjugation drills
   quizOptionCount: 4,
   quizMatchPairs: 5,     // tap-to-match exercise: pairs per board
+  quizSentenceMemory: 90, // the three sentence exercises (fill ×2, build) skip the last N sentences
+                          // they served, so a session works through SENTENCE_POOL instead of
+                          // rolling the same few. Kept well under the pool size — the draw falls
+                          // back to the full pool if the memory ever swallowed all of it
   goldPerCorrect: 12,
   // CONJUGATION DRILLS (see quiz.js + content.js CONJ_POOL). A ladder rather
   // than one exercise: each rung asks for more of the verb's paradigm and pays
@@ -443,7 +447,7 @@ const CONFIG = {
   armorK: 10,
   armorMaxReduction: 0.75,
   wrongPenaltyFraction: 0.15, // a wrong match backfires for this fraction of the hero's MAX HP
-  enemyDeathMs: 600,         // how long a struck skeleton dissolves once the bolt lands
+  enemyDeathMs: 600,         // how long a skeleton dissolves for, once the blow has landed on it
   // DESIGNED ENCOUNTERS. Skeletons don't trickle in on a timer — the hall is a
   // fixed sequence of packs laid out at fixed metre marks, and the hero walking
   // past a mark is what sends that pack in. The packs and the schedule are in
