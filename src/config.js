@@ -138,7 +138,25 @@ const CONFIG = {
   // VARIANT (see `enemyTypes` below), and a pack's threat from its shape, its
   // head count, and which variants the plan put in it.
   enemyBaseHP: 80,
-  enemyBaseDmg: 48,
+  // WHAT ONE BLOW COSTS. This is the single most load-bearing number in the
+  // hall, because HP is handed out once at the mouth of the corridor and never
+  // refilled (progression.js startRun) — a run is one long subtraction, so this
+  // number decides whether that subtraction is a grind or a guillotine.
+  //
+  // It used to be 48 against a 112 LP starting pool: a plain skeleton's blow was
+  // more than a third of everything the hero had, and the very first camp of the
+  // very first run settled it in three swings. That is not a corridor you are
+  // ground down in, it is a coin flip on whether your damage beats one body's
+  // walk-in — and it stayed a coin flip for the whole early game, because the
+  // pool does not grow anywhere near fast enough to catch up (see the ramp note
+  // below). Twelve makes the same blow ~9 % of the bare pool: nine blows, not
+  // three, and a lone skeleton is now something you outlast rather than race.
+  //
+  // Tune it with `node tools/attrition.mjs`, which walks a build down the whole
+  // plan and reports how many camps it clears. The rule that tool exists to
+  // guard: the pool must never be worth fewer than ~8 blows of the plainest
+  // thing that can reach it.
+  enemyBaseDmg: 12,
   // ===========================================================================
   // ENEMY VARIANTS — what a kind of body IS. The multipliers scale the two base
   // numbers above; everything else is how it reads and how it fights.
@@ -182,6 +200,34 @@ const CONFIG = {
   // not grown his damage stalls out and is ground down, instead of being one-shot
   // out of nowhere. That is what ties the far end of the hall to a nearly-grown
   // tree (see encounters.js) — you get there by killing faster, not by tanking.
+  //
+  // BUT A BLOW MUST STAY A BLOW, and that is what `dmgMult` is for. The hero's
+  // pool runs 112 LP bare to ~1.450 walked-out — thirteenfold. If a body's blow
+  // did not climb with it, one number would have to threaten both heroes at
+  // once, and no number can: the 48 that made a skeleton lethal at camp 1 was
+  // also, by camp 120, less than a grown hero regenerates between swings. That
+  // is exactly what used to happen. `node tools/attrition.mjs` traced a 90 %
+  // build down the whole plan and found chapters 7 through 14 costing it ZERO
+  // LP — the far hall was not a grind, it was a queue.
+  //
+  // So `dmgMult` now climbs with DEPTH, at roughly the rate the pool it is
+  // spending does: ×1 for the bone of chapter 2, ×5 by the time it reaches the
+  // door, geometrically across the chapters in between (a body's factor is its
+  // authored weight × 5^((chapter-2)/14) — the weights inside a tier are
+  // untouched, so an ogre still hits harder than its escort). A blow therefore
+  // stays a roughly constant BITE out of whatever pool is carrying it, and the
+  // grind reads the same at both ends of the hall.
+  //
+  // The ramp is measured from chapter 2 because chapter 1 is the slime
+  // prologue, which is deliberately NOT a fight and sits below the scale
+  // entirely (see the slime entries). Bone is the first thing that can kill
+  // anyone, so bone is the ×1.
+  //
+  // The important thing is that this lives HERE, baked into what each body is,
+  // rather than as a depth multiplier applied on the way out in progression.js.
+  // A hidden factor on the damage path is the kind of thing you cannot read off
+  // the bestiary, and the bestiary is supposed to be the whole truth about what
+  // a body does.
   // ===========================================================================
   enemyTypes: [
     // --- Bone. The hall's first language: what the opening chapters teach with.
@@ -195,12 +241,12 @@ const CONFIG = {
     // Bleached, small and quick — the first thing that reaches the hero before
     // he expected it. Dies to anything; there are simply a lot of them.
     { id: "runner", name: "KNOCHENLÄUFER", sprite: "skelet",
-      hpMult: 0.55, dmgMult: 0.7, attackSpeedMult: 1.5, armor: 0,
+      hpMult: 0.55, dmgMult: 0.78, attackSpeedMult: 1.5, armor: 0,
       scale: 0.85, walkMult: 1.8, filter: "sepia(0.9) saturate(1.9) brightness(1.12)" },
     // Steel-blue bone: the skeleton family's answer to a grown hero — plated,
     // slow, and not worth a fireball on its own.
     { id: "warden", name: "KNOCHENWACHE", sprite: "skelet",
-      hpMult: 2.2, dmgMult: 1.2, attackSpeedMult: 0.85, armor: 9,
+      hpMult: 2.2, dmgMult: 2.68, attackSpeedMult: 0.85, armor: 9,
       scale: 1.15, walkMult: 0.75, filter: "sepia(1) saturate(1.8) hue-rotate(175deg) brightness(0.95)" },
 
     // --- Schleim. What the hall opens with, ahead of the bone, and the one
@@ -230,92 +276,101 @@ const CONFIG = {
     // (Written here rather than at the head of the table because the FIRST entry
     // is the fallback an unknown variant id resolves to — see enemyTypeById —
     // and that has to stay the plain skeleton.)
+    // The two factors below were 0,12 and 0,15 when `enemyBaseDmg` was 48, and
+    // they are what they are now for exactly the same reason: they are a
+    // FRACTION of that base, so when it came down to 12 they had to come up to
+    // hold the figures this comment quotes. A slime that nibbled for 6 kept
+    // nibbling for 6. Left alone they would have paid out 1,44 — and the
+    // fragment tiers below them 0,5 — which `sizeBody` floors at 1, collapsing
+    // the whole ladder onto a single number and quietly deleting the "a fist
+    // must not hit like a barrel" rule that `slimeTiers` exists to state.
+    // Anything that moves `enemyBaseDmg` again has to come back here.
     { id: "slime", name: "SCHLEIM", sprite: "slime", split: true,
-      hpMult: 0.55, dmgMult: 0.12, attackSpeedMult: 0.7, armor: 0, scale: 1, walkMult: 1.1 },
+      hpMult: 0.55, dmgMult: 0.5, attackSpeedMult: 0.7, armor: 0, scale: 1, walkMult: 1.1 },
     { id: "slimeBlue", name: "TROPFLING", sprite: "slimeBlue", split: true,
-      hpMult: 0.95, dmgMult: 0.15, attackSpeedMult: 0.6, armor: 0, scale: 1, walkMult: 0.9 },
+      hpMult: 0.95, dmgMult: 0.625, attackSpeedMult: 0.6, armor: 0, scale: 1, walkMult: 0.9 },
 
     // --- Goblins. Small, fast, in numbers: the swarm chapter.
     { id: "goblin", name: "KOBOLD", sprite: "goblin",
-      hpMult: 0.5, dmgMult: 0.6, attackSpeedMult: 1.4, armor: 0, scale: 1, walkMult: 1.7 },
+      hpMult: 0.5, dmgMult: 0.75, attackSpeedMult: 1.4, armor: 0, scale: 1, walkMult: 1.7 },
     { id: "goblinRed", name: "BLUTKOBOLD", sprite: "goblin",
-      hpMult: 0.8, dmgMult: 1.0, attackSpeedMult: 1.5, armor: 0, scale: 1.1, walkMult: 1.8,
+      hpMult: 0.8, dmgMult: 1.26, attackSpeedMult: 1.5, armor: 0, scale: 1.1, walkMult: 1.8,
       filter: "sepia(1) saturate(3.4) hue-rotate(300deg)" },
     { id: "goblinIce", name: "FROSTKOBOLD", sprite: "goblin",
-      hpMult: 0.9, dmgMult: 0.8, attackSpeedMult: 1.2, armor: 4, scale: 1.05, walkMult: 1.4,
+      hpMult: 0.9, dmgMult: 1, attackSpeedMult: 1.2, armor: 4, scale: 1.05, walkMult: 1.4,
       filter: "sepia(1) saturate(2.4) hue-rotate(180deg) brightness(1.1)" },
 
     // --- Imps. The hall's first RANGED bodies: they never close, so the front
     // rank stops being the whole fight.
     { id: "imp", name: "FEUERIMP", sprite: "imp", role: "ranged",
-      hpMult: 0.7, dmgMult: 0.55, attackSpeedMult: 0.85, armor: 0, scale: 1, walkMult: 1.2,
+      hpMult: 0.7, dmgMult: 0.87, attackSpeedMult: 0.85, armor: 0, scale: 1, walkMult: 1.2,
       standoff: 6.5, range: 7.5, shot: { rgb: "242, 168, 58", ms: 420 } },
     { id: "impFrost", name: "EISIMP", sprite: "imp", role: "ranged",
-      hpMult: 0.95, dmgMult: 0.7, attackSpeedMult: 0.8, armor: 2, scale: 1, walkMult: 1.1,
+      hpMult: 0.95, dmgMult: 1.11, attackSpeedMult: 0.8, armor: 2, scale: 1, walkMult: 1.1,
       standoff: 7, range: 8, shot: { rgb: "121, 216, 238", ms: 420 },
       filter: "hue-rotate(195deg) saturate(1.3) brightness(1.1)" },
     { id: "impVoid", name: "SCHATTENIMP", sprite: "imp", role: "ranged",
-      hpMult: 1.2, dmgMult: 0.95, attackSpeedMult: 0.9, armor: 3, scale: 1.1, walkMult: 1.1,
+      hpMult: 1.2, dmgMult: 2.12, attackSpeedMult: 0.9, armor: 3, scale: 1.1, walkMult: 1.1,
       standoff: 7.5, range: 8.5, shot: { rgb: "192, 140, 255", ms: 380 },
       filter: "hue-rotate(265deg) saturate(0.9) brightness(0.8)" },
 
     // --- The rotting ranks. Slow, heavy, and the first real HP walls.
     { id: "zombie", name: "ZOMBIE", sprite: "zombie",
-      hpMult: 2.6, dmgMult: 1.3, attackSpeedMult: 0.7, armor: 0, scale: 1.1, walkMult: 0.55 },
+      hpMult: 2.6, dmgMult: 2.31, attackSpeedMult: 0.7, armor: 0, scale: 1.1, walkMult: 0.55 },
     { id: "muddy", name: "SCHLAMMLING", sprite: "muddy",
-      hpMult: 2.2, dmgMult: 1.1, attackSpeedMult: 0.7, armor: 6, scale: 1.1, walkMult: 0.5 },
+      hpMult: 2.2, dmgMult: 1.95, attackSpeedMult: 0.7, armor: 6, scale: 1.1, walkMult: 0.5 },
     { id: "swampy", name: "SUMPFLING", sprite: "swampy",
-      hpMult: 2.4, dmgMult: 1.2, attackSpeedMult: 0.75, armor: 4, scale: 1.1, walkMult: 0.6 },
+      hpMult: 2.4, dmgMult: 2.13, attackSpeedMult: 0.75, armor: 4, scale: 1.1, walkMult: 0.6 },
     { id: "iceZombie", name: "EISZOMBIE", sprite: "iceZombie",
-      hpMult: 3.0, dmgMult: 1.4, attackSpeedMult: 0.65, armor: 5, scale: 1.15, walkMult: 0.45 },
+      hpMult: 3.0, dmgMult: 4.42, attackSpeedMult: 0.65, armor: 5, scale: 1.15, walkMult: 0.45 },
 
     // --- Orcs. The armour chapters: nothing here dies to a hero who skipped
     // his damage nodes, and the masks are where penetration starts to pay.
     { id: "orc", name: "ORKKRIEGER", sprite: "orcWarrior",
-      hpMult: 2.0, dmgMult: 1.4, attackSpeedMult: 1, armor: 8, scale: 1, walkMult: 0.8 },
+      hpMult: 2.0, dmgMult: 1.98, attackSpeedMult: 1, armor: 8, scale: 1, walkMult: 0.8 },
     { id: "orcBlack", name: "SCHWARZORK", sprite: "orcWarrior",
-      hpMult: 2.6, dmgMult: 1.6, attackSpeedMult: 1, armor: 11, scale: 1.1, walkMult: 0.75,
+      hpMult: 2.6, dmgMult: 2.26, attackSpeedMult: 1, armor: 11, scale: 1.1, walkMult: 0.75,
       filter: "brightness(0.55) saturate(0.6)" },
     { id: "orcIron", name: "EISENORK", sprite: "orcWarrior",
-      hpMult: 3.0, dmgMult: 1.5, attackSpeedMult: 0.9, armor: 12, scale: 1.1, walkMult: 0.65,
+      hpMult: 3.0, dmgMult: 4.22, attackSpeedMult: 0.9, armor: 12, scale: 1.1, walkMult: 0.65,
       filter: "sepia(1) saturate(1.6) hue-rotate(180deg)" },
     { id: "maskedOrc", name: "MASKENORK", sprite: "maskedOrc",
-      hpMult: 3.0, dmgMult: 1.5, attackSpeedMult: 0.95, armor: 13, scale: 1.1, walkMult: 0.7 },
+      hpMult: 3.0, dmgMult: 4.22, attackSpeedMult: 0.95, armor: 13, scale: 1.1, walkMult: 0.7 },
     { id: "maskedOrcRed", name: "BLUTMASKE", sprite: "maskedOrc",
-      hpMult: 3.4, dmgMult: 1.7, attackSpeedMult: 1.25, armor: 12, scale: 1.15, walkMult: 0.85,
+      hpMult: 3.4, dmgMult: 4.78, attackSpeedMult: 1.25, armor: 12, scale: 1.15, walkMult: 0.85,
       filter: "sepia(1) saturate(3.4) hue-rotate(300deg)" },
 
     { id: "maskedOrcBone", name: "KNOCHENMASKE", sprite: "maskedOrc",
-      hpMult: 3.6, dmgMult: 1.6, attackSpeedMult: 1, armor: 15, scale: 1.2, walkMult: 0.65,
+      hpMult: 3.6, dmgMult: 8, attackSpeedMult: 1, armor: 15, scale: 1.2, walkMult: 0.65,
       filter: "saturate(0.15) brightness(1.35)" },
 
     // --- Shamans. HEALERS: they mend the body in front of them faster than a
     // small spell can chew it down, so the hall starts asking for real damage
     // (or for the player to kill the back rank first).
     { id: "shaman", name: "ORKSCHAMANE", sprite: "orcShaman", role: "healer",
-      hpMult: 1.6, dmgMult: 0.6, attackSpeedMult: 0.8, armor: 2, scale: 1, walkMult: 0.9,
+      hpMult: 1.6, dmgMult: 1.2, attackSpeedMult: 0.8, armor: 2, scale: 1, walkMult: 0.9,
       standoff: 8, heal: { frac: 0.16, everyMs: 3200, firstMs: 1800, radius: 7 } },
     { id: "shamanElder", name: "ÄLTESTER", sprite: "orcShaman", role: "healer",
-      hpMult: 2.4, dmgMult: 0.7, attackSpeedMult: 0.8, armor: 5, scale: 1.1, walkMult: 0.85,
+      hpMult: 2.4, dmgMult: 1.4, attackSpeedMult: 0.8, armor: 5, scale: 1.1, walkMult: 0.85,
       standoff: 8.5, heal: { frac: 0.26, everyMs: 2600, firstMs: 1500, radius: 9 },
       filter: "hue-rotate(270deg) saturate(1.2)" },
 
     { id: "shamanBlood", name: "BLUTSCHAMANE", sprite: "orcShaman", role: "healer",
-      hpMult: 2.0, dmgMult: 0.8, attackSpeedMult: 0.8, armor: 4, scale: 1.05, walkMult: 0.9,
+      hpMult: 2.0, dmgMult: 4, attackSpeedMult: 0.8, armor: 4, scale: 1.05, walkMult: 0.9,
       standoff: 8, heal: { frac: 0.2, everyMs: 2200, firstMs: 1400, radius: 8 },
       filter: "sepia(1) saturate(3.4) hue-rotate(300deg)" },
 
     // --- Wogols. The heavier ranged rank: they out-range the imps and hurt.
     { id: "wogol", name: "WOGOL", sprite: "wogol", role: "ranged",
-      hpMult: 1.3, dmgMult: 1.0, attackSpeedMult: 0.8, armor: 3, scale: 1, walkMult: 0.9,
+      hpMult: 1.3, dmgMult: 2.24, attackSpeedMult: 0.8, armor: 3, scale: 1, walkMult: 0.9,
       standoff: 7.5, range: 8.5, shot: { rgb: "154, 143, 240", ms: 380 } },
     { id: "wogolPale", name: "BLEICHER WOGOL", sprite: "wogol", role: "ranged",
-      hpMult: 1.7, dmgMult: 1.3, attackSpeedMult: 0.85, armor: 5, scale: 1.05, walkMult: 0.9,
+      hpMult: 1.7, dmgMult: 2.91, attackSpeedMult: 0.85, armor: 5, scale: 1.05, walkMult: 0.9,
       standoff: 8, range: 9, shot: { rgb: "234, 252, 255", ms: 340 },
       filter: "hue-rotate(185deg) saturate(0.8) brightness(1.25)" },
 
     { id: "wogolVoid", name: "SCHATTENWOGOL", sprite: "wogol", role: "ranged",
-      hpMult: 2.0, dmgMult: 1.6, attackSpeedMult: 0.9, armor: 6, scale: 1.1, walkMult: 0.85,
+      hpMult: 2.0, dmgMult: 5.67, attackSpeedMult: 0.9, armor: 6, scale: 1.1, walkMult: 0.85,
       standoff: 8.5, range: 9.5, shot: { rgb: "192, 140, 255", ms: 320 },
       filter: "hue-rotate(265deg) saturate(1.1) brightness(0.85)" },
 
@@ -324,17 +379,17 @@ const CONFIG = {
     // wrong order. `max` is the lifetime budget, so a stalled fight can't grow
     // without bound.
     { id: "necromancer", name: "NEKROMANT", sprite: "necromancer", role: "summoner",
-      hpMult: 2.0, dmgMult: 0.5, attackSpeedMult: 0.8, armor: 3, scale: 1, walkMult: 0.85,
+      hpMult: 2.0, dmgMult: 1.25, attackSpeedMult: 0.8, armor: 3, scale: 1, walkMult: 0.85,
       standoff: 8.5,
       summon: { type: "skeleton", count: 2, everyMs: 5200, firstMs: 2600, max: 8 } },
     { id: "necroLord", name: "KNOCHENFÜRST", sprite: "necromancer", role: "summoner",
-      hpMult: 3.2, dmgMult: 0.8, attackSpeedMult: 0.8, armor: 6, scale: 1.15, walkMult: 0.8,
+      hpMult: 3.2, dmgMult: 2.01, attackSpeedMult: 0.8, armor: 6, scale: 1.15, walkMult: 0.8,
       standoff: 9,
       summon: { type: "runner", count: 3, everyMs: 4200, firstMs: 2200, max: 12 },
       filter: "hue-rotate(140deg) saturate(1.3)" },
 
     { id: "necroPale", name: "BLEICHER NEKROMANT", sprite: "necromancer", role: "summoner",
-      hpMult: 2.6, dmgMult: 0.7, attackSpeedMult: 0.8, armor: 4, scale: 1.05, walkMult: 0.85,
+      hpMult: 2.6, dmgMult: 2.21, attackSpeedMult: 0.8, armor: 4, scale: 1.05, walkMult: 0.85,
       standoff: 8.5,
       summon: { type: "carrion", count: 4, everyMs: 3800, firstMs: 2000, max: 16 },
       filter: "hue-rotate(235deg) saturate(0.7) brightness(1.3)" },
@@ -342,35 +397,35 @@ const CONFIG = {
     // --- Chorts. Elite melee: fast AND heavy, the first bodies that punish
     // standing still.
     { id: "chort", name: "CHORT", sprite: "chort",
-      hpMult: 2.8, dmgMult: 1.8, attackSpeedMult: 1.3, armor: 4, scale: 1, walkMult: 1.3 },
+      hpMult: 2.8, dmgMult: 6.37, attackSpeedMult: 1.3, armor: 4, scale: 1, walkMult: 1.3 },
     { id: "chortAsh", name: "ASCHECHORT", sprite: "chort",
-      hpMult: 3.6, dmgMult: 2.1, attackSpeedMult: 1.35, armor: 7, scale: 1.1, walkMult: 1.25,
+      hpMult: 3.6, dmgMult: 7.44, attackSpeedMult: 1.35, armor: 7, scale: 1.1, walkMult: 1.25,
       filter: "brightness(0.6) saturate(0.35)" },
 
     { id: "chortFrost", name: "FROSTCHORT", sprite: "chort",
-      hpMult: 3.2, dmgMult: 1.9, attackSpeedMult: 1.3, armor: 6, scale: 1.05, walkMult: 1.35,
+      hpMult: 3.2, dmgMult: 7.55, attackSpeedMult: 1.3, armor: 6, scale: 1.05, walkMult: 1.35,
       filter: "hue-rotate(185deg) saturate(1.2) brightness(1.1)" },
 
     // --- Carrion. Summoned fodder, never authored into a pack on its own.
     { id: "carrion", name: "KADAVERLING", sprite: "tinyZombie",
-      hpMult: 0.35, dmgMult: 0.5, attackSpeedMult: 1.6, armor: 0, scale: 1, walkMult: 2.0 },
+      hpMult: 0.35, dmgMult: 1.5, attackSpeedMult: 1.6, armor: 0, scale: 1, walkMult: 2.0 },
 
     // --- The heavies. One of these is a whole camp's worth of HP.
     { id: "ogre", name: "OGER", sprite: "ogre",
-      hpMult: 6.5, dmgMult: 2.2, attackSpeedMult: 0.8, armor: 10, scale: 1, walkMult: 0.5 },
+      hpMult: 6.5, dmgMult: 8.74, attackSpeedMult: 0.8, armor: 10, scale: 1, walkMult: 0.5 },
     { id: "ogreFrost", name: "FROSTOGER", sprite: "ogre",
-      hpMult: 8, dmgMult: 2.3, attackSpeedMult: 0.8, armor: 12, scale: 1.05, walkMult: 0.45,
+      hpMult: 8, dmgMult: 9.14, attackSpeedMult: 0.8, armor: 12, scale: 1.05, walkMult: 0.45,
       filter: "hue-rotate(175deg) saturate(1.1) brightness(1.1)" },
     { id: "ogreBlack", name: "SCHWARZOGER", sprite: "ogre",
-      hpMult: 9, dmgMult: 2.4, attackSpeedMult: 0.85, armor: 14, scale: 1.05, walkMult: 0.45,
+      hpMult: 9, dmgMult: 10.7, attackSpeedMult: 0.85, armor: 14, scale: 1.05, walkMult: 0.45,
       filter: "brightness(0.5) saturate(0.5)" },
     { id: "bigZombie", name: "FLEISCHBERG", sprite: "bigZombie", role: "summoner",
-      hpMult: 8, dmgMult: 2.4, attackSpeedMult: 0.6, armor: 5, scale: 1, walkMult: 0.4,
+      hpMult: 8, dmgMult: 10.7, attackSpeedMult: 0.6, armor: 5, scale: 1, walkMult: 0.4,
       standoff: 2.4, range: 4.6,
       summon: { type: "carrion", count: 2, everyMs: 6000, firstMs: 3000, max: 8 } },
 
     { id: "pestBerg", name: "PESTBERG", sprite: "bigZombie", role: "summoner",
-      hpMult: 9.5, dmgMult: 2.5, attackSpeedMult: 0.6, armor: 7, scale: 1.05, walkMult: 0.4,
+      hpMult: 9.5, dmgMult: 11.14, attackSpeedMult: 0.6, armor: 7, scale: 1.05, walkMult: 0.4,
       standoff: 2.4, range: 4.6,
       summon: { type: "carrion", count: 3, everyMs: 5000, firstMs: 2600, max: 12 },
       filter: "sepia(1) saturate(2.2) hue-rotate(80deg)" },
@@ -378,12 +433,12 @@ const CONFIG = {
     // --- The gate. The last two chapters, and nothing else in the hall reads
     // like them: they fill the corridor's whole height.
     { id: "bigDemon", name: "GROSSER DÄMON", sprite: "bigDemon",
-      hpMult: 12, dmgMult: 2.6, attackSpeedMult: 1, armor: 10, scale: 1, walkMult: 0.6 },
+      hpMult: 12, dmgMult: 13, attackSpeedMult: 1, armor: 10, scale: 1, walkMult: 0.6 },
     { id: "demonAsh", name: "ASCHETEUFEL", sprite: "bigDemon",
-      hpMult: 13, dmgMult: 2.7, attackSpeedMult: 1.05, armor: 11, scale: 1, walkMult: 0.6,
+      hpMult: 13, dmgMult: 13.5, attackSpeedMult: 1.05, armor: 11, scale: 1, walkMult: 0.6,
       filter: "brightness(0.62) saturate(0.3)" },
     { id: "demonLord", name: "DÄMONENFÜRST", sprite: "bigDemon", role: "summoner",
-      hpMult: 18, dmgMult: 2.9, attackSpeedMult: 1.1, armor: 12, scale: 1.1, walkMult: 0.55,
+      hpMult: 18, dmgMult: 14.5, attackSpeedMult: 1.1, armor: 12, scale: 1.1, walkMult: 0.55,
       standoff: 2.6, range: 5,
       summon: { type: "chort", count: 1, everyMs: 7000, firstMs: 4000, max: 6 },
       filter: "hue-rotate(265deg) saturate(1.3) brightness(1.1)" },
