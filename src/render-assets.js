@@ -56,16 +56,21 @@ const SHEET = {
 };
 
 // ---------------------------------------------------------------------------
-// THE BESTIARY'S ART. Every creature the sheet has, as an idle/run frame pair.
+// THE BESTIARY'S ART. Every creature the game has, as an idle/run frame pair.
 // A CONFIG.enemyTypes entry names one of these keys in its `sprite` field and
-// then bends it with `scale` / `filter` / `tint`, which is how seventeen drawn
-// monsters become the ~30 bodies the hall actually sends in.
+// then bends it with `scale` / `filter` / `tint`, which is how eighteen drawings
+// become the 43 bodies the hall actually sends in.
 //
 // Coordinates are lifted verbatim from assets/tiles_list.txt. A few creatures
 // ship without a separate run cycle (the sheet lists the same rect twice) — for
 // those the run entry deliberately aliases the idle rect rather than inventing
 // frames, so a zombie shambles with the same four poses whether it is walking or
 // standing. Every rect carries `f` frames laid out horizontally at `w` apart.
+//
+// The last entries come from a SECOND sheet — the one drawn in sprite-art.js,
+// for the vermin the tileset simply hasn't got. They are the same kind of rect
+// and go through the same bake; the only difference is `sheet: "art"`, which
+// says which image to cut from.
 // ---------------------------------------------------------------------------
 const ENEMY_SPRITES = {
   skelet:      { idle: { x: 368, y: 80,  w: 16, h: 16, f: 4 }, run: { x: 432, y: 80,  w: 16, h: 16, f: 4 } },
@@ -85,7 +90,15 @@ const ENEMY_SPRITES = {
   bigZombie:   { idle: { x: 16,  y: 270, w: 32, h: 34, f: 4 }, run: { x: 144, y: 270, w: 32, h: 34, f: 4 } },
   ogre:        { idle: { x: 16,  y: 320, w: 32, h: 32, f: 4 }, run: { x: 144, y: 320, w: 32, h: 32, f: 4 } },
   bigDemon:    { idle: { x: 16,  y: 364, w: 32, h: 36, f: 4 }, run: { x: 144, y: 364, w: 32, h: 36, f: 4 } },
+  // Drawn here rather than cut from the tileset — see sprite-art.js.
+  ...Incanto.spriteArt.ART_RECTS,
 };
+
+// Which image a frame rect is cut from. Everything the tileset has comes from
+// the loaded PNG; the drawn vermin come from the sheet sprite-art.js generates.
+function sheetFor(rect) {
+  return rect.sheet === "art" ? Incanto.spriteArt.artSheet() : tilesetImg;
+}
 
 // The frame rects a variant is drawn from, falling back to bare bone for an
 // unknown key so a typo in CONFIG.enemyTypes costs a sprite rather than the
@@ -239,7 +252,7 @@ function buildAssets() {
   const f = CONFIG.colors.fireball;
   const d = CONFIG.colors.dungeon;
   const frames = (rect, opts) =>
-    Array.from({ length: rect.f || 1 }, (_, i) => cutFrame(tilesetImg, rect, i, opts));
+    Array.from({ length: rect.f || 1 }, (_, i) => cutFrame(sheetFor(rect), rect, i, opts));
   ASSETS = {
     wizard: frames(SHEET.wizardIdle),
     staff: recolorStaffGem(cutFrame(tilesetImg, SHEET.staffMagic, 0)),

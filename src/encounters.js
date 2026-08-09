@@ -58,7 +58,21 @@ const pack = (name, shape, types) => ({ name, ranks: SHAPES[shape], types });
 const D = DEFAULT_TYPE;
 
 const PACKS = {
-  // --- Bone. The opening language of the hall.
+  // --- Ch. 1 · Schleim: the three camps a new player meets first. One body,
+  // then two, then three — the head count is the whole escalation, because
+  // nothing in here can actually hurt anyone (see the slime variants in
+  // CONFIG.enemyTypes).
+  //
+  // The third is a WEDGE rather than a line, and that is about the splitting:
+  // three big slimes abreast at one mark stand shoulder to shoulder, and the
+  // moment each divides the lane fills up and the whole camp reads as one green
+  // smear. Staggered in depth they stay countable however often they come apart.
+  schleim:     pack("Schleim", "solo", ["slime"]),
+  schleimspur: pack("Schleimspur", "paar", ["slime"]),
+  schleimnest: pack("Schleimnest", "keil", [["slimeBlue"], ["slime", "slime"]]),
+
+  // --- Ch. 2 · Knochen. The opening language of the hall, and the first camps
+  // that can actually kill anyone.
   spaeher:  pack("Späher", "solo"),
   paar:     pack("Paar", "paar"),
   keil:     pack("Keil", "keil"),
@@ -77,14 +91,14 @@ const PACKS = {
   wache:    pack("Wache", "drei", [[D, "brute", D]]),
   bollwerk: pack("Bollwerk", "trupp", ["brute"]),
 
-  // --- Ch. 2 · Knochenläufer: the first thing that arrives faster than expected.
+  // --- Ch. 3 · Knochenläufer: the first thing that arrives faster than expected.
   laeufer:     pack("Läufer", "solo", ["runner"]),
   hetze:       pack("Hetze", "welle", ["runner"]),
   meute:       pack("Meute", "schwarm", ["runner"]),
   vorhut:      pack("Vorhut", "keil", [["runner"], [D, D]]),
   knochenlauf: pack("Knochenlauf", "mauer", [["runner", "runner", "runner", "runner"], [D, D, D, D]]),
 
-  // --- Ch. 3 · Kobolde: the swarm proper, and its two colours.
+  // --- Ch. 4 · Kobolde: the swarm proper, and its two colours.
   kobold:      pack("Kobold", "solo", ["goblin"]),
   kobolde:     pack("Kobolde", "reihe", ["goblin"]),
   koboldnest:  pack("Koboldnest", "schwarm", ["goblin"]),
@@ -92,7 +106,7 @@ const PACKS = {
   frostkobold: pack("Frostkobold", "trupp", [["goblinIce", "goblinIce"], ["goblin", "goblin"], ["goblin", "goblin"]]),
   koboldheer:  pack("Koboldheer", "mauer", [["goblinRed", "goblin", "goblin", "goblinRed"], ["goblinIce", "goblin", "goblin", "goblinIce"]]),
 
-  // --- Ch. 4 · Orks: the first armour worth penetrating.
+  // --- Ch. 5 · Orks: the first armour worth penetrating.
   ork:         pack("Ork", "solo", ["orc"]),
   orkpaar:     pack("Orkpaar", "paar", ["orc"]),
   orktrupp:    pack("Orktrupp", "keil", [["orc"], ["orc", "orc"]]),
@@ -100,7 +114,7 @@ const PACKS = {
   schwarzork:  pack("Schwarzork", "drei", [["orc", "orcBlack", "orc"]]),
   orkkeil:     pack("Orkkeil", "trupp", [["orcBlack", "orcBlack"], ["orc", "orc"], ["goblin", "goblin"]]),
 
-  // --- Ch. 5 · Imps: the corridor stops being a front-rank problem.
+  // --- Ch. 6 · Imps: the corridor stops being a front-rank problem.
   imp:         pack("Imp", "solo", ["imp"]),
   impwurf:     pack("Impwurf", "paar", ["imp"]),
   impdeckung:  pack("Impdeckung", "geleit", [[D, D, D], ["imp", "imp"]]),
@@ -108,7 +122,7 @@ const PACKS = {
   eisimp:      pack("Eisimp", "geleit", [["orc", "orc", "orc"], ["impFrost", "impFrost"]]),
   impfeuer:    pack("Impfeuer", "hof", [["brute"], ["orc", "orc"], ["imp", "imp", "impFrost"]]),
 
-  // --- Ch. 6 · Die faulenden Reihen: slow walls of HP.
+  // --- Ch. 7 · Die faulenden Reihen: slow walls of HP.
   zombie:      pack("Zombie", "solo", ["zombie"]),
   zombiepaar:  pack("Zombiepaar", "paar", ["zombie"]),
   schlamm:     pack("Schlamm", "drei", [["muddy", "zombie", "muddy"]]),
@@ -116,14 +130,14 @@ const PACKS = {
   faeulnis:    pack("Fäulnis", "reihe", [["muddy", "zombie", "zombie", "swampy"]]),
   totenzug:    pack("Totenzug", "trupp", [["zombie", "zombie"], ["swampy", "swampy"], ["imp", "imp"]]),
 
-  // --- Ch. 7 · Schamanen: the first fight that answers back.
+  // --- Ch. 8 · Schamanen: the first fight that answers back.
   schamane:    pack("Schamane", "paar", [["orc", "shaman"]]),
   heilkreis:   pack("Heilkreis", "geleit", [["orc", "orc", "orc"], ["shaman", "shaman"]]),
   orkheer:     pack("Orkheer", "trupp", [["orcBlack", "orcBlack"], ["orc", "orc"], ["shaman", "shaman"]]),
   faulmesse:   pack("Faulmesse", "hof", [["zombie"], ["muddy", "muddy"], ["shaman", "imp", "shaman"]]),
   aeltester:   pack("Ältester", "hof", [["orcBlack"], ["orc", "orc"], ["shamanElder", "shaman", "imp"]]),
 
-  // --- Ch. 8 · Wogole: the heavy back rank.
+  // --- Ch. 9 · Wogole: the heavy back rank.
   wogol:       pack("Wogol", "solo", ["wogol"]),
   wogolpaar:   pack("Wogolpaar", "paar", ["wogol"]),
   knochenwache: pack("Knochenwache", "drei", ["warden"]),
@@ -134,14 +148,14 @@ const PACKS = {
   schattenimp:  pack("Schattenimp", "geleit", [["warden", "warden", "warden"], ["impVoid", "impVoid"]]),
   schattenwurf: pack("Schattenwurf", "mauer", [["warden", "orc", "orc", "warden"], ["impVoid", "wogol", "wogol", "impVoid"]]),
 
-  // --- Ch. 9 · Nekromanten: kill the back rank or fight forever.
+  // --- Ch. 10 · Nekromanten: kill the back rank or fight forever.
   nekromant:   pack("Nekromant", "paar", [["warden", "necromancer"]]),
   totenruf:    pack("Totenruf", "geleit", [["warden", "warden", "warden"], ["necromancer", "shaman"]]),
   grabherr:    pack("Grabherr", "hof", [["brute"], ["warden", "warden"], ["necromancer", "wogol", "shaman"]]),
   knochenfuerst: pack("Knochenfürst", "hof", [["orcBlack"], ["warden", "warden"], ["necroLord", "wogol", "shamanElder"]]),
   totenfeld:   pack("Totenfeld", "mauer", [["warden", "brute", "brute", "warden"], ["necromancer", "shaman", "shaman", "necromancer"]]),
 
-  // --- Ch. 10 · Masken: the armour check proper.
+  // --- Ch. 11 · Masken: the armour check proper.
   maske:       pack("Maske", "solo", ["maskedOrc"]),
   maskenpaar:  pack("Maskenpaar", "paar", ["maskedOrc"]),
   maskenwall:  pack("Maskenwall", "drei", ["maskedOrc"]),
@@ -152,7 +166,7 @@ const PACKS = {
   eisenork:    pack("Eisenork", "solo", ["orcIron"]),
   eisenwall:   pack("Eisenwall", "mauer", [["orcIron", "maskedOrc", "maskedOrc", "orcIron"], ["shamanElder", "wogol", "wogol", "shamanElder"]]),
 
-  // --- Ch. 11 · Das Eis: the rotting ranks come back plated.
+  // --- Ch. 12 · Das Eis: the rotting ranks come back plated.
   eiszombie:   pack("Eiszombie", "solo", ["iceZombie"]),
   frostzug:    pack("Frostzug", "drei", [["iceZombie", "iceZombie", "iceZombie"]]),
   frostwall:   pack("Frostwall", "geleit", [["iceZombie", "iceZombie", "iceZombie"], ["impFrost", "impFrost"]]),
@@ -162,7 +176,7 @@ const PACKS = {
   bleichruf:   pack("Bleichruf", "paar", [["warden", "necroPale"]]),
   bleichfeld:  pack("Bleichfeld", "hof", [["iceZombie"], ["warden", "warden"], ["necroPale", "impFrost", "shamanElder"]]),
 
-  // --- Ch. 12 · Chorts: fast AND heavy, at last together.
+  // --- Ch. 13 · Chorts: fast AND heavy, at last together.
   chort:       pack("Chort", "solo", ["chort"]),
   chortpaar:   pack("Chortpaar", "paar", ["chort"]),
   chortkeil:   pack("Chortkeil", "keil", [["chortAsh"], ["chort", "chort"]]),
@@ -172,7 +186,7 @@ const PACKS = {
   schattenwogol: pack("Schattenwogol", "paar", ["wogolVoid"]),
   schattenchor:  pack("Schattenchor", "hof", [["chortAsh"], ["chort", "chort"], ["wogolVoid", "shamanElder", "wogolVoid"]]),
 
-  // --- Ch. 13 · Oger: one body, a whole camp's worth of HP.
+  // --- Ch. 14 · Oger: one body, a whole camp's worth of HP.
   oger:        pack("Oger", "solo", ["ogre"]),
   ogerwache:   pack("Ogerwache", "keil", [["ogre"], ["maskedOrc", "maskedOrc"]]),
   frostoger:   pack("Frostoger", "keil", [["ogreFrost"], ["iceZombie", "iceZombie"]]),
@@ -182,7 +196,7 @@ const PACKS = {
   frostchort:  pack("Frostchort", "keil", [["chortFrost"], ["chort", "chort"]]),
   frosthoelle: pack("Frosthölle", "trupp", [["chortFrost", "chortFrost"], ["chortAsh", "chortAsh"], ["necroPale", "shamanElder"]]),
 
-  // --- Ch. 14 · Fleischberge: HP that walks in with its own reinforcements.
+  // --- Ch. 15 · Fleischberge: HP that walks in with its own reinforcements.
   fleischberg: pack("Fleischberg", "solo", ["bigZombie"]),
   bergwache:   pack("Bergwache", "keil", [["bigZombie"], ["chortAsh", "chortAsh"]]),
   doppelberg:  pack("Doppelberg", "paar", ["bigZombie"]),
@@ -193,7 +207,7 @@ const PACKS = {
   pestberg:    pack("Pestberg", "solo", ["pestBerg"]),
   pestfeld:    pack("Pestfeld", "hof", [["pestBerg"], ["ogreBlack", "chortFrost"], ["necroPale", "shamanElder", "wogolVoid"]]),
 
-  // --- Ch. 15 · Das Tor. Everything the hall has taught, and the demon.
+  // --- Ch. 16 · Das Tor. Everything the hall has taught, and the demon.
   daemon:      pack("Dämon", "solo", ["bigDemon"]),
   daemonwache: pack("Dämonenwache", "keil", [["bigDemon"], ["chortAsh", "chortAsh"]]),
   daemonhof:   pack("Dämonenhof", "hof", [["bigDemon"], ["ogre", "ogreFrost"], ["shamanElder", "necroLord", "wogolPale"]]),
@@ -232,7 +246,7 @@ const PACKS = {
 // game's main supply of skeletons. Widening that past ~2.8 m hands the corridor
 // back to the fillers.
 //
-// HOW LONG THE HALL IS, AND WHY. The corridor ENDS: 160 camps, then a door. It
+// HOW LONG THE HALL IS, AND WHY. The corridor ENDS: 163 camps, then a door. It
 // is not an endless tail any more, because a hall with no end has no reward for
 // walking down it and no way to say "you have seen all of this". The length is
 // set by one intention — the player should reach the door at ROUGHLY the point
@@ -259,23 +273,30 @@ const PACKS = {
 // tools/stat-supply.mjs` prints that curve against tree completion, which is the
 // figure to re-tune the deep variants against.
 //
-//     chapter  camps      metres    the hero it is written for
-//     -------  ---------  --------  ---------------------------------------
-//      1       0–13         0–32    a fresh tree · the first two runs
-//      2       14–23       35–57    ~10% · flat damage, one page open
-//      3       24–33       60–82    ~20% · a second page
-//      4       34–43       85–107   ~30% · the first penetration ranks
-//      5       44–53      110–132   ~35% · area damage that reaches the back
-//      6       54–63      135–157   ~45% · sustain, or nothing survives the grind
-//      7       64–73      160–182   ~55% · burst enough to out-pace a mend
-//      8       74–83      185–207   ~60% · a third page
-//      9       84–93      210–232   ~65% · picking targets, not just the front
-//     10       94–103     235–257   ~72% · penetration in earnest
-//     11      104–113     260–282   ~78% · crit, and a fourth page
-//     12      114–123     285–307   ~83% · everything at once, quickly
-//     13      124–133     310–332   ~87% · single-target damage
-//     14      134–143     335–357   ~91% · both, sustained
-//     15      144–159     360–397   ~95% · a grown tree, and the door
+//     chapter                 camps      metres    the hero it is written for
+//     ----------------------  ---------  --------  ------------------------------
+//      1  Schleim               0–2         0–5    nothing at all · a first-ever minute
+//      2  Knochen               3–16        7–40   a fresh tree · the first two runs
+//      3  Knochenläufer        17–26       42–65   ~10% · flat damage, one page open
+//      4  Kobolde              27–36       67–90   ~20% · a second page
+//      5  Orks                 37–46       92–115  ~30% · the first penetration ranks
+//      6  Imps                 47–56      117–140  ~35% · area damage that reaches the back
+//      7  Die faulenden Reihen 57–66      142–165  ~45% · sustain, or nothing survives the grind
+//      8  Schamanen            67–76      167–190  ~55% · burst enough to out-pace a mend
+//      9  Wogole               77–86      192–215  ~60% · a third page
+//     10  Nekromanten          87–96      217–240  ~65% · picking targets, not just the front
+//     11  Masken               97–106     242–265  ~72% · penetration in earnest
+//     12  Das Eis             107–116     267–290  ~78% · crit, and a fourth page
+//     13  Chorts              117–126     292–315  ~83% · everything at once, quickly
+//     14  Oger                127–136     317–340  ~87% · single-target damage
+//     15  Fleischberge        137–146     342–365  ~91% · both, sustained
+//     16  Das Tor             147–162     367–405  ~95% · a grown tree, and the door
+//
+// Chapter 1 is the exception to every line under it: it is the ONLY one that is
+// not a check of anything, and it is not part of the ramp — it is the step onto
+// it. Ch. 2 is still the game's real opening, the skeleton-and-brute lesson,
+// unchanged and met by exactly the hero it always was, three camps and 7,5 m
+// later than before.
 //
 // Re-tuning the hall means re-tuning THIS table (and the variants it names), not
 // hunting for a difficulty multiplier — there isn't one.
@@ -287,9 +308,33 @@ const PACKS = {
 // without needing its own entry.
 const CHAPTERS = [
   {
+    name: "Schleim",
+    // The ramp's bottom step: three camps of slimes before the first skeleton.
+    // A player opening the game for the first time has never traced a rune, and
+    // the hall used to answer that with a skeleton that hits for 48 out of 112.
+    // These three cost nothing to get wrong — one slime, then two, then a cold
+    // one leading a pair — so the opening minute is spent learning the circle
+    // rather than learning the death screen.
+    //
+    // It is also where the hall's one trick body is taught, and taught in
+    // order. A slime DIVIDES when it is hurt (see CONFIG.slimeTiers): camp one
+    // is a single big one, so the very first cast of the game turns one body
+    // into two smaller ones with nothing else on screen to confuse the lesson.
+    // Camp two is the same thing twice over. Only camp three brings the
+    // Tropfling, which carries enough HP to divide down the whole ladder —
+    // big, then two middling, then small — instead of straight to the bottom.
+    //
+    // The chapter breaks the "one new body alone first" rule on the Tropfling,
+    // and deliberately: the rule exists so a body that can kill you is legible
+    // before it arrives escorted, and neither of these can. It leads the wedge
+    // instead, which is legible enough for something that hits for 7.
+    packs: ["schleim", "schleimspur", "schleimnest"],
+  },
+  {
     name: "Knochen",
-    // The hall's original fourteen camps, unchanged: the game's first minutes
-    // are still exactly the skeleton-and-brute lesson they always were.
+    // The hall's original fourteen camps, unchanged: once the vermin are past,
+    // the game still opens on exactly the skeleton-and-brute lesson it always
+    // did, in the same order, at the same head counts.
     packs: ["spaeher", "paar", "keil", "kolonne", "welle", "koloss", "zange",
             "reihe", "wache", "trupp", "mauer", "bollwerk", "schwarm", ["mauer", 1]],
   },

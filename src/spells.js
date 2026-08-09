@@ -203,7 +203,7 @@ function applySpellHit(target, amount, at, opts = {}) {
   // are all the same figure the HP bar just lost. A mitigated hit pops in steel
   // rather than cream (a crit still wins that contest: it's the louder read).
   const armored = armorReduction(target) > 0;
-  const dealt = hitEnemy(target, dmg);
+  const dealt = hitEnemy(target, dmg, at);
   target.hitFlashAt = at;          // the body blinks white when the hit lands (see renderScene)
   spawnDmgFloat({
     value: dealt,
