@@ -87,6 +87,13 @@ function laneSpacing(front, behind) {
   return CONFIG.enemyGapTiles * ((bodyTiles(front) + bodyTiles(behind)) / 2);
 }
 
+// The pause between a body planting in reach and its first blow: a share of its
+// own cadence, floored so nothing opens instantly (see config.js).
+function enemyWindupMs(e) {
+  const beat = e.atkMs || CONFIG.enemyAttackIntervalMs;
+  return Math.max(CONFIG.enemyFirstAttackMs, beat * CONFIG.enemyWindupBeats);
+}
+
 // March the mob one frame. Each lane is resolved independently, front-to-back
 // (nearest the hero first), so a skeleton is blocked by the standoff line or by
 // whoever is ahead of it *in its own lane*, always leaving > 1 tile between
@@ -261,16 +268,20 @@ function updateEnemies(now, dt) {
       // "kill the front rank" stops being the entire plan.
       const engaged = e.role === "ranged" ? blocked : (frontRank && settled);
       if (engaged && e.pos <= e.range + 1e-3) {
-        // Both the windup and the steady cadence are divided by the variant's
-        // attack-speed multiplier, so a brute engages and swings quicker.
-        if (e.phase !== "attack") { e.phase = "attack"; e.attackAt = now + CONFIG.enemyFirstAttackMs / (e.atkSpeed || 1); }
+        // Six tenths of its own beat before the first blow — never shorter than
+        // the floor, so the quickest bodies still announce themselves (the note
+        // at `enemyWindupBeats` in config.js says why it scales with the beat).
+        if (e.phase !== "attack") {
+          e.phase = "attack";
+          e.attackAt = now + enemyWindupMs(e);
+        }
       } else if (!blocked) {
         e.phase = "walk";
       } else {
         e.phase = "idle";
       }
       if (e.phase === "attack" && now >= e.attackAt) {
-        e.attackAt = now + CONFIG.enemyAttackIntervalMs / (e.atkSpeed || 1);
+        e.attackAt = now + (e.atkMs || CONFIG.enemyAttackIntervalMs);
         if (e.role === "ranged") fireEnemyShot(now, e);
         else enemyMeleeStrike(now, e);
       }
@@ -290,23 +301,46 @@ function updateEnemies(now, dt) {
   );
 }
 
+// A number popping over the HERO, stepped back by the lane the blow came from.
+//
+// Every hit on the hero lands in the same place, so without the stagger they
+// stack on one pixel. That was survivable while a body swung every three or four
+// seconds; at the hall's current cadences four lanes' worth of small hits arrive
+// inside a single number's lifetime, and one unreadable smear is the difference
+// between "I am being ground down" and "something is happening to me".
+//
+// Up and to the LEFT, one short step per lane, for two reasons: it is the only
+// empty corner of the frame — the rune circle sits at the hero's right shoulder
+// and a number over it is a number over the one thing the player is aiming at —
+// and stepping BOTH ways separates same-width numbers that would still overlap
+// side by side. By lane rather than at random, so a given body always pops in
+// the same place and the stream reads as several attackers rather than noise.
+function popHeroDmgFloat(value, lane) {
+  if (!scene || state.screen !== "combat") return;   // nobody is watching a background fight
+  const step = Math.max(0, Math.min(CONFIG.enemyLanes - 1, Number(lane) || 0));
+  // The hero stands close to the left edge, so the back lane's step has to give
+  // way to the number's own width — a giant's three digits stepped the full way
+  // over would hang off the frame. Half a digit block is 4 px at the 2 px scale
+  // renderDmgFloats draws at; a wide number simply staggers less.
+  const halfW = 4 * String(Math.max(0, Math.round(value))).length;
+  spawnDmgFloat({
+    value,
+    color: CONFIG.colors.dmgFloat.hero,
+    x: Math.max(halfW + 1, scene.wizard.x + SHEET.wizardIdle.w / 2 - step * 6),
+    y: scene.wizard.y - 4 - step * 4,
+  });
+}
+
 // A body's swing connecting with the hero: the damage, the forward jab, the
 // number over his head, and whatever Dornen sends back the other way.
 function enemyMeleeStrike(now, e) {
   hitPlayer(e.dmg);
   e.attackAnimAt = now;                 // fire the forward-jab animation
-  // Pop the damage number over the hero, in sync with the body's jab. Only while
-  // the fight is on screen — off-screen (background) combat has no one to show
-  // the numbers to, and they'd pile up unseen.
+  // Pop the damage number over the hero, in sync with the body's jab. Both pops
+  // below are for the combat screen only — off-screen (background) combat has no
+  // one to show the numbers to, and they'd pile up unseen.
   const onScreen = scene && state.screen === "combat";
-  if (onScreen) {
-    spawnDmgFloat({
-      value: e.dmg,
-      color: CONFIG.colors.dmgFloat.hero,
-      x: scene.wizard.x + SHEET.wizardIdle.w / 2,
-      y: scene.wizard.y - 4,
-    });
-  }
+  popHeroDmgFloat(e.dmg, e.lane);
   // Thorns: reflect a slice of the blow back onto the attacker.
   if (state.mods.thorns > 0) {
     // Reflected through the same funnel as a spell, so an armoured body
@@ -349,6 +383,7 @@ function fireEnemyShot(now, e) {
   state.enemyShots.push({
     shooterId: e.id,
     dmg: e.dmg,
+    lane: e.lane,                       // which column its number pops in when it lands
     rgb: shot.rgb || CONFIG.colors.dmgFloat.hero,
     born: now,
     landAt: now + travel,
@@ -370,14 +405,7 @@ function updateEnemyShots(now) {
     if (!s.hit && now >= s.landAt) {
       s.hit = true;
       hitPlayer(s.dmg);
-      if (scene && state.screen === "combat") {
-        spawnDmgFloat({
-          value: s.dmg,
-          color: CONFIG.colors.dmgFloat.hero,
-          x: scene.wizard.x + SHEET.wizardIdle.w / 2,
-          y: scene.wizard.y - 4,
-        });
-      }
+      popHeroDmgFloat(s.dmg, s.lane);
     }
     if (now < s.landAt + CONFIG.enemyShotFadeMs) keep.push(s);
   }
