@@ -947,6 +947,93 @@ try {
     "reaching the door ends the run and is remembered");
   check(/Ende des Ganges/.test(cleared.title || ""),
     `the end screen says so rather than reading as a death ("${cleared.title}")`);
+  // 11b. The tavern (see tavern.js): the home room, and the first button on the
+  //      bottom bar. Three things matter here — the bar still offers every phase
+  //      in its old order with the tavern added AHEAD of them, the room is a live
+  //      scene (the mage wanders on his own), and tapping a station walks him
+  //      over and hands the phase off when he arrives. Driven with taps only.
+  const bar = await page.evaluate(() => ({
+    phases: [...document.querySelectorAll("#bottom-nav .nav-btn")].map((b) => b.dataset.phase),
+  }));
+  check(bar.phases.join(",") === "tavern,study,upgrade,combat",
+    "the tavern leads the bar and the three phases keep their order (" + bar.phases.join(" · ") + ")");
+
+  await page.click('#bottom-nav .nav-btn[data-phase="tavern"]');
+  await page.waitForTimeout(400);
+  const room = await page.evaluate(() => ({
+    screen: state.screen,
+    phase: (document.querySelector("#bottom-nav .nav-btn.active") || {}).dataset.phase,
+    canvas: !!document.getElementById("tav-scene"),
+    chips: [...document.querySelectorAll(".tav-chip")].map((c) => c.dataset.station),
+    people: tavern ? tavern.people.length + 1 : 0,
+    // No chip may hang off the edge of the room, however tight the phone.
+    inside: [...document.querySelectorAll(".tav-chip")].every((c) => {
+      const r = c.getBoundingClientRect(), s = document.getElementById("tav-stage").getBoundingClientRect();
+      return r.left >= s.left - 0.5 && r.right <= s.right + 0.5;
+    }),
+  }));
+  check(room.screen === "tavern" && room.canvas && room.phase === "tavern",
+    "the tankard button opens the tavern (nav=" + room.phase + ")");
+  check(room.chips.join(",") === "forge,bar,hall,study" && room.inside,
+    "every station carries a chip, all of them on screen (" + room.chips.join(" · ") + ")");
+  check(room.people === 7, "the room is peopled (" + room.people + " figures, the mage included)");
+
+  //      The mage is not a still picture: left alone he picks somewhere to be
+  //      and walks there.
+  const strolled = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const from = { x: tavern.mage.x, y: tavern.mage.y };
+    let moved = 0;
+    for (let i = 0; i < 60 && moved < 6; i++) {
+      await settle(100);
+      moved = Math.hypot(tavern.mage.x - from.x, tavern.mage.y - from.y);
+    }
+    return { moved, walked: moved > 6 };
+  });
+  check(strolled.walked, "the mage wanders the room on his own (" + strolled.moved.toFixed(0) + " px)");
+
+  //      And a station is a door: tap it, he walks over, and the phase changes
+  //      when he gets there — not before.
+  const sent = await page.evaluate(() => {
+    // Put him across the room from the forge so the walk is a real one.
+    const st = tavern.stations.find((s) => s.id === "forge");
+    tavern.mage.x = tavern.walk.x1 - 6;
+    tavern.mage.y = tavern.walk.y1 - 6;
+    tavern.mage.moving = false; tavern.mage.goal = null; tavern.mage.waitUntil = Infinity;
+    return { stand: st.stand, from: { x: tavern.mage.x, y: tavern.mage.y } };
+  });
+  await page.click('.tav-chip[data-station="forge"]');
+  await page.waitForTimeout(250);
+  const walking = await page.evaluate(() => ({
+    screen: state.screen,
+    moving: tavern.mage.moving,
+    goal: tavern.mage.goal && tavern.mage.goal.id,
+    lit: !!document.querySelector('.tav-chip[data-station="forge"].on'),
+  }));
+  check(walking.screen === "tavern" && walking.moving && walking.goal === "forge" && walking.lit,
+    "tapping a station sets the mage walking rather than jumping the screen (goal=" + walking.goal + ")");
+  await page.waitForFunction(() => state.screen === "upgrade", null, { timeout: 15000 });
+  const arrived = await page.evaluate((stand) => ({
+    screen: state.screen,
+    phase: (document.querySelector("#bottom-nav .nav-btn.active") || {}).dataset.phase,
+    dist: Math.hypot(tavern.mage.x - stand.x, tavern.mage.y - stand.y),
+  }), sent.stand);
+  check(arrived.screen === "upgrade" && arrived.phase === "upgrade" && arrived.dist < 2,
+    "…and reaching the anvil is what opens the forge (" + arrived.dist.toFixed(1) + " px from the spot)");
+
+  //      A tap on bare floor is a walk and nothing else — the room is walkable,
+  //      not a menu with a picture behind it.
+  const floor = await page.evaluate(() => {
+    navTo("tavern");
+    render(performance.now());
+    const w = tavern.walk;
+    const to = { x: (w.x0 + w.x1) / 2, y: (w.y0 + w.y1) / 2 };
+    tavernTapPoint(to.x, to.y);
+    return { screen: state.screen, moving: tavern.mage.moving, goal: tavern.mage.goal };
+  });
+  check(floor.screen === "tavern" && floor.moving && floor.goal === null,
+    "a tap on the floor walks him there and changes no screen");
+
   // 12. The dev tools on the tree screen (see skilltree.js). They are armed by a
   //     slider and must be unreachable while it is off; armed, they wipe every
   //     purchased rank (asking once first) and let the purse be typed into.

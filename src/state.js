@@ -11,7 +11,7 @@ let state = null;
 
 function freshState() {
   return {
-    screen: "combat",       // combat | quiz | history | upgrade | bookorder | stats | reward
+    screen: "combat",       // combat | quiz | history | upgrade | bookorder | stats | tavern | reward
     statsTab: "hero",       // which tab the ledger screen shows (see stats.js) — pure UI, not persisted
     runActive: false,       // a combat run is live (used by the bottom nav to resume vs. restart)
     runes: [],               // {id, pairId, lang, word, x, y, matchState}

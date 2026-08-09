@@ -610,6 +610,15 @@ function render(now) {
       builtScreen = "stats";
       state._structuralDirty = false;
     }
+  } else if (state.screen === "tavern") {
+    if (builtScreen !== "tavern" || state._structuralDirty) {
+      renderTavernFull();
+      builtScreen = "tavern";
+      state._structuralDirty = false;
+    }
+    // The room is alive whether or not a run is: the mage strolls, the fire
+    // burns and the maid does her round on the rAF clock, not the run's.
+    patchTavernContinuous(now);
   } else {
     if (builtScreen !== state.screen) {
       renderEndFull();
