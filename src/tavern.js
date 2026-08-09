@@ -76,6 +76,17 @@ const TAV_CAST_SHEET = {
   guest2:  { idle: { x: 128, y: 74,  w: 16, h: 22, f: 4 }, run: { x: 192, y: 74,  w: 16, h: 22, f: 4 } },
 };
 
+// The doorway, cut NARROWER than the sheet's own `doors_all` rect on purpose.
+// That rect is 64 px wide and bakes thirteen columns of WALL into each side of
+// the arch — its own bricks, with their own lit ledge along the top. Blitted
+// onto this room's wall those bricks land at a different phase from the wall
+// they sit on, and the patch's top edge shows as a seam running across the
+// masonry. Cutting from x+13 for 38 px takes the doorway alone — arch, jambs,
+// leaf, threshold — and lets the room's own wall meet it on both sides. The
+// corners above the arch are transparent on the sheet, so the curve reads
+// against whatever is behind it.
+const TAV_DOORWAY = { x: 29, y: 221, w: 38, h: 35 };
+
 // Bottles for the bar top — the sheet's flasks, which read as tavern glassware
 // once they stand on a counter instead of in a dungeon.
 const TAV_FLASKS = [
@@ -260,7 +271,7 @@ function buildTavernArt() {
   }
   TAV = {
     cast,
-    door: cutFrame(tilesetImg, SHEET.doorsAll, 0),
+    door: cutFrame(tilesetImg, TAV_DOORWAY, 0),
     bannerRed: cutFrame(tilesetImg, SHEET.bannerRed, 0),
     bannerGreen: cutFrame(tilesetImg, SHEET.bannerGreen, 0),
     crate: cutFrame(tilesetImg, SHEET.crate, 0),
@@ -317,7 +328,7 @@ function setupTavern(cv) {
   // right-hand corner. The open floor between them is what the mage strolls
   // across and what the tables are scattered over.
   const hearthX = 6;
-  const doorX = Math.max(hearthX + 46, artW - 70);
+  const doorX = Math.max(hearthX + 46, artW - 56);   // 38 px of doorway (see TAV_DOORWAY)
   const counterW = Math.max(52, Math.min(88, Math.round(artW * 0.46)));
   const counterX = Math.round(artW * 0.28);
   const counterY = fy(0.26);                       // top plank, in art px
@@ -325,7 +336,7 @@ function setupTavern(cv) {
   const shelfX = artW - 32;
   const shelfFeet = fy(0.80);
   const bottleX = counterX + 2;                    // the plank of bottles, on the wall
-  const bannerX = doorX > 132 ? 100 : 0;           // only where the wall has room for it
+  const bannerX = doorX > 118 ? 96 : 0;            // only where the wall has room for it
 
   TAV.counter = tavCounter(counterW);
 
@@ -338,7 +349,7 @@ function setupTavern(cv) {
     { art: TAV.barrel, x: Math.round(artW * 0.05), feet: fy(0.20) },
     // the bar
     { art: TAV.barrel, x: counterX + counterW + 2, feet: counterY + 4 },
-    { art: TAV.crate, x: doorX - 22, feet: fy(0.12) },
+    { art: TAV.crate, x: doorX - 24, feet: fy(0.12) },
     { art: TAV.counter, x: counterX, feet: counterFeet },
     { art: TAV.stool, x: counterX + 6, feet: counterFeet + 11 },
     { art: TAV.stool, x: counterX + counterW - 24, feet: counterFeet + 12 },
@@ -396,8 +407,8 @@ function setupTavern(cv) {
     },
     {
       id: "hall", name: "Gang", phase: "combat",
-      x: doorX + 32, y: floorY + 3,
-      stand: freeSpot(doorX + 32, floorY + Math.round(depth * 0.18)), face: 1,
+      x: doorX + 19, y: floorY + 3,
+      stand: freeSpot(doorX + 19, floorY + Math.round(depth * 0.18)), face: 1,
     },
     {
       id: "study", name: "Bücherei", phase: "study",
