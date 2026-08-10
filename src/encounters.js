@@ -73,8 +73,8 @@ const PACKS = {
   // than a Tropfling leading two — the same weight of slime, all of it hitting
   // the same way, which is the shape at its plainest. Every body in the chapter
   // walks in on the top rung (see progression.spawnHP), and none of it can
-  // threaten anyone: a big slime swings for 6 of the hero's 112, slowly
-  // (dmgMult 0,5 × the top rung's 1, at 0,7 attack speed).
+  // threaten anyone: a big slime swings for 3 of the hero's 112, on the slowest
+  // beat in the game (dmgMult 0,25 × the top rung's 1, one blow per 2,4 s).
   //
   // What the wedge is actually for is the splitting. Three full-size slimes come
   // apart into six, and those into twelve — every hit that doesn't kill divides
@@ -346,7 +346,7 @@ const CHAPTERS = [
     // The chapter breaks the "one new body alone first" rule on the Tropfling,
     // and deliberately: the rule exists so a body that can kill you is legible
     // before it arrives escorted, and neither of these can. It leads the wedge
-    // instead, which is legible enough for something that hits for 7.
+    // instead, which is legible enough for something that hits for 4.
     //
     // Camp four is the second wedge (`schleimrudel`): three GROSSER SCHLEIM, no
     // new body in it at all. It adds head count and splitting pressure, not a

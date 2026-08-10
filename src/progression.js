@@ -125,8 +125,8 @@ function rankTiles(rank) {
     const type = enemyTypeById(m.type);
     const spr = enemySprite(type);
     // Measured at the HP it walks in on, because a slime's size is a function of
-    // its HP rather than a constant (see bodyScale) — read off `type.scale`
-    // alone, a big slime would muster in a gap sized for a small one.
+    // the rung it stands on rather than a constant (see bodyScale) — read off
+    // `type.scale` alone, a big slime would muster in a gap sized for a small one.
     s = Math.max(s, (spr.idle.w * bodyScale(type, spawnHP(type))) / TILE);
   }
   return s;
@@ -136,8 +136,8 @@ function rankTiles(rank) {
 // SIZE, AND THE BODIES THAT CHANGE IT. Almost everything in the hall is one
 // fixed size decided by its variant. A slime is not: it carries `split`, and
 // what it IS — how big it is drawn, how hard it hits, what the HP bar calls it
-// — is read off its CURRENT HP against CONFIG.slimeTiers every time that HP
-// moves. See the ladder's own comment in config.js for why it is built that way.
+// — is the rung of CONFIG.slimeTiers its maxHP puts it on, re-read every time it
+// divides. See the ladder's own comment in config.js for why it is built that way.
 // ---------------------------------------------------------------------------
 
 // The HP a variant walks in on. Needed before any body exists, so a pack can be
@@ -364,7 +364,7 @@ function spawnEnemy(now, lane, pos, typeId) {
     // scale / w / h / tiles / dmg / name are all filled in by sizeBody below —
     // they depend on `hp`, which for a splitting body keeps moving.
     armor: Math.max(0, type.armor || 0),  // turns aside a fraction of each hit (see armorReduction)
-    atkSpeed: type.attackSpeedMult || 1,  // multiplies swing rate (divides the interval)
+    atkMs: type.attackMs || CONFIG.enemyAttackIntervalMs,  // ms between its blows (its own cadence)
     walk: type.walkMult || 1,             // multiplies the march pace
     standoff: typeStandoff(type),         // where it plants: the melee line, or well short of it
     range: type.range != null ? type.range : CONFIG.enemyAttackRangeTiles,
