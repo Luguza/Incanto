@@ -289,7 +289,7 @@ function spawnEnemy(now, lane, pos, typeId) {
     // scale / w / h / tiles / dmg / name are all filled in by sizeBody below —
     // they depend on `hp`, which for a splitting body keeps moving.
     armor: Math.max(0, type.armor || 0),  // turns aside a fraction of each hit (see armorReduction)
-    atkSpeed: type.attackSpeedMult || 1,  // multiplies swing rate (divides the interval)
+    atkMs: type.attackMs || CONFIG.enemyAttackIntervalMs,  // ms between its blows (its own cadence)
     walk: type.walkMult || 1,             // multiplies the march pace
     standoff: typeStandoff(type),         // where it plants: the melee line, or well short of it
     range: type.range != null ? type.range : CONFIG.enemyAttackRangeTiles,

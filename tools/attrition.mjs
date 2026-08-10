@@ -6,8 +6,8 @@
 // of the corridor (progression.js startRun) and never refilled, so a run is one
 // long subtraction and the question is only how many camps it takes. What must
 // NOT happen is a single camp settling it — if the pool is worth two or three
-// blows, the corridor stops being a grind and becomes a coin flip on whether the
-// hero out-damages the first thing he meets.
+// seconds, the corridor stops being a grind and becomes a coin flip on whether
+// the hero out-damages the first thing he meets.
 //
 // So this tool answers one question, for a build at a given spend:
 //
@@ -57,9 +57,11 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const SHARES = [0, 0.005, 0.02, 0.1, 0.3, 0.6, 0.9];
 
 // Try a number without editing config.js first:
-//   node tools/attrition.mjs enemyBaseDmg=10 enemyAttackIntervalMs=3000
+//   node tools/attrition.mjs enemyBaseDmg=10 enemyFirstAttackMs=2500
 // Only top-level CONFIG keys, and only for a look — the committed balance is
-// what is in config.js.
+// what is in config.js. A body's CADENCE is not reachable this way: every
+// variant names its own `attackMs`, so `enemyAttackIntervalMs` is only the
+// fallback and overriding it moves nothing.
 const OVERRIDES = {};
 for (const a of process.argv.slice(2)) {
   const [k, v] = a.split("=");
@@ -91,6 +93,14 @@ const data = await page.evaluate(({ shares, overrides }) => {
   const typeById = {};
   for (const t of CONFIG.enemyTypes) typeById[t.id] = t;
 
+  // The unit the pool is measured in: what a plain skeleton takes off per second
+  // once it has planted — its rounded blow over its own cadence.
+  const skeletonDps = (C) => {
+    const t = typeById.skeleton;
+    return Math.max(1, Math.round(C.enemyBaseDmg * t.dmgMult)) /
+      ((t.attackMs || C.enemyAttackIntervalMs) / 1000);
+  };
+
   const armorMult = (armor) => {
     const eff = Math.max(0, (armor || 0) - (state.mods.armorPen || 0));
     if (eff <= 0) return 1;
@@ -109,10 +119,15 @@ const data = await page.evaluate(({ shares, overrides }) => {
         out.push({
           lane: m.lane, rank: r, role: t.role || "melee",
           hp: CONFIG.enemyBaseHP * t.hpMult,
-          dmg: CONFIG.enemyBaseDmg * t.dmgMult,
+          // Rounded and floored exactly as progression.js sizeBody does it. That
+          // used to be a rounding error on a 50-point blow and is now the
+          // difference between 3 and 4 on a skeleton's, because the hall's
+          // cadences are fast enough that a blow is a small integer.
+          dmg: Math.max(1, Math.round(CONFIG.enemyBaseDmg * t.dmgMult)),
           armor: t.armor || 0,
-          interval: CONFIG.enemyAttackIntervalMs / (t.attackSpeedMult || 1),
-          windup: CONFIG.enemyFirstAttackMs / (t.attackSpeedMult || 1),
+          interval: t.attackMs || CONFIG.enemyAttackIntervalMs,
+          windup: Math.max(CONFIG.enemyFirstAttackMs,
+            CONFIG.enemyWindupBeats * (t.attackMs || CONFIG.enemyAttackIntervalMs)),
         });
       }
     });
@@ -214,8 +229,11 @@ const data = await page.evaluate(({ shares, overrides }) => {
       budget, hp: maxHp, hit: Math.round(hit), regen: Math.round(regen * 10) / 10,
       camps, chapter: ENCOUNTER_PLAN[Math.min(camps, ENCOUNTER_PLAN.length - 1)].chapter + 1,
       firstCampHp, mins: Math.round(ms / 60000), chapters: chapters.filter(Boolean),
-      // The headline number: what one plain skeleton's blow costs this hero.
-      blows: Math.round(maxHp / CONFIG.enemyBaseDmg),
+      // The headline number: how long one plain skeleton, left alone with this
+      // hero, would need to empty him. Seconds rather than blows, because a blow
+      // is no longer a fixed bite — bodies swing on their own cadences now, and
+      // what a pool is worth is the TIME it buys under that pressure.
+      secs: Math.round(maxHp / skeletonDps(CONFIG)),
     });
   }
   return { rows, total: ENCOUNTER_PLAN.length, baseDmg: CONFIG.enemyBaseDmg, baseHp: CONFIG.heroBaseHP };
@@ -226,12 +244,12 @@ server.close();
 
 const pad = (s, n) => String(s).padStart(n);
 console.log(`\nenemyBaseDmg ${data.baseDmg} · heroBaseHP ${data.baseHp} · ${data.total} camps in the hall\n`);
-console.log("   gold     LP   Treffer  Regen   Skelettschläge   Camp 1 endet mit   geschafft   Kapitel   ~min");
+console.log("   gold     LP   Treffer  Regen   Skelettsekunden   Camp 1 endet mit   geschafft   Kapitel   ~min");
 console.log("  ".padEnd(100, "─"));
 for (const r of data.rows) {
   console.log(
     "  " + pad(r.budget, 6) + pad(r.hp, 7) + pad(r.hit, 10) + pad(r.regen, 7) +
-    pad(r.blows, 17) + pad(r.firstCampHp + " LP", 19) +
+    pad(r.secs + " s", 18) + pad(r.firstCampHp + " LP", 19) +
     pad(r.camps + "/" + data.total, 12) + pad(r.chapter, 10) + pad(r.mins, 7)
   );
 }
@@ -248,8 +266,9 @@ for (const c of deep.chapters) {
   );
 }
 console.log(`
-  Skelettschläge — plain-skeleton blows the pool is worth. Under ~8 a single
-  camp settles the run; the hall is built to be a grind, not a coin flip.
+  Skelettsekunden — how long the pool survives one plain skeleton's attention.
+  Under ~25 s a single camp settles the run; the hall is built to be a grind,
+  not a coin flip.
   Camp 1 endet mit — HP left after the corridor's very first pack. It must not
   be anywhere near zero for a hero who has bought nothing.
 `);

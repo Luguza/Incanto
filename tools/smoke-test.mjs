@@ -954,6 +954,35 @@ try {
   check(split.edge.bodies === 2 && split.edge.hp === 2 * split.floor,
     `the floor is exact — at twice the smallest rung it still divides, into two ${split.floor} HP halves`);
 
+  //     THE CADENCE CONTRACT (config.js: `attackMs`). Damage in this hall
+  //     trickles: every body swings often and small. Two things have to hold for
+  //     that to stay readable rather than turn into noise or into nothing —
+  //       · every variant names a cadence, inside the bands the design is
+  //         written in, and no body's blow rounds away to the 1-damage floor
+  //         that `sizeBody` puts under it;
+  //       · a slime's three rungs stay three DISTINCT numbers. They are what the
+  //         splitting ladder above is made of, and they are the first thing a
+  //         faster nibble would flatten (see the note at the slime entries).
+  const cadence = await page.evaluate(() => {
+    const blow = (t) => Math.max(1, Math.round(CONFIG.enemyBaseDmg * t.dmgMult));
+    const bad = [];
+    for (const t of CONFIG.enemyTypes) {
+      const ms = t.attackMs;
+      if (!(ms >= 800 && ms <= 3000)) bad.push(`${t.id}: attackMs ${ms}`);
+      if (Math.round(CONFIG.enemyBaseDmg * t.dmgMult) < 1) bad.push(`${t.id}: blow rounds to nothing`);
+    }
+    const ladders = CONFIG.enemyTypes.filter((t) => t.split).map((t) => ({
+      id: t.id, rungs: CONFIG.slimeTiers.map((s) => Math.max(1, Math.round(CONFIG.enemyBaseDmg * t.dmgMult * s.dmgMult))),
+    }));
+    return { bad, ladders, count: CONFIG.enemyTypes.length };
+  });
+  check(cadence.bad.length === 0,
+    `every one of the ${cadence.count} bodies swings on its own cadence, in band, for a real number` +
+    (cadence.bad.length ? " — " + cadence.bad.join("; ") : ""));
+  check(cadence.ladders.every((l) => new Set(l.rungs).size === l.rungs.length),
+    "a splitting body's damage rungs stay distinct, so a fragment never hits like the barrel it came off (" +
+    cadence.ladders.map((l) => `${l.id} ${l.rungs.join("/")}`).join(", ") + ")");
+
   //     A ranged body plants far short of the melee line and still lands hits;
   //     a healer puts HP back on a wounded ally; a summoner adds bodies.
   const roles = await page.evaluate(async () => {

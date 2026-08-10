@@ -39,7 +39,7 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 | File | Owns |
 |------|------|
 | `src/core.js` | `window.Incanto` root namespace (loads first) |
-| `src/config.js` | `CONFIG` — all gameplay numbers, flags, colours, **the bestiary** (`enemyTypes`, where a variant's sprite, colour filter, size, stats and ROLE — melee / ranged / summoner / healer — are defined, plus `slimeTiers`, the HP→size ladder the one SPLITTING family walks down), and the two numbers the whole balance hangs off: **`treeGold`** (what the entire tree costs, end to end — every node's price is a share of it, by depth and by how many of its ranks you already own) and **`treeTotals`** (how much of each stat the whole tree contains). They are set against each other so an endgame build walks ~90 % of the nodes and actually reaches the totals. No runtime caps, soft caps or diminishing returns exist anywhere; a stat's total is its ceiling because it bounds the supply, and every node pays exactly what it prints. Damage is built in three stages (Kern → Verstärkung → Zuschlag) |
+| `src/config.js` | `CONFIG` — all gameplay numbers, flags, colours, **the bestiary** (`enemyTypes`, where a variant's sprite, colour filter, size, stats, CADENCE (`attackMs` — what one blow costs is `dmgMult`, how often it lands is `attackMs`, and only the two together say what a body is worth) and ROLE — melee / ranged / summoner / healer — are defined, plus `slimeTiers`, the HP→size ladder the one SPLITTING family walks down), and the two numbers the whole balance hangs off: **`treeGold`** (what the entire tree costs, end to end — every node's price is a share of it, by depth and by how many of its ranks you already own) and **`treeTotals`** (how much of each stat the whole tree contains). They are set against each other so an endgame build walks ~90 % of the nodes and actually reaches the totals. No runtime caps, soft caps or diminishing returns exist anywhere; a stat's total is its ceiling because it bounds the supply, and every node pays exactly what it prints. Damage is built in three stages (Kern → Verstärkung → Zuschlag) |
 | `src/content.js` | vocab, sentences + verb paradigms: `WORD_POOL`, `SENTENCE_POOL` (~350 sentences — three questions of every quiz come out of it, so it has to be deep; house rules for a new one are written above the pool and enforced by `node tools/check-sentences.mjs`, which also fails on a word the game never teaches), `CONJ_POOL` (present tense, regular forms generated from `CONJ_ENDINGS`, irregulars written out), `CONJ_PERSONS`, … |
 | `src/encounters.js` | **where the hall is designed**: `SHAPES` (bare formations), `PACKS` (a shape filled with variants), `CHAPTERS` (16 of them — a 4-camp slime prologue that is not a fight, then 15 that each introduce one new body alone before using it in force), the derived `ENCOUNTER_PLAN` (164 camps on a fixed 2.5 m cadence) and `HALL_END_METRES` — the corridor is FINITE and ends at a door. Deterministic — no randomness. `previewPlan()` / `previewBestiary()` dump it to the console |
 | `src/vocab-history.js` | the learning record: per-word tallies (seen / correct / wrong, split quiz vs. rune circle) in `state.vocab` + its own save key, the per-day buckets behind "struggled with lately", the `struggleDrawPool` weighting `drawLoadout` deals review words from, and `renderHistoryFull` (the Lernverlauf screen) |
@@ -114,17 +114,24 @@ node tools/smoke-test.mjs        # exits non-zero on any failure
 ```
 
 For anything that touches how hard the hall hits — `enemyBaseDmg`, a variant's
-`dmgMult`, the attack cadence, hero HP or regen — run the attrition tool, which
-walks a build down all 164 camps and reports how deep it gets before it falls:
+`dmgMult` or `attackMs`, the windup, hero HP or regen — run the attrition tool,
+which walks a build down all 164 camps and reports how deep it gets before it
+falls. **A variant's two damage numbers are one number**: damage in this hall
+trickles (bodies swing every 0,8–2,8 s for a small share of a blow), so re-timing
+a body means dividing its `dmgMult` by exactly the factor its `attackMs` was
+multiplied by. Change one without the other and you have not re-timed it, you
+have buffed it.
 
 ```bash
 node tools/attrition.mjs                      # the committed balance
 node tools/attrition.mjs enemyBaseDmg=20      # try a number without editing config
 ```
 
-Two things to read off it. The **Skelettschläge** column is how many plain
-skeleton blows the pool is worth — under ~8 and a single camp settles the run
-instead of grinding it down. The **chapter table** is the grind itself: LP lost
+Two things to read off it. The **Skelettsekunden** column is how long the pool
+survives one plain skeleton's attention — under ~25 s and a single camp settles
+the run instead of grinding it down. (Seconds rather than blows: a blow is no
+longer a fixed bite now that every body swings on its own cadence.) The
+**chapter table** is the grind itself: LP lost
 per camp should climb steadily with depth, and a chapter costing a grown hero 0
 LP means the hall has stopped threatening him there. Its model is an upper bound
 on the hero (no rune misses, no healers mending, no summons), so read it for
