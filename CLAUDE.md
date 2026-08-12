@@ -31,6 +31,26 @@ the player as something to tap.
 never `page.keyboard.press`. `tools/smoke-test.mjs` asserts that a stray key
 changes nothing.
 
+## The phone's own dark mode must never get hold of the page
+
+The game is painted in near-black, and a phone browser's "dark mode for web
+contents" (Samsung Internet's dark mode, Chrome's Auto Dark Theme) inverts
+exactly that: its filter reads every SVG fill and stroke as foreground and flips
+the dark ones light. The rune tree comes back as a field of white discs, the
+sealed page in the book turns to grey paper, its wax seal goes pink — while the
+canvas scenes, which it can't touch, still look right. That combination is the
+signature: **combat looks nearly fine and the forge looks broken.**
+
+The page therefore declares its darkness three times — `color-scheme: dark` on
+`:root`, `<meta name="color-scheme" content="dark">` in `index.html`, and a
+`@media (prefers-color-scheme: dark)` block — because different engines key off
+different ones, and a live bug reached phones with only the first in place. The
+media block restates what `:root` already sets **on purpose**; answering the
+query is the signal, not changing a colour. The reasoning is written out above
+that block in `styles/base.css`; don't tidy any of the three away. The smoke test
+checks all three are declared and drives a session with a browser dark mode
+forced on, failing if the tree stops coming out dark.
+
 ## Module map — where things live
 
 Load order is set by the `<script>` list in `index.html` (data → logic → render
