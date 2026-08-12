@@ -91,6 +91,54 @@ try {
   const buf = await page.locator("canvas.scene").screenshot({ path: SHOT });
   check(buf.length > 1500, "canvas.scene screenshot is non-trivial (" + buf.length + " bytes) -> " + SHOT);
 
+  // 2b. The phone's own dark mode must not repaint the game. A browser dark mode
+  //     ("dark mode for web contents") reads every SVG fill and stroke as
+  //     foreground and inverts the dark ones, which turns the rune tree into a
+  //     field of white discs — it reached real phones that way. The page opts
+  //     out three times over (see the essay in styles/base.css); this checks
+  //     both halves of that: the signals are declared, AND the tree still comes
+  //     out dark when a browser dark mode is forced on over the top of it.
+  const declared = await page.evaluate(() => ({
+    meta: (document.querySelector('meta[name="color-scheme"]') || {}).content || "",
+    root: getComputedStyle(document.documentElement).colorScheme,
+    query: [...document.styleSheets].some((s) => {
+      try { return [...s.cssRules].some((r) => /prefers-color-scheme:\s*dark/.test(r.conditionText || "")); }
+      catch { return false; }
+    }),
+  }));
+  check(/dark/.test(declared.meta) && /dark/.test(declared.root) && declared.query,
+    "the page declares its darkness all three ways (meta=\"" + declared.meta +
+    "\", :root=" + declared.root + ", prefers-color-scheme block=" + declared.query + ")");
+
+  //     Driven the way an inverting phone drives it: a second page in a dark
+  //     system theme with the browser's own dark mode forced on. Screenshot the
+  //     tree and average it — untouched it sits near black (~20/255); inverted
+  //     it comes back around 75, so anything past 40 is the bug.
+  const forced = await browser.newPage({ viewport: { width: 412, height: 726 }, colorScheme: "dark" });
+  const cdp = await forced.context().newCDPSession(forced);
+  await cdp.send("Emulation.setAutoDarkModeOverride", { enabled: true });
+  await forced.goto(INDEX_URL, { waitUntil: "load" });
+  await forced.waitForSelector("canvas.scene", { timeout: 5000 });
+  await forced.evaluate(() => navTo("upgrade"));
+  await forced.waitForTimeout(500);
+  const treeShot = await forced.locator(".tree-canvas").screenshot();
+  // Decoded on the ORIGINAL page: that one is not being darkened, so the pixels
+  // it reads back are the ones the forced page actually painted.
+  const luma = await page.evaluate(async (bytes) => {
+    const bmp = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
+    const c = document.createElement("canvas");
+    c.width = bmp.width; c.height = bmp.height;
+    const g = c.getContext("2d");
+    g.drawImage(bmp, 0, 0);
+    const d = g.getImageData(0, 0, bmp.width, bmp.height).data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+    return sum / (d.length / 4);
+  }, [...treeShot]);
+  await forced.close();
+  check(luma < 40,
+    "a forced browser dark mode leaves the rune tree dark (mean " + luma.toFixed(1) + "/255)");
+
   // 3. The spell book turns under the finger, and ALL of it does. A page turn is
   //    one motion on one progress: the held leaf stands up to the spine over the
   //    first half of the drag, and the leaf it carries over lies down on the far

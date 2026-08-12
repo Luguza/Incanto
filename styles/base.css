@@ -16,6 +16,8 @@
      in a screen stylesheet.
      --------------------------------------------------------------------------- */
   :root {
+    /* One of the three ways the page has to declare its own darkness — see the
+       essay under this block before touching it. */
     color-scheme: dark;
     /* Display face for spell words, titles and rune labels. Readability comes
        first: a widely-available classical serif renders on essentially every
@@ -92,6 +94,43 @@
     /* Motion. */
     --dur: 150ms;
     --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+
+  /* ---------------------------------------------------------------------------
+     The page is dark, and the phone has to be told so THREE times.
+
+     A phone browser's own "dark mode for web contents" — Samsung Internet's dark
+     mode, Chrome's Auto Dark Theme — repaints any page it decides is light. Its
+     filter reads every SVG fill and stroke as FOREGROUND and flips the dark ones
+     to light, so the near-black paint this game is built out of comes back
+     inverted: the rune tree turns into a field of white discs, the sealed page
+     in the spell book turns to grey paper and its wax seal goes pink. The canvas
+     scenes are left alone, which is what makes it so confusing to read — combat
+     looks nearly right while the forge looks broken.
+
+     Nothing in the game's own colours can defend against that; the only defence
+     is telling the browser the page ALREADY has a dark theme. The three ways of
+     saying it are not interchangeable — engines key off different ones, and this
+     bug reached real phones with only the first of them in place:
+
+       1. `color-scheme: dark` on :root, above. What Chromium reads. It was here
+          alone, and it was not enough.
+       2. `<meta name="color-scheme" content="dark">` in index.html. An
+          independent opt-out in the very same engine — measured: it holds on its
+          own with the property above deleted — and the older, more widely
+          implemented of the two. This is the one that was missing.
+       3. the block below: the `prefers-color-scheme` query, which is what
+          Samsung Internet documents as its test for "this site already has a
+          dark theme of its own".
+
+     That block deliberately re-states what :root has already set. It is not
+     dead weight and it is not an oversight — an ANSWER to the query is the
+     signal, not a change of colour, and there is only one theme here to answer
+     with. Deleting it as a no-op is exactly how this comes back.
+     --------------------------------------------------------------------------- */
+  @media (prefers-color-scheme: dark) {
+    :root { color-scheme: dark; }
+    html, body { background: var(--bg); color: var(--ink); }
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
