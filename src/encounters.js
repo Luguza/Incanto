@@ -69,14 +69,18 @@ const PACKS = {
   // smear. Staggered in depth they stay countable however often they come apart.
   //
   // `schleimrudel` is the second wedge and the chapter's last word: the same
-  // three-body shape as the nest, but every one of them a GROSSER SCHLEIM at the
-  // top of the ladder rather than a Tropfling leading two. It is the most bodies
-  // and the most HP the prologue puts on the floor, and it still cannot threaten
-  // anyone — a big slime swings for 6 of the hero's 112, slowly (dmgMult 0,5 ×
-  // the top rung's 1, at 0,7 attack speed). What it is actually for is the
-  // splitting: three full-size pools coming apart at once is the first time the
-  // corridor has more targets in it than the player has casts to spare, which is
-  // the lesson chapter 2 opens by charging for.
+  // three-body shape as the nest, but every one of them a GROSSER SCHLEIM rather
+  // than a Tropfling leading two — the same weight of slime, all of it hitting
+  // the same way, which is the shape at its plainest. Every body in the chapter
+  // walks in on the top rung (see progression.spawnHP), and none of it can
+  // threaten anyone: a big slime swings for 3 of the hero's 112, on the slowest
+  // beat in the game (dmgMult 0,25 × the top rung's 1, one blow per 2,4 s).
+  //
+  // What the wedge is actually for is the splitting. Three full-size slimes come
+  // apart into six, and those into twelve — every hit that doesn't kill divides
+  // what it hit — so this is the first time the corridor holds more targets than
+  // the player has casts to spare, which is the lesson chapter 2 opens by
+  // charging for.
   schleim:      pack("Schleim", "solo", ["slime"]),
   schleimspur:  pack("Schleimspur", "paar", ["slime"]),
   schleimnest:  pack("Schleimnest", "keil", [["slimeBlue"], ["slime", "slime"]]),
@@ -333,15 +337,16 @@ const CHAPTERS = [
     // It is also where the hall's one trick body is taught, and taught in
     // order. A slime DIVIDES when it is hurt (see CONFIG.slimeTiers): camp one
     // is a single big one, so the very first cast of the game turns one body
-    // into two smaller ones with nothing else on screen to confuse the lesson.
-    // Camp two is the same thing twice over. Only camp three brings the
-    // Tropfling, which carries enough HP to divide down the whole ladder —
-    // big, then two middling, then small — instead of straight to the bottom.
+    // into two smaller ones with nothing else on screen to confuse the lesson —
+    // and the cast after that turns each of those into two smaller ones again,
+    // all the way down to four of the smallest, which is the whole ladder taught
+    // on one body. Camp two is the same thing twice over. Camp three brings the
+    // Tropfling, the cold colourway of the same trick.
     //
     // The chapter breaks the "one new body alone first" rule on the Tropfling,
     // and deliberately: the rule exists so a body that can kill you is legible
     // before it arrives escorted, and neither of these can. It leads the wedge
-    // instead, which is legible enough for something that hits for 7.
+    // instead, which is legible enough for something that hits for 4.
     //
     // Camp four is the second wedge (`schleimrudel`): three GROSSER SCHLEIM, no
     // new body in it at all. It adds head count and splitting pressure, not a

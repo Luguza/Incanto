@@ -360,6 +360,9 @@ function renderScene(now) {
   const ordered = state.enemies.slice().sort(
     (a, b) => (laneFeetY(a) - laneFeetY(b)) || (b.pos - a.pos)
   );
+  // The goo the slimes have dripped on the flagstones, under every body and over
+  // the floor they are standing on (see drawSlimeGoo).
+  drawSlimeGoo(ctx, now);
   for (const e of ordered) {
     const ly = laneFeetY(e);
     const art = enemyArt(e);
@@ -379,7 +382,10 @@ function renderScene(now) {
       xJab = -Math.round(Math.sin(p * Math.PI) * 5 * art.s);
     }
 
-    const cx = Math.round(sceneX(e.pos));
+    // A half that has just been torn off is still sliding clear of the body it
+    // came from (see splitSlideX) — a drawing offset only, so nothing that reads
+    // a position sees it.
+    const cx = Math.round(sceneX(e.pos) + splitSlideX(now, e));
     const sx = cx - Math.round(art.w / 2) + xJab;
     let alpha = 1;
     if (e.phase === "dying") {
@@ -402,7 +408,16 @@ function renderScene(now) {
     // Shadow widens with the body so a brute doesn't float over a small one.
     const shw = Math.round(ASSETS.shadowSm.width * art.s);
     ctx.drawImage(ASSETS.shadowSm, cx - Math.round(shw / 2), ly - 2, shw, ASSETS.shadowSm.height);
-    ctx.drawImage(frameSet[ef], sx, skelY, art.w, art.h);
+    // A slime that has just come apart is still shaking (see splitWobble). The
+    // squash is applied to the DRAWN rect rather than to the body, so nothing
+    // downstream — reach, spacing, the HP bar — sees a size that isn't real. Feet
+    // stay planted on the lane and the body stays centred on its tile.
+    const wob = splitWobble(now, e);
+    const dw = wob ? Math.max(1, Math.round(art.w * wob.sx)) : art.w;
+    const dh = wob ? Math.max(1, Math.round(art.h * wob.sy)) : art.h;
+    const dx = wob ? cx - Math.round(dw / 2) + xJab : sx;
+    const dy = wob ? ly - dh : skelY;
+    ctx.drawImage(frameSet[ef], dx, dy, dw, dh);
     // Struck: the body blinks white for a beat wherever a spell connects. The
     // flash is stamped by the hit itself (see applySpellHit), not by the cast,
     // so a chain's fifth hop and a meteor landing behind the line punch exactly
@@ -410,15 +425,20 @@ function renderScene(now) {
     if (e.hitFlashAt && now >= e.hitFlashAt && now - e.hitFlashAt < 210 &&
         Math.floor((now - e.hitFlashAt) / 70) % 2 === 0) {
       const hit = skin.hit || ASSETS.skeletHit;
-      ctx.drawImage(hit[sf % hit.length], sx, skelY, art.w, art.h);
+      ctx.drawImage(hit[sf % hit.length], dx, dy, dw, dh);
     }
     // Frozen by a Frostkegel: rime over the body while it's held fast.
-    if (now < (e.frozenUntil || 0)) drawFrostRime(ctx, now, e, ef, sx, skelY, art.w, art.h);
+    if (now < (e.frozenUntil || 0)) drawFrostRime(ctx, now, e, ef, dx, dy, dw, dh);
     // What this body DOES besides swing: a summoner's rune, a healer's beam.
     // Drawn after the sprite so the light sits on it, not under it.
     if (e.actFxAt && now - e.actFxAt < CONFIG.enemySummonGlowMs) drawSupportFx(ctx, now, e, cx, ly);
     ctx.restore();
   }
+
+  // The goo still joining two halves that just came apart — a pass of its own,
+  // after every body is down, so a rope always lies over BOTH ends it hangs off
+  // rather than under whichever of them happened to be drawn later.
+  for (const e of ordered) drawSplitGoo(ctx, now, e);
 
   // Bolts in the air from the ranged ranks, over the bodies that threw them.
   drawEnemyShots(ctx, now);
@@ -555,6 +575,203 @@ function drawSupportFx(ctx, now, e, cx, ly) {
   ctx.ellipse(cx, ly - 1, 5 + q * 7, 2 + q * 2.5, 0, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
+}
+
+// --- Slime goo ---------------------------------------------------------------
+// What the hall's one splitting family leaves behind it: a trail of smears on
+// the flagstones, and the stretched bridge of the stuff that hangs between two
+// halves for the moment after one comes apart. Both are drawn here, at art-pixel
+// resolution and out of the creature's OWN palette (see gooTint) — a slime drips
+// the colour it is made of, and no new colour enters the hall.
+
+// The two useful colours of a slime's four: the body colour it reads as and the
+// shade under it. Taken from the drawn sprite's palette rather than written out
+// again, so a recoloured slime drips its new colour without anything here
+// changing. Falls back to the green one for a splitting variant that isn't drawn
+// in sprite-art.js at all.
+function gooTint(typeId) {
+  const art = window.Incanto.spriteArt && window.Incanto.spriteArt.PIXEL_ART;
+  const type = enemyTypeById(typeId);
+  const pal = (art && ((type && art[type.sprite]) || art.slime) || {}).palette;
+  return {
+    body: (pal && pal.C) || "#4ba747",
+    lit: (pal && pal.B) || "#97da3f",
+    dark: (pal && pal.D) || "#3d734f",
+    edge: (pal && pal.A) || "#222222",   // the sheet's one near-black, same as the sprite's outline
+  };
+}
+
+// A filled ellipse stamped as whole pixel rows, the way everything else in the
+// scene is drawn. `ctx.ellipse` would anti-alias its edge, which is the one
+// thing a pixel-art floor can't have on it.
+function fillPixEllipse(ctx, cx, cy, rx, ry, color) {
+  const h = Math.max(0, Math.round(ry));
+  const x0 = Math.round(cx), y0 = Math.round(cy);
+  ctx.fillStyle = color;
+  for (let dy = -h; dy <= h; dy++) {
+    const k = h === 0 ? 1 : 1 - (dy * dy) / ((h + 0.5) * (h + 0.5));
+    if (k <= 0) continue;
+    const w = Math.round(rx * Math.sqrt(k));
+    if (w < 1) continue;
+    ctx.fillRect(x0 - w, y0 + dy, w * 2 + 1, 1);
+  }
+}
+
+// The trail. Marks are held in WORLD px (see progression.plantGoo), so the camera
+// offset comes back out here and each smear stays on the stone it dripped onto
+// while the corridor scrolls past. Drawn UNDER every body, flat on the lane's
+// feet line: a smear is on the floor, not on the wall behind it.
+//
+// A mark swells for a moment as it settles and then dries away, and it carries a
+// smaller lit blob off its wet side so it reads as something glistening rather
+// than as a hole in the flagstones.
+function drawSlimeGoo(ctx, now) {
+  const goo = state.slimeGoo;
+  if (!goo || !goo.length) return;
+  ctx.save();
+  for (const g of goo) {
+    const t = (now - g.born) / Math.max(1, g.ttl);
+    if (t < 0 || t >= 1) continue;
+    const x = scene.enemyLineX + (g.x - state.cameraX);
+    if (x < -24 || x > scene.artW + 24) continue;              // off camera: nothing to draw
+    const y = (scene.laneY[g.lane] ?? scene.feetY) - 1;
+    const spread = 1 + 0.4 * Math.min(1, t * 5);               // it settles outward, then holds
+    const fade = t < 0.1 ? t / 0.1 : Math.pow(1 - (t - 0.1) / 0.9, 1.1);
+    const tint = gooTint(g.type);
+    ctx.globalAlpha = 0.46 * fade;
+    fillPixEllipse(ctx, x, y, g.rx * spread, g.ry * spread, tint.dark);
+    ctx.globalAlpha = 0.4 * fade;
+    fillPixEllipse(ctx, x + g.rx * 0.28, y - 1, g.rx * spread * 0.45, g.ry * spread * 0.5, tint.body);
+  }
+  ctx.restore();
+}
+
+// THE SPLIT ITSELF. For the moment after a slime divides, the two halves are
+// still joined: a rope of goo stretched between them that thins in the middle,
+// sags under its own weight, snaps, and drips what was hanging off it onto the
+// floor. Drawn from the TWIN, which is the half that carries the pairing
+// (`splitFromId`), because the parent may be divided again before this has
+// finished playing.
+//
+// Everything here is derived from the pair's live positions rather than from a
+// snapshot, so the bridge keeps up with two bodies that are still walking — and
+// stretches as they draw apart, which is most of what sells it.
+function drawSplitGoo(ctx, now, e) {
+  if (!e.splitFxAt || e.splitFromId == null) return;
+  const q = (now - e.splitFxAt) / CONFIG.slimeSplitFxMs;
+  if (q < 0 || q >= 1) return;
+  const other = state.enemies.find((o) => o.id === e.splitFromId);
+  if (!other) return;
+  // Both ends are anchored well up the body rather than at its middle: a rope
+  // hung at mid-height sags straight onto the trail on the floor and the two
+  // effects turn into one green smudge.
+  // Both ends ride the same drawing offsets the bodies do, or the rope would hang
+  // off where they really stand while they are still sliding apart.
+  const ax = scene.enemyLineX + other.pos * TILE + splitSlideX(now, other);
+  const ay = (scene.laneY[other.lane] ?? scene.feetY) - other.h * 0.62;
+  const bx = scene.enemyLineX + e.pos * TILE + splitSlideX(now, e);
+  const by = (scene.laneY[e.lane] ?? scene.feetY) - e.h * 0.62;
+  const tint = gooTint(e.type);
+  // The strand parts at `snap`: before that it is one rope, after it two stubs
+  // pulling back into the bodies they hang off.
+  const snap = 0.62;
+  const thick = Math.max(2, (e.h || 10) * 0.42);
+  ctx.save();
+  const steps = Math.max(6, Math.round(Math.abs(bx - ax)));
+  for (let i = 0; i <= steps; i++) {
+    const u = i / steps;                                       // 0 at the parent, 1 at the twin
+    // Thickest where it leaves a body, thinnest in the middle — a rope being
+    // pulled apart, not a bar between two blobs.
+    const waist = 0.22 + 0.78 * Math.pow(Math.abs(u * 2 - 1), 1.6);
+    let th = thick * waist * (1 - q * 0.5);
+    if (q > snap) {
+      // Snapped: the middle is gone and each stub retreats into its own half.
+      const g = (q - snap) / (1 - snap);
+      const reach = 0.5 * (1 - g);
+      if (u > reach && u < 1 - reach) continue;
+      th *= 1 - g * 0.6;
+    }
+    if (th < 0.8) continue;
+    const x = Math.round(ax + (bx - ax) * u);
+    // Sag: the rope hangs heaviest in the middle, and hangs lower the longer it
+    // has been stretched. Kept shallow — it is a strand under tension, not a
+    // washing line.
+    const sag = Math.sin(Math.PI * u) * (1 + q * 2.5) * (1 - Math.max(0, (q - snap) / (1 - snap)));
+    const y = ay + (by - ay) * u + sag;
+    const h = Math.max(1, Math.round(th));
+    const top = Math.round(y - th / 2);
+    ctx.globalAlpha = 1;
+    // Outlined top and bottom in the sheet's own near-black, the way every body
+    // in the hall is: without it a translucent rope over a dark floor reads as
+    // a stain rather than as something with a shape.
+    ctx.fillStyle = tint.edge;
+    ctx.fillRect(x, top - 1, 1, 1);
+    ctx.fillRect(x, top + h, 1, 1);
+    ctx.globalAlpha = 0.92 * (1 - q * 0.3);
+    ctx.fillStyle = tint.body;
+    ctx.fillRect(x, top, 1, h);
+    // One lit pixel along the top edge and the shade under it — the three-tone
+    // split the slimes themselves are drawn with.
+    if (h >= 3) {
+      ctx.fillStyle = tint.lit;
+      ctx.fillRect(x, top, 1, 1);
+      ctx.fillStyle = tint.dark;
+      ctx.fillRect(x, top + h - 1, 1, 1);
+    }
+  }
+  // Drips: blobs that were hanging off the rope when it went, falling to the lane
+  // floor and splatting. Deterministic off the twin's id — no randomness in the
+  // scene, and the same split always drips the same way.
+  const floor = (scene.laneY[e.lane] ?? scene.feetY) - 1;
+  for (let d = 0; d < 5; d++) {
+    const u = 0.2 + ((e.id * 17 + d * 29) % 60) / 100;         // spread along the rope
+    const start = 0.16 + ((e.id * 7 + d * 13) % 30) / 100;     // …and let go at different moments
+    if (q < start) continue;
+    const f = Math.min(1, (q - start) / (1 - start));
+    const x = ax + (bx - ax) * u;
+    const y0 = ay + (by - ay) * u + 2;
+    const y = Math.min(floor, y0 + (floor - y0) * f * f);      // gravity, not a glide
+    const landed = y >= floor - 0.5;
+    ctx.globalAlpha = landed ? 0.55 * (1 - f) : 0.9;
+    fillPixEllipse(ctx, x, y, landed ? 2.4 : 1.2, landed ? 0.6 : 1.2, landed ? tint.dark : tint.body);
+  }
+  ctx.restore();
+}
+
+// The wobble a body carries for the moment after it came apart: it is squashed
+// wide and springs back, twice, with the swing dying out over the window. Half a
+// slime that simply appeared at its new size would read as a sprite swap; one
+// that is still shaking reads as something that just tore in two.
+//
+// Returned as a pair of multipliers on the drawn width/height. It is volume-ish
+// rather than exact — wider means shorter — so the body keeps its footprint.
+function splitWobble(now, e) {
+  if (!e.splitFxAt) return null;
+  const q = (now - e.splitFxAt) / CONFIG.slimeSplitFxMs;
+  if (q < 0 || q >= 1) return null;
+  const k = Math.sin(q * Math.PI * 2.4) * (1 - q) * 0.24;
+  return { sx: 1 + k, sy: 1 - k * 0.8 };
+}
+
+// …and the ground it covers getting clear of the half it was torn off. A twin is
+// dropped straight into its slot in the lane queue the instant the split
+// resolves — it has to be, or the body behind it would walk through the space it
+// is about to occupy — so what slides here is the DRAWING only: it starts almost
+// on top of its parent and pulls out to where it really stands, which is what
+// makes the pair read as one body coming apart rather than as a second one
+// appearing next to the first.
+//
+// Returned in scene px, to be added to the drawn x. Zero once the pull is over,
+// or if the half it came off is already gone.
+function splitSlideX(now, e) {
+  if (!e.splitFxAt || e.splitFromId == null) return 0;
+  const q = (now - e.splitFxAt) / CONFIG.slimeSplitFxMs;
+  if (q < 0 || q >= 1) return 0;
+  const other = state.enemies.find((o) => o.id === e.splitFromId);
+  if (!other) return 0;
+  const p = Math.min(1, q / 0.55);                      // the pull is over well before the rope snaps
+  const ease = 1 - Math.pow(1 - p, 3);
+  return -(e.pos - other.pos) * TILE * (1 - ease) * 0.85;
 }
 
 // The door at the end of the hall. It stands at ONE fixed metre mark, so it is

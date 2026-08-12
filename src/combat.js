@@ -178,8 +178,8 @@ function hitEnemy(enemy, n, at = performance.now()) {
   const dealt = Math.max(1, Math.round(n * (1 - armorReduction(enemy))));
   enemy.hp = Math.max(0, enemy.hp - dealt);
   // Some bodies do more than lose a bar when they are hurt: a slime that
-  // survives the hit divides in two, and one too small to divide shrinks a size
-  // instead. This hangs off hitEnemy rather than off the spell resolvers because
+  // survives the hit divides into two of the size below it, unless it is already
+  // the smallest there is. This hangs off hitEnemy rather than off the resolvers because
   // hitEnemy is the single funnel every point of damage in the game passes
   // through — a meteor rock, a fifth chain hop and a Dornen reflection all have
   // to divide a slime the same way, and none of them should have to know that
