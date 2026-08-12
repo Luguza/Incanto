@@ -156,31 +156,22 @@
   }
   .dev-gold-ok:active { background: var(--raised-hi); }
 
-  /* `flex-basis: 0` on purpose: the canvas takes whatever the topbar, the info
-     panel and the run button leave over, and never sizes off its own viewBox.
-     With `auto` the SVG's intrinsic aspect ratio feeds into the layout, and the
-     viewBox is kept matched to this box (see syncTreeViewport) — the two would
-     chase each other. */
+  /* The web is a <canvas>, not an SVG — see the essay above drawTree in
+     skilltree.js before changing that back.
+
+     `flex-basis: 0` on purpose: it takes whatever the topbar, the info panel
+     and the run button leave over, and never sizes off its own intrinsic
+     dimensions. With `auto` the canvas's default 300x150 would feed into the
+     layout, and the backing store is kept matched to this box (see
+     syncTreeViewport) — the two would chase each other.
+
+     Every colour the web is drawn in lives in TREE_PAINT in skilltree.js now;
+     a canvas takes no CSS, so there is nothing to style here but the box. */
   .tree-canvas {
     flex: 1 1 0; min-height: 0; width: 100%; display: block;
     touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;
   }
   .tree-canvas:active { cursor: grabbing; }
-
-  /* edges — crisp, flat lines (no glow), trimmed to the circle rims in JS */
-  .tedge .e-line { stroke-width: 4.5; fill: none; stroke-linecap: butt; }
-  .tedge .e-tick { stroke-width: 3; stroke-linecap: round; }
-  .tedge.e-off  .e-line, .tedge.e-off  .e-tick { stroke: #2c2742; }
-  .tedge.e-half .e-line, .tedge.e-half .e-tick { stroke: #574f76; }
-  .tedge.e-on   .e-line { stroke: #7ff0ed; }
-  .tedge.e-on   .e-tick { stroke: #bffcfa; }
-
-  /* nodes */
-  .tnode { cursor: pointer; }
-  .tnode .n-q { font-family: var(--display-font); font-size: 26px; font-weight: 700; }
-  .tnode.selected { pointer-events: auto; }
-  #tree-sel { animation: treePulse 1.4s ease-in-out infinite; pointer-events: none; }
-  @keyframes treePulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
 
   /* zoom toolbar */
   .tree-zoom {

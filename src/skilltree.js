@@ -66,26 +66,68 @@ const TREE_THEMES = {
   heal:      { color: "#6ed08a", glow: "110,208,138", label: "Heilwort"     },
 };
 
-// Small runic line-glyphs in local coords (centred on 0,0, ~±13). Stroke is
-// inherited from the wrapping <g>, so colour is set once per node.
+// Small runic line-glyphs in local coords (centred on 0,0, ~±13).
+//
+// Written as PRIMITIVES rather than as SVG markup because the same glyph now
+// has to be drawn two ways: stroked onto the tree's canvas (see the note above
+// drawTree — the web can't be SVG any more) and emitted as SVG for the little
+// runes in the info panel and on the Werte screen. One authored shape, two
+// renderers (glyphSvg / glyphPath), so the two can never drift apart.
+//   ["c", cx, cy, r]                 circle
+//   ["l", x1, y1, x2, y2]            line
+//   ["p", x, y, x, y, …]             polyline (open)
+//   ["g", x, y, x, y, …]             polygon (closed)
+//   ["d", "M…"]                      path data, for the curved ones
 const RUNE_GLYPHS = {
-  origin:    `<circle cx="0" cy="0" r="10"/><circle cx="0" cy="0" r="4"/><line x1="0" y1="-10" x2="0" y2="-14"/><line x1="0" y1="10" x2="0" y2="14"/><line x1="-10" y1="0" x2="-14" y2="0"/><line x1="10" y1="0" x2="14" y2="0"/>`,
-  might:     `<polyline points="-9,4 0,-7 9,4"/><polyline points="-9,10 0,-1 9,10"/>`,
-  vigor:     `<line x1="0" y1="-11" x2="0" y2="11"/><line x1="-10" y1="-1" x2="10" y2="-1"/><line x1="-5" y1="-11" x2="5" y2="-11"/>`,
-  crit:      `<polygon points="0,-12 2.6,-2.6 12,0 2.6,2.6 0,12 -2.6,2.6 -12,0 -2.6,-2.6"/>`,
-  sustain:   `<path d="M0,-11 C7,-3 7,7 0,10 C-7,7 -7,-3 0,-11 Z"/>`,
-  guard:     `<polygon points="0,-11 9,-6 9,4 0,11 -9,4 -9,-6"/>`,
-  fortune:   `<circle cx="0" cy="0" r="9"/><polygon points="0,-4 4,0 0,4 -4,0"/>`,
-  focus:     `<circle cx="0" cy="0" r="4.5"/><line x1="0" y1="-6.5" x2="0" y2="-12"/><line x1="0" y1="6.5" x2="0" y2="12"/><line x1="-6.5" y1="0" x2="-12" y2="0"/><line x1="6.5" y1="0" x2="12" y2="0"/><line x1="-4.6" y1="-4.6" x2="-8.5" y2="-8.5"/><line x1="4.6" y1="4.6" x2="8.5" y2="8.5"/>`,
-  thorn:     `<path d="M-10,9 C-4,4 4,-4 10,-9"/><path d="M-6,5 L-9,-1"/><path d="M-1,0 L2,-6"/><path d="M4,-5 L1,-11"/><path d="M-3,2 L-6,8"/><path d="M2,-3 L5,3"/>`,
+  origin:    [["c",0,0,10],["c",0,0,4],["l",0,-10,0,-14],["l",0,10,0,14],["l",-10,0,-14,0],["l",10,0,14,0]],
+  might:     [["p",-9,4,0,-7,9,4],["p",-9,10,0,-1,9,10]],
+  vigor:     [["l",0,-11,0,11],["l",-10,-1,10,-1],["l",-5,-11,5,-11]],
+  crit:      [["g",0,-12,2.6,-2.6,12,0,2.6,2.6,0,12,-2.6,2.6,-12,0,-2.6,-2.6]],
+  sustain:   [["d","M0,-11 C7,-3 7,7 0,10 C-7,7 -7,-3 0,-11 Z"]],
+  guard:     [["g",0,-11,9,-6,9,4,0,11,-9,4,-9,-6]],
+  fortune:   [["c",0,0,9],["g",0,-4,4,0,0,4,-4,0]],
+  focus:     [["c",0,0,4.5],["l",0,-6.5,0,-12],["l",0,6.5,0,12],["l",-6.5,0,-12,0],["l",6.5,0,12,0],["l",-4.6,-4.6,-8.5,-8.5],["l",4.6,4.6,8.5,8.5]],
+  thorn:     [["d","M-10,9 C-4,4 4,-4 10,-9"],["l",-6,5,-9,-1],["l",-1,0,2,-6],["l",4,-5,1,-11],["l",-3,2,-6,8],["l",2,-3,5,3]],
   // The six pages. Each is the spell's silhouette in one or two strokes.
-  fireball:  `<circle cx="0" cy="2" r="6.5"/><path d="M-6,-4 C-3,-9 -1,-8 0,-12 C1,-8 3,-9 6,-4"/>`,
-  lightning: `<polyline points="3,-12 -5,-1 1,-1 -3,12"/><line x1="8" y1="-8" x2="11" y2="-11"/><line x1="-8" y1="8" x2="-11" y2="11"/>`,
-  frost:     `<line x1="0" y1="-12" x2="0" y2="12"/><line x1="-10.4" y1="-6" x2="10.4" y2="6"/><line x1="-10.4" y1="6" x2="10.4" y2="-6"/><path d="M-3,-8 L0,-11 L3,-8"/><path d="M-3,8 L0,11 L3,8"/>`,
-  meteor:    `<circle cx="2" cy="2" r="5.5"/><line x1="-4" y1="-4" x2="-11" y2="-11"/><line x1="-7" y1="0" x2="-12" y2="-4"/><line x1="0" y1="-7" x2="-4" y2="-12"/>`,
-  shield:    `<path d="M0,-11 L9,-7 L9,1 C9,7 4,10 0,12 C-4,10 -9,7 -9,1 L-9,-7 Z"/><line x1="0" y1="-5" x2="0" y2="6"/>`,
-  heal:      `<path d="M0,11 C-9,4 -11,-3 -7,-8 C-4,-11 -1,-10 0,-6 C1,-10 4,-11 7,-8 C11,-3 9,4 0,11 Z"/>`,
+  fireball:  [["c",0,2,6.5],["d","M-6,-4 C-3,-9 -1,-8 0,-12 C1,-8 3,-9 6,-4"]],
+  lightning: [["p",3,-12,-5,-1,1,-1,-3,12],["l",8,-8,11,-11],["l",-8,8,-11,11]],
+  frost:     [["l",0,-12,0,12],["l",-10.4,-6,10.4,6],["l",-10.4,6,10.4,-6],["p",-3,-8,0,-11,3,-8],["p",-3,8,0,11,3,8]],
+  meteor:    [["c",2,2,5.5],["l",-4,-4,-11,-11],["l",-7,0,-12,-4],["l",0,-7,-4,-12]],
+  shield:    [["d","M0,-11 L9,-7 L9,1 C9,7 4,10 0,12 C-4,10 -9,7 -9,1 L-9,-7 Z"],["l",0,-5,0,6]],
+  heal:      [["d","M0,11 C-9,4 -11,-3 -7,-8 C-4,-11 -1,-10 0,-6 C1,-10 4,-11 7,-8 C11,-3 9,4 0,11 Z"]],
 };
+
+// The glyph as SVG elements. Stroke is inherited from the wrapping <g>, so
+// colour is set once per rune.
+function glyphSvg(theme) {
+  let s = "";
+  for (const [k, ...v] of RUNE_GLYPHS[theme]) {
+    if (k === "c") { s += `<circle cx="${v[0]}" cy="${v[1]}" r="${v[2]}"/>`; continue; }
+    if (k === "l") { s += `<line x1="${v[0]}" y1="${v[1]}" x2="${v[2]}" y2="${v[3]}"/>`; continue; }
+    if (k === "d") { s += `<path d="${v[0]}"/>`; continue; }
+    const pts = [];
+    for (let i = 0; i < v.length; i += 2) pts.push(v[i] + "," + v[i + 1]);
+    s += k === "p" ? `<polyline points="${pts.join(" ")}"/>` : `<polygon points="${pts.join(" ")}"/>`;
+  }
+  return s;
+}
+
+// The same glyph as one Path2D, built once per theme and stroked straight onto
+// the canvas. Sixteen of these exist, so they are worth keeping.
+const GLYPH_PATHS = {};
+function glyphPath(theme) {
+  if (GLYPH_PATHS[theme]) return GLYPH_PATHS[theme];
+  const p = new Path2D();
+  for (const [k, ...v] of RUNE_GLYPHS[theme]) {
+    if (k === "c") { p.moveTo(v[0] + v[2], v[1]); p.arc(v[0], v[1], v[2], 0, Math.PI * 2); continue; }
+    if (k === "l") { p.moveTo(v[0], v[1]); p.lineTo(v[2], v[3]); continue; }
+    if (k === "d") { p.addPath(new Path2D(v[0])); continue; }
+    p.moveTo(v[0], v[1]);
+    for (let i = 2; i < v.length; i += 2) p.lineTo(v[i], v[i + 1]);
+    if (k === "g") p.closePath();
+  }
+  return (GLYPH_PATHS[theme] = p);
+}
 
 // ---------------------------------------------------------------------------
 // Geometry — the tree lives in a large tree-space (seed at TREE_CENTER); the
@@ -1184,28 +1226,36 @@ function nodeRadius(id) {
 // under `meet` the square viewBox was letterboxed inside a taller box, and the
 // old maths ignored that offset, so pinch/wheel zoom drifted vertically instead
 // of holding the point under the fingers.
-const TREE_VP = { w: TREE_VIEW, h: TREE_VIEW, measured: false };
+const TREE_VP = { w: TREE_VIEW, h: TREE_VIEW, dpr: 1, measured: false };
 
 // How much of the authored 900-unit window fits in the current box. The default
 // zoom and the zoom limits are written against that window, so they scale with
 // it and a phone still opens on exactly the framing they were chosen for.
 function treeFit() { return Math.min(TREE_VP.w, TREE_VP.h) / TREE_VIEW; }
 
-// Re-read the canvas box and keep the viewBox matched to it. Returns true when
-// the size actually changed. Deliberately does NOT touch the camera: leaving
-// tx/ty/scale alone is what pins the picture to the box's top-left corner and
-// keeps a resize (info panel, rotation, browser chrome) from moving anything.
+// Re-read the canvas box and keep the backing store matched to it. Returns true
+// when the size actually changed. Deliberately does NOT touch the camera:
+// leaving tx/ty/scale alone is what pins the picture to the box's top-left
+// corner and keeps a resize (info panel, rotation, browser chrome) from moving
+// anything.
+//
+// Setting canvas.width/height CLEARS the bitmap, so every path out of here ends
+// in a redraw.
 function syncTreeViewport() {
-  const svg = document.getElementById("tree-canvas");
-  if (!svg) return false;
-  const r = svg.getBoundingClientRect();
+  const cv = treeCanvasEl();
+  if (!cv) return false;
+  const r = cv.getBoundingClientRect();
   if (!r.width || !r.height) return false;
-  if (TREE_VP.measured && Math.abs(r.width - TREE_VP.w) < 0.5 && Math.abs(r.height - TREE_VP.h) < 0.5) return false;
-  TREE_VP.w = r.width; TREE_VP.h = r.height; TREE_VP.measured = true;
-  svg.setAttribute("viewBox", treeViewBox());
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);   // 2 is already past what a phone can show here
+  const same = TREE_VP.measured && Math.abs(r.width - TREE_VP.w) < 0.5 &&
+    Math.abs(r.height - TREE_VP.h) < 0.5 && TREE_VP.dpr === dpr;
+  if (same) return false;
+  TREE_VP.w = r.width; TREE_VP.h = r.height; TREE_VP.dpr = dpr; TREE_VP.measured = true;
+  cv.width = Math.round(r.width * dpr);
+  cv.height = Math.round(r.height * dpr);
+  drawTree(true);
   return true;
 }
-function treeViewBox() { return `0 0 ${TREE_VP.w.toFixed(2)} ${TREE_VP.h.toFixed(2)}`; }
 let treeResizeObs = null;
 
 function initTreeView(resetSelection) {
@@ -1221,85 +1271,261 @@ function initTreeView(resetSelection) {
 
 function runeGroup(theme, opacity) {
   return `<g class="n-rune" stroke="${TREE_THEMES[theme].color}" fill="none" stroke-width="2" ` +
-    `stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}">${RUNE_GLYPHS[theme]}</g>`;
+    `stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}">${glyphSvg(theme)}</g>`;
 }
 function runeGlyphSvg(theme, size) {
   return `<svg class="mini-rune" viewBox="-16 -16 32 32" width="${size}" height="${size}" aria-hidden="true">` +
     runeGroup(theme, 1) + `</svg>`;
 }
 
-function nodeDotsSvg(rank, max, R, color) {
+// ---------------------------------------------------------------------------
+// Drawing the web
+//
+// THE TREE IS A CANVAS, AND THAT IS NOT A RENDERING PREFERENCE. It was an SVG
+// of ~1050 <circle>s, which is the natural way to write it and the way it reads
+// best — but a phone browser's own "dark mode for web contents" repaints SVG
+// and this game is painted in near-black. That filter treats every fill and
+// stroke as FOREGROUND and inverts the dark ones, so the whole web came back as
+// a field of white discs on real phones. Declaring the page dark does not stop
+// it: the browsers that do this ignore `color-scheme` and the meta tag alike
+// (see styles/base.css — those declarations are still worth keeping for the
+// browsers that DO listen, they just can't be relied on).
+//
+// A canvas is the one surface the filter cannot reach, which is why the combat
+// scene always looked right on the same phone that broke this screen. Measured
+// against a forced browser dark mode: every other way of painting a dark shape
+// — plain SVG fill, an SVG gradient paint server, a pattern of a PNG, a CSS
+// background, forced-color-adjust:none — comes back inverted. Canvas does not.
+//
+// So: do NOT move the web back to SVG, and do not paint new tree furniture with
+// DOM elements. The little runes in the info panel and on the Werte screen are
+// still SVG on purpose (they are small, and they sit inside DOM panels), and
+// they are the known cost of that line.
+// ---------------------------------------------------------------------------
+
+// Everything the web is painted in. These were CSS rules on .tedge/.tnode
+// before; on a canvas the colours have to live where the drawing does.
+const TREE_PAINT = {
+  edgeOff: "#2c2742", edgeHalf: "#574f76", edgeOn: "#7ff0ed", edgeOnTick: "#bffcfa",
+  hiddenFill: "#120e1c", hiddenRim: "#332e46", hiddenInk: "#4a4560",
+  openFill: "#141020", pipOff: "#241f36", pipOffRim: "#3a3550", sel: "#eafffe",
+  ground: "#131020",
+};
+const TREE_Q_FONT = '700 26px "Palatino Linotype", "Book Antiqua", Georgia, serif';
+
+function treeCanvasEl() { return document.getElementById("tree-canvas"); }
+
+// The rank pips under a node.
+function drawNodeDots(ctx, rank, max, R, color) {
   const gap = 8.5, y = R + 11, w = (max - 1) * gap;
-  let s = "";
+  ctx.lineWidth = 0.8;
   for (let i = 0; i < max; i++) {
-    const x = (-w / 2 + i * gap).toFixed(1);
     const on = i < rank;
-    s += `<circle cx="${x}" cy="${y}" r="2.6" fill="${on ? color : "#241f36"}" ` +
-      `stroke="${on ? color : "#3a3550"}" stroke-width="0.8"/>`;
+    ctx.beginPath();
+    ctx.arc(-w / 2 + i * gap, y, 2.6, 0, Math.PI * 2);
+    ctx.fillStyle = on ? color : TREE_PAINT.pipOff;
+    ctx.strokeStyle = on ? color : TREE_PAINT.pipOffRim;
+    ctx.fill();
+    ctx.stroke();
   }
-  return `<g class="n-dots">${s}</g>`;
 }
 
-function nodeSvg(id) {
+// One node, drawn about its own centre (the caller has already translated).
+function drawNode(ctx, id) {
   const node = TREE_NODES[id];
-  const pos = NODE_POS[id];
   const theme = TREE_THEMES[node.theme];
-  const revealed = nodeRevealed(id);
   const purchased = isPurchased(id);
-  const rank = nodeRank(id);
-  const maxed = rank >= node.maxRank;
   const R = nodeRadius(id);
+  const ring = (r, color, width, alpha, dash) => {
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.setLineDash(dash || []);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  };
 
-  let disc, glyph, dots = "";
-  if (!revealed) {
+  if (!nodeRevealed(id)) {
     // Hidden nodes render as a cheap "?" disc (most of a fresh tree is hidden,
     // which keeps the huge web light until you push into it).
-    disc = `<circle class="n-disc" r="${R}" fill="#120e1c" stroke="#332e46" stroke-width="3"/>`;
-    glyph = `<text class="n-q" y="9" text-anchor="middle" fill="#4a4560">?</text>`;
-  } else {
-    const fill = purchased ? `rgba(${theme.glow},0.25)` : "#141020";
-    disc = `<circle class="n-disc" r="${R}" fill="${fill}" stroke="${theme.color}" ` +
-      `stroke-width="${purchased ? 4 : 3}" opacity="${purchased ? 1 : 0.85}"/>` +
-      (purchased ? `<circle r="${R - 6}" fill="none" stroke="${theme.color}" stroke-width="1.5" opacity="0.45"/>` : "") +
-      (maxed && id !== "root" ? `<circle r="${R + 4.5}" fill="none" stroke="${theme.color}" stroke-width="1.5" opacity="0.6"/>` : "");
-    glyph = runeGroup(node.theme, purchased ? 1 : 0.9);
-    if (node.unlocks) {
-      // A sealed spell wears a solid double ring — plainly a different KIND of
-      // prize from the keystones and caches that share the unique halo.
-      disc += `<circle r="${R + 6}" fill="none" stroke="${theme.color}" stroke-width="2" ` +
-        `opacity="${purchased ? 0.95 : 0.55}"/>` +
-        `<circle r="${R + 10}" fill="none" stroke="${theme.color}" stroke-width="1" ` +
-        `opacity="${purchased ? 0.6 : 0.3}"/>`;
-    } else if (node.unique) {
-      // Keystones, arm notables and the thorn caches: a barbed halo instead of
-      // rank pips, so finding one reads as a discovery.
-      disc += `<circle r="${R + 7}" fill="none" stroke="${theme.color}" stroke-width="1.5" ` +
-        `stroke-dasharray="4 7" opacity="${purchased ? 0.9 : 0.5}"/>`;
-    } else if (id !== "root") {
-      dots = nodeDotsSvg(rank, node.maxRank, R, theme.color);
-    }
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    ctx.fillStyle = TREE_PAINT.hiddenFill;
+    ctx.fill();
+    ring(R, TREE_PAINT.hiddenRim, 3, 1);
+    ctx.fillStyle = TREE_PAINT.hiddenInk;
+    ctx.font = TREE_Q_FONT;
+    ctx.textAlign = "center";
+    ctx.fillText("?", 0, 9);
+    return;
   }
-  return `<g class="tnode" data-node="${id}" transform="translate(${pos.x.toFixed(1)},${pos.y.toFixed(1)})">${disc}${glyph}${dots}</g>`;
+
+  const rank = nodeRank(id);
+  const maxed = rank >= node.maxRank;
+  ctx.globalAlpha = purchased ? 1 : 0.85;
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, Math.PI * 2);
+  ctx.fillStyle = purchased ? `rgba(${theme.glow},0.25)` : TREE_PAINT.openFill;
+  ctx.fill();
+  ctx.strokeStyle = theme.color;
+  ctx.lineWidth = purchased ? 4 : 3;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  if (purchased) ring(R - 6, theme.color, 1.5, 0.45);
+  if (maxed && id !== "root") ring(R + 4.5, theme.color, 1.5, 0.6);
+
+  if (node.unlocks) {
+    // A sealed spell wears a solid double ring — plainly a different KIND of
+    // prize from the keystones and caches that share the unique halo.
+    ring(R + 6, theme.color, 2, purchased ? 0.95 : 0.55);
+    ring(R + 10, theme.color, 1, purchased ? 0.6 : 0.3);
+  } else if (node.unique) {
+    // Keystones, arm notables and the thorn caches: a barbed halo instead of
+    // rank pips, so finding one reads as a discovery.
+    ring(R + 7, theme.color, 1.5, purchased ? 0.9 : 0.5, [4, 7]);
+  } else if (id !== "root") {
+    drawNodeDots(ctx, rank, node.maxRank, R, theme.color);
+  }
+
+  ctx.globalAlpha = purchased ? 1 : 0.9;
+  ctx.strokeStyle = theme.color;
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.stroke(glyphPath(node.theme));
+  ctx.lineCap = "butt";
+  ctx.globalAlpha = 1;
 }
 
-function edgeSvg(a, b) {
+// One edge, trimmed to the rims of the two circles it joins, with a
+// perpendicular tick at its midpoint.
+function drawEdge(ctx, a, b) {
   const pa = NODE_POS[a], pb = NODE_POS[b];
   const both = isPurchased(a) && isPurchased(b);
   const half = !both && (isPurchased(a) || isPurchased(b));
-  const cls = both ? "e-on" : half ? "e-half" : "e-off";
   const dx = pb.x - pa.x, dy = pb.y - pa.y, len = Math.hypot(dx, dy) || 1;
   const ux = dx / len, uy = dy / len;
   // Stop each end at the rim of the circle it connects (leave a hair of gap).
   const ra = nodeRadius(a) + 1.5, rb = nodeRadius(b) + 1.5;
-  if (len <= ra + rb) return "";                      // circles touch — no visible segment
+  if (len <= ra + rb) return;                         // circles touch — no visible segment
   const x1 = pa.x + ux * ra, y1 = pa.y + uy * ra;
   const x2 = pb.x - ux * rb, y2 = pb.y - uy * rb;
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
   const nx = -uy * 5, ny = ux * 5;                    // perpendicular tick at the midpoint
-  return `<g class="tedge ${cls}">` +
-    `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="e-line"/>` +
-    `<line x1="${(mx - nx).toFixed(1)}" y1="${(my - ny).toFixed(1)}" x2="${(mx + nx).toFixed(1)}" y2="${(my + ny).toFixed(1)}" class="e-tick"/>` +
-    `</g>`;
+
+  ctx.strokeStyle = both ? TREE_PAINT.edgeOn : half ? TREE_PAINT.edgeHalf : TREE_PAINT.edgeOff;
+  ctx.lineWidth = 4.5;
+  ctx.lineCap = "butt";
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  if (both) ctx.strokeStyle = TREE_PAINT.edgeOnTick;
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(mx - nx, my - ny);
+  ctx.lineTo(mx + nx, my + ny);
+  ctx.stroke();
+  ctx.lineCap = "butt";
+}
+
+// The whole web, at the current camera.
+//
+// The web itself is drawn into an offscreen bitmap and kept until the camera or
+// the ranks move; only the selection ring, which breathes, is redrawn per
+// frame. Without that, holding a node selected would re-stroke a thousand
+// circles sixty times a second to animate one ring.
+let treeWeb = null, treeWebKey = "";
+function drawTree(force) {
+  const cv = treeCanvasEl();
+  if (!cv || !state.tree || !cv.width) return;
+  const t = state.tree, dpr = TREE_VP.dpr || 1;
+  const key = [t.tx.toFixed(2), t.ty.toFixed(2), t.scale.toFixed(4), cv.width, cv.height].join("|");
+
+  if (force || key !== treeWebKey || !treeWeb) {
+    if (!treeWeb) treeWeb = document.createElement("canvas");
+    if (treeWeb.width !== cv.width || treeWeb.height !== cv.height) {
+      treeWeb.width = cv.width; treeWeb.height = cv.height;
+    }
+    const w = treeWeb.getContext("2d");
+    w.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Paint the ground rather than clearing to transparent. A transparent
+    // canvas shows the page's own background through the gaps in the web, and
+    // that background is CSS — the very thing a phone's dark mode is free to
+    // repaint. Painting it here keeps the whole box inside the one surface the
+    // filter can't reach. (Matches the middle of .tree-screen's radial ground.)
+    w.fillStyle = TREE_PAINT.ground;
+    w.fillRect(0, 0, TREE_VP.w, TREE_VP.h);
+    w.translate(t.tx, t.ty);
+    w.scale(t.scale, t.scale);
+
+    // Only what the window can actually show, padded by a node's furthest ring
+    // plus its rank pips. At the default framing that is most of the tree; zoom
+    // in and it becomes a handful.
+    const pad = 60;
+    const x0 = -t.tx / t.scale - pad, y0 = -t.ty / t.scale - pad;
+    const x1 = (TREE_VP.w - t.tx) / t.scale + pad, y1 = (TREE_VP.h - t.ty) / t.scale + pad;
+    const near = (p) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
+
+    for (const [a, b] of TREE_EDGES) if (near(NODE_POS[a]) || near(NODE_POS[b])) drawEdge(w, a, b);
+    for (const id in TREE_NODES) {
+      const p = NODE_POS[id];
+      if (!near(p)) continue;
+      w.save();
+      w.translate(p.x, p.y);
+      drawNode(w, id);
+      w.restore();
+    }
+    treeWebKey = key;
+  }
+
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(treeWeb, 0, 0);
+
+  // The selection ring, breathing the way the CSS animation used to (0.5 → 1
+  // and back over 1.4s).
+  const sel = t.selected && NODE_POS[t.selected];
+  if (sel) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.translate(t.tx, t.ty);
+    ctx.scale(t.scale, t.scale);
+    ctx.globalAlpha = 0.75 + 0.25 * Math.cos((state.clockMs || 0) / 1400 * Math.PI * 2);
+    ctx.strokeStyle = TREE_PAINT.sel;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(sel.x, sel.y, nodeRadius(t.selected) + 7, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// Which node is under a point given in canvas-box pixels, or null. The web is
+// a bitmap now, so there is no element to hit-test — but the tree is only ever
+// a thousand positions, so this is a cheap sweep rather than a spatial index.
+function nodeAtPoint(vx, vy) {
+  const t = state.tree;
+  if (!t) return null;
+  const x = (vx - t.tx) / t.scale, y = (vy - t.ty) / t.scale;
+  let best = null, bestD = Infinity;
+  for (const id in NODE_POS) {
+    const p = NODE_POS[id];
+    const d = Math.hypot(p.x - x, p.y - y);
+    if (d <= nodeRadius(id) + 4 && d < bestD) { bestD = d; best = id; }
+  }
+  return best;
+}
+
+// Called every frame the forge is up: the only thing that moves is the
+// selection ring, and only while something is selected.
+function patchTreeContinuous() {
+  if (state.tree && state.tree.selected) drawTree();
 }
 
 // The bottom info panel: a single click on a node fills this in and enables the
@@ -1454,14 +1680,6 @@ function devGoldCommit() {
   state._structuralDirty = true;   // redraws the purse and re-prices every Kaufen button
 }
 
-function selRingSvg() {
-  const id = state.tree && state.tree.selected;
-  const p = id && NODE_POS[id] ? NODE_POS[id] : null;
-  return p
-    ? `<circle id="tree-sel" fill="none" stroke="#eafffe" stroke-width="3" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nodeRadius(id) + 7}"/>`
-    : `<circle id="tree-sel" fill="none" stroke="#eafffe" stroke-width="3" r="0" style="display:none"/>`;
-}
-
 // The whole upgrade phase is the tree now. Called by the loop router for the
 // "upgrade" screen (structural rebuild only — pan/zoom and node selection patch
 // the DOM live, so tapping around the web stays cheap).
@@ -1472,14 +1690,6 @@ function renderUpgradeFull() {
   // rather than trusted from an earlier visit, which may have been a different
   // size or orientation.
   if (!state.tree) { TREE_VP.measured = false; initTreeView(true); }
-  const t = state.tree;
-
-  let edges = "";
-  for (const [a, b] of TREE_EDGES) edges += edgeSvg(a, b);
-  let nodes = "";
-  for (const id in TREE_NODES) nodes += nodeSvg(id);
-
-  const cam = `translate(${t.tx.toFixed(2)},${t.ty.toFixed(2)}) scale(${t.scale.toFixed(4)})`;
 
   app.innerHTML = `
     <div class="screen tree-screen">
@@ -1507,12 +1717,7 @@ function renderUpgradeFull() {
         <div id="tree-gold-slot">${treeGoldMarkup()}</div>
       </div>
       ${devBarMarkup()}
-      <svg class="tree-canvas" id="tree-canvas" viewBox="${treeViewBox()}" preserveAspectRatio="xMinYMin slice">
-        <g id="tree-cam" transform="${cam}">
-          <g class="tree-edges">${edges}</g>
-          <g class="tree-nodes">${selRingSvg()}${nodes}</g>
-        </g>
-      </svg>
+      <canvas class="tree-canvas" id="tree-canvas"></canvas>
       <div class="tree-zoom">
         <button class="tz-btn" data-act="treeZoom" data-args="[1.25]" aria-label="Vergrößern">+</button>
         <button class="tz-btn" data-act="treeZoom" data-args="[0.8]" aria-label="Verkleinern">&minus;</button>
@@ -1530,31 +1735,21 @@ function renderUpgradeFull() {
 function selectNode(id) {
   if (!state.tree) return;
   state.tree.selected = id;
-  const ring = document.getElementById("tree-sel");
-  const p = NODE_POS[id];
-  if (ring && p) {
-    ring.setAttribute("cx", p.x.toFixed(1));
-    ring.setAttribute("cy", p.y.toFixed(1));
-    ring.setAttribute("r", nodeRadius(id) + 7);
-    ring.style.display = "";
-  }
   const slot = document.getElementById("tree-info-slot");
   if (slot) slot.innerHTML = renderTreeInfo();
-  // The panel just changed height, so the canvas box did too. Re-match the
-  // viewBox to it here and now rather than waiting on the ResizeObserver: the
-  // observer only runs at the end of the task, which leaves the tree drawn
-  // through a stale window for anything that reads its geometry in between.
-  syncTreeViewport();
+  // The panel just changed height, so the canvas box did too. Re-measure it
+  // here and now rather than waiting on the ResizeObserver: the observer only
+  // runs at the end of the task, which leaves the tree drawn through a stale
+  // window for anything that reads its geometry in between. syncTreeViewport
+  // redraws when the box really did change; when it didn't, draw the ring.
+  if (!syncTreeViewport()) drawTree();
 }
 
-function applyTreeCam() {
-  const cam = document.getElementById("tree-cam");
-  if (cam) {
-    const t = state.tree;
-    cam.setAttribute("transform",
-      `translate(${t.tx.toFixed(2)},${t.ty.toFixed(2)}) scale(${t.scale.toFixed(4)})`);
-  }
-}
+// The camera moved, so the web has to be re-drawn at the new one. (Under SVG
+// this only had to write a transform attribute and the compositor did the rest;
+// on a canvas the picture IS the drawing, so panning costs a redraw. That is
+// what the offscreen bitmap in drawTree keeps down to one.)
+function applyTreeCam() { drawTree(); }
 // Zoom about a point given in viewBox coords, keeping it fixed under the cursor.
 // The limits are the authored ones scaled by how much of the 900-unit window the
 // box holds, so they mean the same thing on any screen.
@@ -1575,29 +1770,33 @@ function treeReset() { syncTreeViewport(); initTreeView(false); applyTreeCam(); 
 // bound to the freshly rendered SVG. Pan/zoom mutate the transform live and
 // persist to state.tree; selection patches the DOM in place. Neither rebuilds.
 function attachTreeInteractions() {
-  const svg = document.getElementById("tree-canvas");
+  const svg = treeCanvasEl();
   if (!svg) return;
   const pts = new Map();
   let last = null, moved = 0, pinch = 0, downId = null;
 
-  // Match the viewBox to the box before anything reads it, and settle the
+  // This is a fresh <canvas>, so the cached web belongs to an element that is
+  // gone. Drop it or the first frame blits the old screen's bitmap.
+  treeWeb = null; treeWebKey = "";
+
+  // Size the backing store to the box before anything reads it, and settle the
   // default framing the first time we know how big the box really is.
   syncTreeViewport();
   if (state.tree && !state.tree.fitted && TREE_VP.measured) {
     initTreeView(false);
-    applyTreeCam();
   }
+  applyTreeCam();
   // The box also changes height whenever the info panel below it does (a taller
-  // node description, the dev bar opening). Keep the viewBox in step; the camera
-  // is left alone, so the web stays exactly where it was on screen. One observer
-  // for the screen's lifetime, re-pointed at each rebuild's fresh <svg>.
+  // node description, the dev bar opening). Keep the backing store in step; the
+  // camera is left alone, so the web stays exactly where it was on screen. One
+  // observer for the screen's lifetime, re-pointed at each rebuild's canvas.
   if (typeof ResizeObserver === "function") {
     if (!treeResizeObs) treeResizeObs = new ResizeObserver(() => { syncTreeViewport(); });
     treeResizeObs.disconnect();
     treeResizeObs.observe(svg);
   }
 
-  // The viewBox is the same size as the element, so this is 1:1.
+  // The camera works in CSS pixels of the box, so this is 1:1.
   const clientToVB = (cx, cy) => {
     const r = svg.getBoundingClientRect();
     return { x: cx - r.left, y: cy - r.top };
@@ -1643,11 +1842,13 @@ function attachTreeInteractions() {
     if (pts.size < 2) pinch = 0;
     if (pts.size === 1) { const r = [...pts.values()][0]; last = { x: r.x, y: r.y }; }
     else if (pts.size === 0) last = null;
-    // A near-stationary single-pointer tap on a node selects it (cheap patch).
+    // A near-stationary single-pointer tap on a node selects it. There is no
+    // element under the finger any more — the web is a bitmap — so the node is
+    // found by where it sits rather than by what was hit.
     if (wasSingle && moved < 8 && e.pointerId === downId) {
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      const g = el && el.closest ? el.closest("[data-node]") : null;
-      if (g) selectNode(g.dataset.node);
+      const p = clientToVB(e.clientX, e.clientY);
+      const id = nodeAtPoint(p.x, p.y);
+      if (id) selectNode(id);
     }
   };
   svg.addEventListener("pointerup", onUp);
@@ -1671,6 +1872,7 @@ window.Incanto.skilltree = {
   TREE_NODES, TREE_EDGES, NODE_POS, TREE_THEMES, ARMS, TREE_SUPPLY, supplyOf,
   effectText,
   recomputeMods, treeBuy, treeZoom, treeReset,
-  renderUpgradeFull, nodeRevealed, nodeReachable, nodeCost, nodeRank,
+  renderUpgradeFull, patchTreeContinuous, drawTree, nodeAtPoint,
+  nodeRevealed, nodeReachable, nodeCost, nodeRank,
   devToggle, devResetTree, devEditGold, devGoldCommit,
 };

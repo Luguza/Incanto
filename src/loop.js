@@ -650,6 +650,9 @@ function render(now) {
       builtScreen = "upgrade";
       state._structuralDirty = false;
     }
+    // The web is a canvas, so the one thing on it that moves — the ring round
+    // the selected node — has to be drawn on the clock like any other animation.
+    patchTreeContinuous();
   } else if (state.screen === "bookorder") {
     if (builtScreen !== "bookorder" || state._structuralDirty) {
       renderBookOrderFull();
