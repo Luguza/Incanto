@@ -111,33 +111,103 @@ try {
     "\", :root=" + declared.root + ", prefers-color-scheme block=" + declared.query + ")");
 
   //     Driven the way an inverting phone drives it: a second page in a dark
-  //     system theme with the browser's own dark mode forced on. Screenshot the
-  //     tree and average it — untouched it sits near black (~20/255); inverted
-  //     it comes back around 75, so anything past 40 is the bug.
-  const forced = await browser.newPage({ viewport: { width: 412, height: 726 }, colorScheme: "dark" });
-  const cdp = await forced.context().newCDPSession(forced);
-  await cdp.send("Emulation.setAutoDarkModeOverride", { enabled: true });
-  await forced.goto(INDEX_URL, { waitUntil: "load" });
-  await forced.waitForSelector("canvas.scene", { timeout: 5000 });
-  await forced.evaluate(() => navTo("upgrade"));
-  await forced.waitForTimeout(500);
-  const treeShot = await forced.locator(".tree-canvas").screenshot();
-  // Decoded on the ORIGINAL page: that one is not being darkened, so the pixels
-  // it reads back are the ones the forced page actually painted.
-  const luma = await page.evaluate(async (bytes) => {
-    const bmp = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
-    const c = document.createElement("canvas");
-    c.width = bmp.width; c.height = bmp.height;
-    const g = c.getContext("2d");
-    g.drawImage(bmp, 0, 0);
-    const d = g.getImageData(0, 0, bmp.width, bmp.height).data;
-    let sum = 0;
-    for (let i = 0; i < d.length; i += 4) sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
-    return sum / (d.length / 4);
-  }, [...treeShot]);
+  //     system theme with the browser's own dark mode forced on, measured
+  //     against the same parts drawn normally. Each of these was inverted on a
+  //     real phone — the tree came back a field of white discs, the sealed page
+  //     as bright paper, the rune wells as lit buttons — and each is now painted
+  //     on a surface the filter cannot reach (a canvas for the tree, an feFlood
+  //     for the flat SVG shapes; see the dark-paint defs in index.html).
+  //
+  //     A DELTA rather than an absolute, so the check survives the art being
+  //     retuned. One-sided, because the failure is always in one direction:
+  //     dark paint coming back LIGHT. The other direction is left loose on
+  //     purpose — the book's paper is a light surface and the filter darkens it
+  //     whatever we do (it needs gradients, so it can't be flooded), which drags
+  //     the average of anything measured against it down a little.
+  const darkParts = [
+    ["the rune tree", "upgrade", ".tree-canvas"],
+    ["the book's sealed page", "combat", ".bk-sealed"],
+    ["the rune circle's wells", "combat", ".rune .well"],
+  ];
+  const meanLuma = (target, sel) => target.locator(sel).first().screenshot().then((bytes) =>
+    // Decoded on the ORIGINAL page: that one is not being darkened, so the
+    // pixels it reads back are the ones the measured page actually painted.
+    page.evaluate(async (bs) => {
+      const bmp = await createImageBitmap(new Blob([new Uint8Array(bs)], { type: "image/png" }));
+      const c = document.createElement("canvas");
+      c.width = bmp.width; c.height = bmp.height;
+      const g = c.getContext("2d");
+      g.drawImage(bmp, 0, 0);
+      // Only the bottom third of the box. An element screenshot is its
+      // BOUNDING BOX, so a rune well's would otherwise average in the word
+      // written across its middle and a page's would average in its script —
+      // neither of which is the surface under test.
+      const y0 = Math.floor(bmp.height * 0.66);
+      const d = g.getImageData(0, y0, bmp.width, bmp.height - y0).data;
+      let sum = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 8) continue;
+        sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]; n++;
+      }
+      return n ? sum / n : -1;
+    }, [...bytes]));
+
+  const openPage = async (force) => {
+    const p = await browser.newPage({ viewport: { width: 412, height: 726 }, colorScheme: "dark" });
+    if (force) {
+      const cdp = await p.context().newCDPSession(p);
+      await cdp.send("Emulation.setAutoDarkModeOverride", { enabled: true });
+    }
+    await p.goto(INDEX_URL, { waitUntil: "load" });
+    await p.waitForSelector("canvas.scene", { timeout: 5000 });
+    if (force) {
+      // Chromium HONOURS the page's opt-out, and the phones this is written for
+      // do not — so strip the opt-out here, or the darkening never engages and
+      // every assertion below passes without testing anything. The canary a few
+      // lines down is what proves it really did engage.
+      await p.evaluate(() => {
+        document.querySelectorAll('meta[name="color-scheme"]').forEach((m) => m.remove());
+        const s = document.createElement("style");
+        s.textContent = ":root, html { color-scheme: normal !important; }";
+        document.head.appendChild(s);
+        const c = document.createElement("div");
+        c.id = "dark-canary";
+        c.style.cssText = "position:fixed;left:0;top:0;width:40px;height:40px;z-index:99";
+        c.innerHTML = '<svg width="40" height="40"><circle cx="20" cy="20" r="20" fill="#120e1c"/></svg>';
+        document.body.appendChild(c);
+      });
+      await p.waitForTimeout(250);
+    }
+    return p;
+  };
+  const plain = await openPage(false), forced = await openPage(true);
+
+  //     The canary: an ordinary dark SVG fill, the exact thing this whole
+  //     section is about. It MUST come back inverted — if it doesn't, the
+  //     harness failed to force the browser's dark mode on and the checks that
+  //     follow would all pass while proving nothing.
+  await plain.evaluate(() => {
+    const c = document.createElement("div");
+    c.id = "dark-canary";
+    c.style.cssText = "position:fixed;left:0;top:0;width:40px;height:40px;z-index:99";
+    c.innerHTML = '<svg width="40" height="40"><circle cx="20" cy="20" r="20" fill="#120e1c"/></svg>';
+    document.body.appendChild(c);
+  });
+  const canaryA = await meanLuma(plain, "#dark-canary");
+  const canaryB = await meanLuma(forced, "#dark-canary");
+  check(canaryB - canaryA > 60,
+    "the harness really is forcing a browser dark mode on (canary " +
+    canaryA.toFixed(0) + " → " + canaryB.toFixed(0) + " of 255)");
+  for (const [what, screen, sel] of darkParts) {
+    for (const p of [plain, forced]) { await p.evaluate((s) => navTo(s), screen); }
+    await forced.waitForTimeout(500);
+    const a = await meanLuma(plain, sel), b = await meanLuma(forced, sel);
+    check(a > 0 && b > 0 && b - a < 20,
+      `a forced browser dark mode cannot lighten ${what} ` +
+      `(${a.toFixed(0)} → ${b.toFixed(0)} of 255)`);
+  }
+  await plain.close();
   await forced.close();
-  check(luma < 40,
-    "a forced browser dark mode leaves the rune tree dark (mean " + luma.toFixed(1) + "/255)");
 
   // 3. The spell book turns under the finger, and ALL of it does. A page turn is
   //    one motion on one progress: the held leaf stands up to the spine over the

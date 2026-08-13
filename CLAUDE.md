@@ -54,20 +54,47 @@ and the page was repainted anyway: the dark modes that do this ignore every
 declarative opt-out there is. So the declarations are politeness for the
 browsers that listen, not a defence.
 
-The only real defence is painting on a surface the filter cannot reach, and
-there is exactly one: **`<canvas>`**. Measured against a forced browser dark
-mode, every other way of drawing a dark shape — plain SVG fill, an SVG gradient
-paint server, a pattern of a PNG, a CSS background, `forced-color-adjust: none`,
-`mix-blend-mode` — comes back inverted. That is why combat always looked right
-on the phone that broke the forge, and it is why **the rune tree is drawn on a
-canvas** (see the essay above `drawTree` in `src/skilltree.js`).
+There are exactly **two** surfaces the filter cannot reach, and everything the
+game paints dark has to use one of them.
 
-So: anything large, dark and important belongs on a canvas. SVG is still fine
-for small things inside DOM panels — the mini runes, the nav icons — which are
-the known, accepted cost. The book's sealed page and its wax seal are still SVG
-and still invert under such a browser; that is a known gap, not a solved one.
-The smoke test checks all three declarations are present and drives a session
-with a browser dark mode forced on, failing if the tree stops coming out dark.
+**1. `<canvas>`** — for anything large, or anything needing a gradient. That is
+why combat always looked right on the phone that broke the forge, and why **the
+rune tree is drawn on a canvas** (see the essay above `drawTree` in
+`src/skilltree.js`). Don't move it back.
+
+**2. An `feFlood` filter** — for a flat dark SVG shape. A flood's colour is one
+of the *filter's own* constants rather than a paint the shape carries, so the
+dark-mode pass never classifies it; compositing it back in with
+`feComposite operator="in"` keeps the shape's outline and antialiasing. The
+filters live once in `index.html` (ids resolve document-wide) and are applied
+from CSS. This is what keeps the book's sealed page dark and its wax seal red.
+Two rules come with it, both learned the hard way: give the shape an **opaque**
+fill and put transparency on the element as `opacity`, or `in` multiplies by the
+source alpha and the colour applies its alpha twice; and the shape needs an
+**area** — a filter region is a percentage of the geometric bounding box, so a
+straight line's region collapses and clips its stroke away (which is why
+`.bk-spine` is left unprotected).
+
+Everything else was measured and does *not* survive: a plain SVG fill, an SVG
+gradient paint server, a pattern of a PNG, a CSS background,
+`forced-color-adjust: none`, `mix-blend-mode`, and — worth knowing — **attaching
+a filter shields nothing by itself**. A paint colour is already inverted by the
+time an SVG filter sees it, so an identity filter, on the shape or on a parent
+group, changes nothing. Only a flood wins.
+
+**Known remaining gap:** the book's *paper* is a light surface with a gradient,
+so it can be neither flooded (one flat colour) nor easily moved to canvas (its
+texture is `feTurbulence` noise, which canvas has no equivalent for). Under such
+a browser it darkens from cream to olive. It stays legible and coherent, and
+that is the accepted cost. The mini runes in the DOM panels are the same kind of
+accepted cost.
+
+The smoke test checks all three declarations are present, then drives a second
+session with a browser dark mode forced on — **stripping the page's opt-out
+first**, since Chromium honours it and the phones this is written for do not,
+and an unstripped run passes while testing nothing. A canary shape proves the
+darkening really engaged before the tree, the sealed page and the rune wells are
+each measured for lightening.
 
 ## Module map — where things live
 

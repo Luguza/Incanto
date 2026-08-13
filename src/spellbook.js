@@ -659,9 +659,13 @@ function spellPage(spell, side, under, opts = {}) {
   if (!unlocked) {
     const blob = "M0 -32 Q21 -32 29 -17 Q39 -3 29 12 Q21 30 3 32 Q-18 33 -29 18 " +
       "Q-39 2 -29 -15 Q-20 -30 0 -32 Z";
+    // The wax is drawn body-then-edge rather than as one filled-and-stroked
+    // path: each is flooded to its own colour (see the dark-paint defs in
+    // index.html), and one flood can only carry one colour.
     seal = `<g transform="${P.frameAt(SIGIL.u, SIGIL.v)}">` +
       `<path class="bk-wax-shadow" d="${blob}" transform="translate(2,3)"/>` +
       `<path class="bk-wax" d="${blob}"/>` +
+      `<path class="bk-wax-edge" d="${blob}"/>` +
       `<path class="bk-wax-rim" d="${blob}" transform="scale(0.82)"/>` +
       `<text class="bk-sealmark" y="11" text-anchor="middle">?</text></g>`;
   }
@@ -691,7 +695,8 @@ function spellPage(spell, side, under, opts = {}) {
   return `<g class="bk-page${active ? " active" : ""}${unlocked ? "" : " locked"}` +
     `${under ? " under" : ""}" data-side="${side}"${act}${extra}>
       ${paper}
-      ${unlocked ? "" : `<path class="bk-sealed" d="${d}"/>`}
+      ${unlocked ? "" : `<g class="bk-seal-wash"><path class="bk-sealed" d="${d}"/>` +
+                        `<path class="bk-sealed-rim" d="${d}"/></g>`}
       ${written}
       ${active && !under ? `<path class="bk-halo" d="${d}" stroke="${c.mid}"/>` +
                  `<path class="bk-lit" d="${d}" stroke="${c.mid}"/>` : ""}

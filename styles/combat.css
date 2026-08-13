@@ -144,8 +144,19 @@
     stroke-linecap: round; pointer-events: none;
   }
   /* Sealed pages keep the paper's shading and are darkened over the top of it,
-     so they read as the same book rather than as a different material. */
-  .bk-sealed { fill: #211a35; opacity: 0.62; stroke: #4a4360; stroke-width: 1.2; }
+     so they read as the same book rather than as a different material.
+
+     The wash is FLOODED rather than filled (see the dark-paint defs in
+     index.html): left as a plain dark fill, a phone's dark mode inverts it and
+     the sealed page comes out the brightest thing in the book — exactly
+     backwards from what it means. The rim is a separate path because a flood
+     carries one colour and cannot do both.
+     The 0.62 sits on the GROUP, not on each path: fading them separately would
+     composite the rim over an already-faded wash instead of over the page, and
+     the outline would darken. One element's worth of fading, as before. */
+  .bk-seal-wash { opacity: 0.62; }
+  .bk-sealed { fill: #211a35; filter: url(#dkSealed); stroke: none; }
+  .bk-sealed-rim { fill: none; stroke: #4a4360; stroke-width: 1.2; }
   /* The active page's border: a crisp line over a blurred copy of itself. One
      blurred stroke on its own reads as a fuzzy halo with no edge to it. */
   .bk-halo { fill: none; stroke-width: 5; opacity: 0.3; filter: url(#bkGlow); }
@@ -188,11 +199,21 @@
   .bk-page.active .bk-sigil-rune { opacity: 0.48; }
   .bk-page.locked .bk-sigil { opacity: 0.7; }
 
-  .bk-wax { fill: #7c2434; stroke: #4d1420; stroke-width: 1.4; }
-  .bk-wax-shadow { fill: #120c1c; opacity: 0.5; }
+  /* Wax is dark red, which a phone's dark mode turns pink. Body and edge are
+     flooded separately — one flood, one colour. The inner rim is light enough
+     that the filter leaves it alone, so it stays an ordinary stroke. */
+  .bk-wax { fill: #7c2434; filter: url(#dkWax); stroke: none; }
+  .bk-wax-edge { fill: none; stroke: #4d1420; stroke-width: 1.4; filter: url(#dkWaxEdge); }
+  .bk-wax-shadow { fill: #120c1c; filter: url(#dkWaxShadow); opacity: 0.5; }
   .bk-wax-rim { fill: none; stroke: #a5455a; stroke-width: 2; opacity: 0.85; }
   .bk-sealmark { font-family: var(--display-font); font-size: 22px; font-weight: 700; fill: #e5b3bc; opacity: 0.8; }
   .bk-ribbon { opacity: 0.9; }
+  /* NOT flooded, unlike the wax and the sealed wash. A filter region is a
+     percentage of the GEOMETRIC bounding box, and the spine is a straight line
+     — zero width — so the region collapses and clips the stroke away entirely.
+     Only shapes with an area to measure can be flooded. This one stays an
+     ordinary stroke and a phone's dark mode is welcome to it: it is a hairline
+     down the gutter, and a light one there reads as the fold catching light. */
   .bk-spine { stroke: #100c08; stroke-width: 5; stroke-linecap: round; opacity: 0.85; }
 
   /* ---- The spell playing ON TOP of the page --------------------------------
@@ -338,11 +359,26 @@
   .rune.selected .halo { opacity: 0.4; }
   .rune.matched .halo { opacity: 0.22; fill: #5ecf8f; }
   /* Word bubbles are transparent wells over the baked sockets: a whisper of
-     dark fill for legibility, state shown by ring tint */
-  .rune .body { stroke-width: 1.5; cursor: pointer; transition: fill 100ms linear, stroke 100ms linear; }
-  .rune.unmatched .body { fill: rgba(8, 13, 18, 0.30); stroke: rgba(127, 244, 241, 0.35); }
-  .rune.selected .body { fill: rgba(242, 193, 78, 0.16); stroke: #ffe9b0; stroke-width: 2.5; }
-  .rune.matched .body { fill: rgba(94, 207, 143, 0.14); stroke: rgba(143, 231, 180, 0.8); }
+     dark fill for legibility, state shown by ring tint.
+
+     The wash and the ring are two circles, not one filled-and-stroked circle.
+     The wash is FLOODED to its colour (see the dark-paint defs in index.html)
+     because a phone's dark mode inverts a dark fill and turns every well into
+     a bright disc, which reads as six runes already lit. A flood carries one
+     colour, so the ring has to be its own element — and it wants to stay an
+     ordinary stroke anyway, since it is light and the filter leaves it be.
+     The wash is opaque with its transparency on `opacity` rather than in an
+     rgba() fill — a flood composited "in" is multiplied by the source's alpha,
+     so an rgba fill would count its own alpha twice and wash out. */
+  .rune .well { stroke: none; pointer-events: none; }
+  .rune.unmatched .well { fill: #080d12; opacity: 0.30; filter: url(#dkWell); }
+  .rune.selected .well { fill: #f2c14e; opacity: 0.16; filter: url(#dkWellSel); }
+  .rune.matched .well { fill: #5ecf8f; opacity: 0.14; filter: url(#dkWellDone); }
+
+  .rune .body { fill: none; stroke-width: 1.5; cursor: pointer; transition: stroke 100ms linear; }
+  .rune.unmatched .body { stroke: rgba(127, 244, 241, 0.35); }
+  .rune.selected .body { stroke: #ffe9b0; stroke-width: 2.5; }
+  .rune.matched .body { stroke: rgba(143, 231, 180, 0.8); }
   .rune text {
     font-family: var(--display-font);
     fill: #e8fffe; font-size: 19px; letter-spacing: 0.5px; font-weight: 700;
@@ -356,7 +392,8 @@
      Higher specificity than the per-state rules above so every rune goes red. */
   #wheel-img { transition: filter 120ms linear; }
   .combat-screen.rune-flash #wheel-img { filter: sepia(1) saturate(7) hue-rotate(-22deg) brightness(1.05); }
-  .combat-screen.rune-flash .rune .body { fill: rgba(229, 72, 77, 0.34); stroke: #ff6470; stroke-width: 2.5; }
+  .combat-screen.rune-flash .rune .well { fill: #e5484d; opacity: 0.34; filter: url(#dkWellFlash); }
+  .combat-screen.rune-flash .rune .body { stroke: #ff6470; stroke-width: 2.5; }
   .combat-screen.rune-flash .rune text { fill: #ffdadf; }
   .combat-screen.rune-flash .rune .halo { opacity: 0.55; fill: #ff5560; }
   .combat-screen.rune-flash .chord,
