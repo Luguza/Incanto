@@ -522,6 +522,6 @@ function castActiveSpell(now) {
 
 window.Incanto.spells = {
   SPELLS, SPELL_BY_ID, STARTER_SPELL, spellUnlocked, activeSpellId, activeSpell,
-  spellSelect, spellPower, castActiveSpell, primeActive, castChargeMs,
+  spellSelect, spellPower, castActiveSpell, primeActive, castChargeMs, applySpellHit,
   normalizeSpellOrder, bookOrder, bookSpells, bookSlot, swapBookPages,
 };

@@ -477,10 +477,17 @@ const CONFIG = {
   // ===========================================================================
   // SPLITTING, AND THE SIZE LADDER IT WALKS DOWN (variants with `split: true` —
   // today that is the two slimes). A slime is not a body you wear down. It is
-  // THREE SIZES, and hurting one that survives turns it into two of the size
-  // below at FULL HP: 60 becomes two 40s, each 40 becomes two 20s, and a 20 is
-  // the bottom — nothing smaller to become, so it just takes the hit like any
-  // other body and dies when its bar runs out.
+  // THREE SIZES, and hitting one turns it into two of the size below at FULL HP:
+  // 60 becomes two 40s, each 40 becomes two 20s, and a 20 is the bottom —
+  // nothing smaller to become, so it just takes the hit like any other body and
+  // dies when its bar runs out.
+  //
+  // A SLIME ABOVE THE BOTTOM RUNG CANNOT BE KILLED. Not "is hard to kill": the
+  // blow that would empty its bar divides it instead, however far past zero it
+  // went, and only the smallest size ever actually dies (see combat.hitEnemy).
+  // Killing the big one is what spawns the small ones — which is the whole
+  // mechanic, and is exactly what a split gated on surviving the hit does NOT
+  // deliver, because a grown hero deletes 60 HP without noticing.
   //
   // THE HP IS THE RUNG, AND THE RUNG IS WHAT THE BODY IS. A slime's `maxHP` is
   // always exactly one of the numbers below, so the size it is drawn at, the
@@ -491,13 +498,20 @@ const CONFIG = {
   // what the hit left behind, which is arithmetically tidy and meant the
   // mechanic almost never fired: a fresh hero's 24 damage on a 44 HP slime left
   // 20, and 20 is two 10s, so one camp showed one split and the rest died before
-  // they could divide. Dividing at full HP means EVERY non-fatal hit divides,
-  // which is the point — one big slime is now seven casts (1 split, 2 splits,
-  // 4 kills) and a wedge of three fills the lane with fragments the way the
-  // chapter's comment always promised it would. It costs nothing in danger:
-  // these are the two bodies in the hall that cannot meaningfully hurt anyone
-  // (see the slime variants above), so the only thing the extra pool buys is
-  // more of the mechanic on screen.
+  // they could divide — and a hero with a tree behind him never saw a split at
+  // all, because everything he touched died on the first hit. Dividing at full
+  // HP, on any hit, means EVERY cast into a slime divides it: one big slime is
+  // seven casts (1 split, 2 splits, 4 kills) and a wedge of three fills the lane
+  // with fragments the way the chapter's comment always promised it would.
+  //
+  // It costs nothing in danger — these are the two bodies in the hall that cannot
+  // meaningfully hurt anyone (see the slime variants above), so the extra pool
+  // buys nothing but more of the mechanic on screen. What it does cost is TIME,
+  // and the same amount of it for everybody: seven casts per big slime is seven
+  // whether the hero hits for 24 or for 700, so the prologue is ~1 minute of any
+  // run at any depth. That is the price of the mechanic firing at all, and the
+  // dial if it ever reads as too long is the chapter's head count (encounters.js)
+  // or a shorter ladder here — not the rule above.
   //
   // `scale` multiplies the variant's own drawn size and `dmgMult` its own
   // damage, and the second of those is what keeps the multiplying honest: a

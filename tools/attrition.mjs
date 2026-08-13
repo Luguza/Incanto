@@ -141,12 +141,15 @@ const data = await page.evaluate(({ shares, overrides }) => {
     return out;
   }
 
-  // A slime that survives a hit becomes TWO of the rung below, each on a full bar
-  // (progression.splitSlime). Modelled here because it is the one thing in the
-  // hall that makes a camp cost more casts than its head count says: the hit that
-  // divides a body is a whole cast that removes no HP from the camp at all, and
-  // the prologue is four camps of nothing else. Mutates the body into the first
-  // half and returns the second, or null if it was already on the bottom rung.
+  // A slime that is hit becomes TWO of the rung below, each on a full bar
+  // (progression.splitSlime) — however hard it was hit, since a slime above the
+  // bottom rung cannot be killed at all. Modelled here because it is the one
+  // thing in the hall that makes a camp cost more casts than its head count says,
+  // and the only one whose cost does not fall as the hero grows: the hit that
+  // divides a body is a whole cast that removes no HP from the camp, so a big
+  // slime is seven casts for a fresh hero and seven for a finished one. Mutates
+  // the body into the first half and returns the second, or null if it was
+  // already on the bottom rung (where it dies like anything else).
   function splitBody(b) {
     const ladder = CONFIG.slimeTiers;
     let i = 0;
@@ -198,10 +201,14 @@ const data = await page.evaluate(({ shares, overrides }) => {
         const order = alive.slice().sort((a, b) => a.rank - b.rank || a.lane - b.lane);
         if (order[0]) order[0].hp -= dps * armorMult(order[0].armor);
         if (order[1]) order[1].hp -= dps * SPLASH * armorMult(order[1].armor);
-        // Anything the cast hurt but didn't kill divides, if it is the kind of
-        // body that does (see splitBody).
+        // Anything the cast touched divides, if it is the kind of body that does
+        // — INCLUDING one the cast would have killed outright, which is the usual
+        // case here: every build past the first few nodes deletes 60 HP in one
+        // hit, and a big slime is still four small ones' worth of casts to clear
+        // (see combat.hitEnemy). Reading it any other way models a prologue that
+        // costs a grown hero three casts when it costs him twenty-one.
         for (const b of [order[0], order[1]]) {
-          if (!b || b.hp <= 0 || !b.split) continue;
+          if (!b || !b.split) continue;
           const twin = splitBody(b);
           if (twin) alive.push(twin);
         }

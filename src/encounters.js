@@ -77,10 +77,12 @@ const PACKS = {
   // beat in the game (dmgMult 0,25 × the top rung's 1, one blow per 2,4 s).
   //
   // What the wedge is actually for is the splitting. Three full-size slimes come
-  // apart into six, and those into twelve — every hit that doesn't kill divides
-  // what it hit — so this is the first time the corridor holds more targets than
-  // the player has casts to spare, which is the lesson chapter 2 opens by
-  // charging for.
+  // apart into six, and those into twelve — every cast into a slime divides what
+  // it hit, a killing one included — so this is the first time the corridor holds
+  // more targets than the player has casts to spare, which is the lesson chapter
+  // 2 opens by charging for. It reads the same at every depth, too: a body that
+  // divides rather than dying costs a finished hero the same twenty-one casts it
+  // costs a new one.
   schleim:      pack("Schleim", "solo", ["slime"]),
   schleimspur:  pack("Schleimspur", "paar", ["slime"]),
   schleimnest:  pack("Schleimnest", "keil", [["slimeBlue"], ["slime", "slime"]]),

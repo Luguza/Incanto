@@ -199,38 +199,58 @@ function sizeBody(e, type) {
   return e;
 }
 
+// Has this body a smaller size to become, and is there room on the floor for the
+// pair? Asked in two places and it has to give the same answer in both: hitEnemy
+// consults it BEFORE the blow lands, to decide whether the body is allowed to
+// die at all, and splitSlime consults it again when the blow arrives. If the two
+// ever disagreed, a slime held back from dying would then fail to divide and
+// stand there on 1 HP forever.
+function canSplit(e) {
+  if (!e || doomed(e)) return false;
+  const type = enemyTypeById(e.type);
+  if (!type.split) return false;
+  const ladder = CONFIG.slimeTiers;
+  // The bottom rung has nothing smaller to become. That is what ends the chain,
+  // and what stops the corridor filling with specks each still owed its own cast.
+  if (ladder.indexOf(bodyTier(type, e.maxHP)) <= 0) return false;
+  // The head-count cap is a safety valve on what fits on screen, not a design
+  // input — a floor that is already full stops dividing (and its slimes start
+  // dying again) rather than pushing bodies off the end of the track.
+  return livingEnemies().length < CONFIG.enemyMaxCount;
+}
+
 // What a hit does to a body BEYOND taking the HP off it. hitEnemy marks the
 // moment the blow will arrive and updateEnemies calls this on that beat, so a
 // meteor, a fifth chain hop and a Dornen reflection all divide a slime alike and
 // none of them does it before its own effect has landed.
 //
-// A slime that survives a hit comes apart into two of the size below, each with
-// a FULL bar of that size's HP: the damage that did it is spent on the dividing
-// and none of it carries into either half. The body that was hit becomes the
-// first half in place; the second walks out from behind it.
+// A slime comes apart into two of the size below, each with a FULL bar of that
+// size's HP: the damage that did it is spent on the dividing and none of it
+// carries into either half. The body that was hit becomes the first half in
+// place; the second walks out from behind it.
 //
-// It is the bottom rung that ends this, not the arithmetic — a KLEINER SCHLEIM
+// ANY hit divides it — including one that would have killed it outright, which
+// hitEnemy holds at 1 HP rather than letting it land (see the note there). A
+// grown hero one-shots 60 HP without noticing, so gating the split on surviving
+// the blow meant the mechanic switched itself off for every build past the first
+// few nodes. Killing a big slime is what spawns the small ones.
+//
+// It is the bottom rung that ends this, not the arithmetic: a KLEINER SCHLEIM
 // has nothing smaller to become, so a hit on one is just a hit and it dies when
-// its bar runs out. That is what stops the corridor filling with specks, and it
-// is why a big slime is a fixed seven casts however you cut it up: one to divide
-// it, two to divide the halves, four to finish the quarters.
+// its bar runs out. Which is why a big slime is a fixed seven casts for anybody,
+// however hard they hit: one to divide it, two to divide the halves, four to
+// finish the quarters.
 //
 // See CONFIG.slimeTiers for why this makes HP on purpose.
 function splitSlime(e, at) {
   const type = enemyTypeById(e.type);
   if (!type.split || e.hp <= 0) return null;
-  // A body with a killing blow already booked does not divide: it is a corpse
-  // that hasn't fallen over yet, and two full-HP halves off one would hand the
-  // player's own kill back to them.
-  if (doomed(e)) return null;
+  // Same question hitEnemy asked when it held the killing blow back, and it has
+  // to be asked again here: a body doomed by another spell in the meantime, or a
+  // floor that filled up while this blow was in the air, both end the chain.
+  if (!canSplit(e)) return null;
   const ladder = CONFIG.slimeTiers;
-  const rung = ladder.indexOf(bodyTier(type, e.maxHP));
-  if (rung <= 0) return null;         // the bottom rung — nothing smaller to become
-  // The head-count cap is a safety valve on what fits on screen, not a design
-  // input — a floor that is already full stops dividing rather than pushing
-  // bodies off the end of the track.
-  if (livingEnemies().length >= CONFIG.enemyMaxCount) return null;
-  const next = ladder[rung - 1];
+  const next = ladder[ladder.indexOf(bodyTier(type, e.maxHP)) - 1];
   // Both halves start their bar full at their own size. They are two slimes now,
   // not one slime sharing a wound.
   e.hp = e.maxHP = next.hp;
@@ -510,4 +530,4 @@ function shuffleArray(arr) {
   return arr;
 }
 
-window.Incanto.progression = { clearHall, spawnPack, spawnFiller, spawnEnemy, enemyTypeById, typeStandoff, rankTiles, orderRanksByReach, bodyTiles, bodyTier, bodyScale, spawnHP, sizeBody, splitSlime, plantGoo, splashGoo, cullGoo, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };
+window.Incanto.progression = { clearHall, spawnPack, spawnFiller, spawnEnemy, enemyTypeById, typeStandoff, rankTiles, orderRanksByReach, bodyTiles, bodyTier, bodyScale, spawnHP, sizeBody, canSplit, splitSlime, plantGoo, splashGoo, cullGoo, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };

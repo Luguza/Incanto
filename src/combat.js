@@ -177,20 +177,35 @@ function armorReduction(enemy) {
 function hitEnemy(enemy, n, at = performance.now()) {
   const dealt = Math.max(1, Math.round(n * (1 - armorReduction(enemy))));
   enemy.hp = Math.max(0, enemy.hp - dealt);
-  // Some bodies do more than lose a bar when they are hurt: a slime that
-  // survives the hit divides into two of the size below it, unless it is already
-  // the smallest there is. This hangs off hitEnemy rather than off the resolvers because
-  // hitEnemy is the single funnel every point of damage in the game passes
-  // through — a meteor rock, a fifth chain hop and a Dornen reflection all have
-  // to divide a slime the same way, and none of them should have to know that
-  // slimes exist.
+  // Some bodies do more than lose a bar when they are hurt: a slime divides into
+  // two of the size below it. This hangs off hitEnemy rather than off the
+  // resolvers because hitEnemy is the single funnel every point of damage in the
+  // game passes through — a meteor rock, a fifth chain hop and a Dornen
+  // reflection all have to divide a slime the same way, and none of them should
+  // have to know that slimes exist.
   //
-  // It is only MARKED here, and for exactly the reason a killing blow only books
-  // `deathAt`: a spell resolves the instant its shape is drawn, but `at` is when
-  // the effect actually arrives — nearly half a second later for a Feuerball,
-  // longer for a meteor. Done on the spot, a slime would come apart while the
-  // spell that split it was still visibly crossing the hall. updateEnemies
-  // carries both out on the beat the blow lands.
+  // A SLIME ABOVE THE FLOOR DOES NOT DIE. It is not killed by a big enough hit;
+  // it comes apart, and only the smallest rung — which has nothing left to become
+  // — actually dies. That is the difference between a mechanic and a curiosity:
+  // gated on SURVIVING the blow, it fired for a fresh hero and stopped firing the
+  // moment a grown one could one-shot 60 HP, which is every build past the first
+  // handful of nodes. Killing the big one has to spawn the small ones or the
+  // ladder is only ever seen by a player who hasn't bought anything yet.
+  //
+  // Mechanically that is this one line: a blow that would empty the bar leaves it
+  // on 1 instead, so no caller ever sees a dead slime and none of them books a
+  // death or credits a kill for it (see applySpellHit). The 1 HP never reaches
+  // the screen — the split resolves on the next tick and hands the body a full
+  // bar at its new size. `canSplit` carries the head-count cap, so a floor that
+  // is already full lets the slime die normally rather than making it immortal.
+  //
+  // The split is only MARKED here, for exactly the reason a killing blow only
+  // books `deathAt`: a spell resolves the instant its shape is drawn, but `at` is
+  // when the effect actually arrives — nearly half a second later for a
+  // Feuerball, longer for a meteor. Done on the spot, a slime would come apart
+  // while the spell that split it was still visibly crossing the hall.
+  // updateEnemies carries both out on the beat the blow lands.
+  if (enemy.hp <= 0 && canSplit(enemy)) enemy.hp = 1;
   if (enemy.hp > 0) enemy.splitAt = at;
   return dealt;
 }

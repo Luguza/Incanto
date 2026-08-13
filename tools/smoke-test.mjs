@@ -1139,16 +1139,21 @@ try {
     `the roster keeps opening up to the end (last new body at ${hall.lastDebut} m)`);
 
   //     SPLITTING SLIMES. The opening chapter's bodies divide when they are hurt
-  //     (CONFIG.slimeTiers), and four things about that have to hold or the
+  //     (CONFIG.slimeTiers), and five things about that have to hold or the
   //     mechanic either stops firing or fills the corridor with specks:
   //       · a slime walks in on the TOP rung of the ladder whatever its hpMult
   //         says — the ladder is the whole of what it is worth;
-  //       · a hit it survives turns it into TWO of the rung below, each with a
-  //         full bar of that rung's HP. None of the damage carries over, which is
-  //         what makes every non-fatal hit divide instead of almost none of them;
+  //       · a hit turns it into TWO of the rung below, each with a full bar of
+  //         that rung's HP. None of the damage carries over;
+  //       · A KILLING BLOW DIVIDES IT TOO, and this is the one the mechanic lives
+  //         or dies by. A grown hero one-shots 60 HP without noticing, so a split
+  //         gated on surviving the blow switches itself off for every build past
+  //         the first few nodes — the player kills the big one and nothing comes
+  //         out of it. Overkill has to leave two halves standing, however far
+  //         past zero it went;
   //       · the bottom rung divides into nothing. It takes the hit like any other
-  //         body, which is what stops the floor filling with 1 HP fragments each
-  //         still owed its own cast;
+  //         body and dies, which is what stops the floor filling with 1 HP
+  //         fragments each still owed its own cast;
   //       · the size and the damage follow the rung down, so a half is drawn
   //         smaller and hits softer than the body it came off.
   const split = await page.evaluate(async () => {
@@ -1165,18 +1170,28 @@ try {
       e.hp = e.maxHP = hp;
       P.sizeBody(e, P.enemyTypeById("slime"));
       const was = { w: e.w, dmg: e.dmg, name: e.name };
-      hitEnemy(e, dmg, performance.now());
+      const kills = state.kills;
+      // Through the spell pipeline, not through hitEnemy alone: booking the death
+      // and crediting the kill happen in applySpellHit, and "a killing blow
+      // divides instead of killing" is a claim about THAT path.
+      Incanto.spells.applySpellHit(e, dmg, performance.now());
       await settle(120);                     // updateEnemies resolves it on the next beats
       const live = livingEnemies();
       return { was, bodies: live.length, hp: live.reduce((n, x) => n + x.hp, 0),
                w: live[0] && live[0].w, dmg: live[0] && live[0].dmg, name: live[0] && live[0].name,
-               full: live.every((x) => x.hp === x.maxHP) };
+               full: live.every((x) => x.hp === x.maxHP), killed: state.kills - kills,
+               corpses: state.enemies.length - live.length };
     };
     const walkIn = P.spawnHP(P.enemyTypeById("slimeBlue"));
-    const big = await strike(top.hp, 1);           // survives → two of the rung below
+    const big = await strike(top.hp, 1);           // a scratch → two of the rung below
     const mid = await strike(rungs[1].hp, 1);      // …and those divide again
     const small = await strike(floor.hp, 1);       // the bottom rung: nothing smaller to become
-    return { walkIn, top: top.hp, mid: rungs[1].hp, floor: floor.hp, big, mids: mid, small };
+    // What every real build does to a 60 HP body: delete it. It has to come apart
+    // anyway, and it must not be counted as a kill — it didn't die.
+    const overkill = await strike(top.hp, 10000);
+    const finish = await strike(floor.hp, 10000);  // …but the smallest really does die
+    return { walkIn, top: top.hp, mid: rungs[1].hp, floor: floor.hp, big, mids: mid, small,
+             overkill, finish };
   });
   check(split.walkIn === split.top,
     `a slime walks in on the ladder's top rung, not on its hpMult (${split.walkIn} HP)`);
@@ -1188,6 +1203,12 @@ try {
     `each half is drawn smaller and hits softer than the body it came off (${split.big.was.w}px/${split.big.was.dmg} → ${split.big.w}px/${split.big.dmg})`);
   check(split.small.bodies === 1 && split.small.hp === split.floor - 1,
     `the smallest slime divides into nothing — it just takes the hit (${split.small.name}, ${split.small.hp} HP)`);
+  check(split.overkill.bodies === 2 && split.overkill.hp === 2 * split.mid && split.overkill.full,
+    `a blow that would delete a big slime divides it instead — 10.000 damage still leaves 2 x ${split.mid} HP standing`);
+  check(split.overkill.killed === 0 && split.overkill.corpses === 0,
+    "…and none of it is counted as a kill, because nothing died");
+  check(split.finish.bodies === 0 && split.finish.killed === 1,
+    "the smallest slime does die to it, exactly once");
 
   //     THE CADENCE CONTRACT (config.js: `attackMs`). Damage in this hall
   //     trickles: every body swings often and small. Two things have to hold for
