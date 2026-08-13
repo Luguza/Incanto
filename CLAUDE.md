@@ -62,18 +62,43 @@ why combat always looked right on the phone that broke the forge, and why **the
 rune tree is drawn on a canvas** (see the essay above `drawTree` in
 `src/skilltree.js`). Don't move it back.
 
-**2. An `feFlood` filter** — for a flat dark SVG shape. A flood's colour is one
-of the *filter's own* constants rather than a paint the shape carries, so the
-dark-mode pass never classifies it; compositing it back in with
-`feComposite operator="in"` keeps the shape's outline and antialiasing. The
-filters live once in `index.html` (ids resolve document-wide) and are applied
-from CSS. This is what keeps the book's sealed page dark and its wax seal red.
-Two rules come with it, both learned the hard way: give the shape an **opaque**
-fill and put transparency on the element as `opacity`, or `in` multiplies by the
-source alpha and the colour applies its alpha twice; and the shape needs an
-**area** — a filter region is a percentage of the geometric bounding box, so a
-straight line's region collapses and clips its stroke away (which is why
-`.bk-spine` is left unprotected).
+**2. An `feFlood` filter** — for an SVG shape that has to stay SVG, which is the
+whole spell book and the rune circle. `src/dark-paint.js` owns it: `flood()` for
+a flat colour, `ramp()` for one running across a shape, `dropShadow()` for a
+shadow. A flood's colour is one of the *filter's own* constants rather than a
+paint the shape carries, so the dark-mode pass never classifies it; compositing
+it back in with `feComposite operator="in"` keeps the shape's outline and
+antialiasing. **It applies to light paint as much as dark** — the book's
+parchment is flooded too, because the filter darkens a light surface just as
+readily as it lightens a dark one.
+
+Four rules come with it, each learned by getting it wrong:
+
+- Give the shape an **opaque** paint and put transparency on the element as
+  `opacity`. `in` multiplies the flood by the source's alpha, so an `rgba()`
+  fill applies its alpha twice and washes out.
+- The shape needs an **area**. A filter region is a percentage of the geometric
+  bounding box, so a straight line's region collapses and clips its stroke away
+  (which is why `.bk-spine` is left alone).
+- A `ramp()` belongs on a **rectangle**, clipped to the shape you want. Its
+  gradient is made by smearing the silhouette sideways, so a shape that narrows
+  — a page seen in perspective — lands the ramp somewhere different on each row
+  and paints a band across it. That is why the paper is a clipped `.bk-paper`
+  rect rather than the leaf itself.
+- **One flood carries one colour.** A shape that is filled *and* stroked has to
+  become two elements, one per colour, and if it was faded as a whole then the
+  two go in a group carrying the `opacity` — fading them separately composites
+  the outline over the fill instead of over the page. Where splitting would
+  change how the shape renders, don't: the page title's letters and outline are
+  painted together by `paint-order`, splitting them made the title visibly
+  lighter for everyone, so it is left unprotected on purpose.
+
+What is at risk is worth knowing precisely, because it decides whether a new
+shape needs any of this. Measured against a forced browser dark mode: an SVG
+**fill** is repainted always. A **stroke** survives the mild variant but not the
+aggressive one — and the phone that reported this is the aggressive one, since
+its screenshot came back with the tree's edge strokes turned light. So treat
+both as vulnerable.
 
 Everything else was measured and does *not* survive: a plain SVG fill, an SVG
 gradient paint server, a pattern of a PNG, a CSS background,
@@ -82,19 +107,20 @@ a filter shields nothing by itself**. A paint colour is already inverted by the
 time an SVG filter sees it, so an identity filter, on the shape or on a parent
 group, changes nothing. Only a flood wins.
 
-**Known remaining gap:** the book's *paper* is a light surface with a gradient,
-so it can be neither flooded (one flat colour) nor easily moved to canvas (its
-texture is `feTurbulence` noise, which canvas has no equivalent for). Under such
-a browser it darkens from cream to olive. It stays legible and coherent, and
-that is the accepted cost. The mini runes in the DOM panels are the same kind of
+**Known remaining gap:** the mini runes in the DOM panels (the info panel, the
+Werte screen) are still ordinary SVG, as are the spell effects animating on an
+open page. They are small and coloured rather than near-black, and they are the
 accepted cost.
 
 The smoke test checks all three declarations are present, then drives a second
 session with a browser dark mode forced on — **stripping the page's opt-out
 first**, since Chromium honours it and the phones this is written for do not,
 and an unstripped run passes while testing nothing. A canary shape proves the
-darkening really engaged before the tree, the sealed page and the rune wells are
-each measured for lightening.
+darkening really engaged; then the tree, the parchment, the hand written on it,
+the boards, the sealed page, the wax seal and the rune wells are each measured
+against the same part drawn normally. Ink and parchment are read as the darkest
+and lightest pixels of the written block rather than as its average — averaging
+hides a hand that has inverted under the page it is written on.
 
 ## Module map — where things live
 
@@ -104,6 +130,7 @@ Load order is set by the `<script>` list in `index.html` (data → logic → ren
 | File | Owns |
 |------|------|
 | `src/core.js` | `window.Incanto` root namespace (loads first) |
+| `src/dark-paint.js` | **painting a colour a phone's dark mode cannot repaint**: `flood()` (flat), `ramp()` (a colour running across a shape), `dropShadow()`. All build `feFlood`-based filters into one document-level `<defs>`, since a flood's colour is a filter constant and never gets classified. A stylesheet can't call `flood()`, so the colours the stylesheets use are registered in `CSS_FLOODS` and referenced as `url(#fl-<hex>)` — the same hex twice, so the two can't drift. Loads early, before anything draws |
 | `src/config.js` | `CONFIG` — all gameplay numbers, flags, colours, **the bestiary** (`enemyTypes`, where a variant's sprite, colour filter, size, stats, CADENCE (`attackMs` — what one blow costs is `dmgMult`, how often it lands is `attackMs`, and only the two together say what a body is worth) and ROLE — melee / ranged / summoner / healer — are defined, plus `slimeTiers`, the HP→size ladder the one SPLITTING family walks down), and the two numbers the whole balance hangs off: **`treeGold`** (what the entire tree costs, end to end — every node's price is a share of it, by depth and by how many of its ranks you already own) and **`treeTotals`** (how much of each stat the whole tree contains). They are set against each other so an endgame build walks ~90 % of the nodes and actually reaches the totals. No runtime caps, soft caps or diminishing returns exist anywhere; a stat's total is its ceiling because it bounds the supply, and every node pays exactly what it prints. Damage is built in three stages (Kern → Verstärkung → Zuschlag) |
 | `src/content.js` | vocab, sentences + verb paradigms: `WORD_POOL`, `SENTENCE_POOL` (~350 sentences — three questions of every quiz come out of it, so it has to be deep; house rules for a new one are written above the pool and enforced by `node tools/check-sentences.mjs`, which also fails on a word the game never teaches), `CONJ_POOL` (present tense, regular forms generated from `CONJ_ENDINGS`, irregulars written out), `CONJ_PERSONS`, … |
 | `src/encounters.js` | **where the hall is designed**: `SHAPES` (bare formations), `PACKS` (a shape filled with variants), `CHAPTERS` (16 of them — a 4-camp slime prologue that is not a fight, then 15 that each introduce one new body alone before using it in force), the derived `ENCOUNTER_PLAN` (164 camps on a fixed 2.5 m cadence) and `HALL_END_METRES` — the corridor is FINITE and ends at a door. Deterministic — no randomness. `previewPlan()` / `previewBestiary()` dump it to the console |

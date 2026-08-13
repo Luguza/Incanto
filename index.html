@@ -25,59 +25,12 @@
 <link rel="stylesheet" href="styles/meta.css">
 </head>
 <body>
-<!-- Dark paint that a phone's dark mode cannot undo.
-     ==================================================
-     A browser dark mode ("dark mode for web contents") reads every SVG fill and
-     stroke as foreground and inverts the dark ones, so the game's near-black
-     shapes come back light: the book's sealed page turns to grey paper, its wax
-     seal goes pink, the rune circle's wells become bright discs. Declaring the
-     page dark does not stop it (see styles/base.css) and neither does anything
-     applied to the shape — a paint colour is already inverted by the time an
-     SVG filter sees it, so an identity filter shields nothing.
-
-     feFlood is the exception, and the reason is structural rather than lucky: a
-     flood's colour is one of the FILTER's own constants, not a paint the shape
-     carries, so the dark-mode pass never classifies it. Compositing that flood
-     back into the shape's own coverage ("in") gives the exact colour asked for,
-     with the shape's outline and antialiasing intact, whatever the browser has
-     decided to do to the page around it.
-
-     So a flat dark shape is painted by giving it any fill (or stroke) for its
-     coverage and one of these filters for its colour. The colour therefore
-     lives HERE, not in the stylesheet — change it here. Two rules come with
-     that. Give the shape an OPAQUE fill and put any transparency on the element
-     as `opacity`: "in" multiplies the flood by the source's alpha, so a
-     half-transparent fill would apply its alpha twice and come out too faint.
-     And the shape needs an area to measure — a filter region is a percentage of
-     the geometric bounding box, so a straight line (zero width) has its region
-     collapse and its stroke clipped away. Anything that needs a
-     gradient can't use this and has to be a <canvas> instead (see the rune
-     tree). Kept in the document once: filter ids resolve document-wide, so
-     every SVG in the game can reach them. -->
-<svg class="dark-paint" width="0" height="0" aria-hidden="true" focusable="false"><defs>
-  <filter id="dkSealed" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-    <feFlood flood-color="#211a35"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-  <filter id="dkWax" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-    <feFlood flood-color="#7c2434"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-  <filter id="dkWaxEdge" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-    <feFlood flood-color="#4d1420"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-  <filter id="dkWaxShadow" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-    <feFlood flood-color="#120c1c"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-  <!-- The rune circle's wells, one per state of a rune. -->
-  <filter id="dkWell" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-    <feFlood flood-color="#080d12"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-  <filter id="dkWellSel" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-    <feFlood flood-color="#f2c14e"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-  <filter id="dkWellDone" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-    <feFlood flood-color="#5ecf8f"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-  <filter id="dkWellFlash" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-    <feFlood flood-color="#e5484d"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-</defs></svg>
 <div id="app"></div>
 <nav id="bottom-nav" class="bottom-nav" aria-label="Phasenwechsel"></nav>
 <!-- Modules load in dependency order: data → logic → render → screens → loop.
      main.js (last) wires listeners + boots. Add new src/*.js files to this list. -->
 <script src="src/core.js"></script>
+<script src="src/dark-paint.js"></script>
 <script src="src/config.js"></script>
 <script src="src/spells.js"></script>
 <script src="src/content.js"></script>

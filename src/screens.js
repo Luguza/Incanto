@@ -479,7 +479,8 @@ function renderCombatFull() {
       <circle class="halo" cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius + 7}" filter="url(#glow)"></circle>
       <circle class="well" cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius}"></circle>
       <circle class="body" cx="${r.x}" cy="${r.y}" r="${CONFIG.runeRadius}"></circle>
-      <text x="${r.x}" y="${r.y}"${runeTextStyle(r.word)}>${r.word}</text>
+      <text class="word-halo" x="${r.x}" y="${r.y}"${runeTextStyle(r.word)}>${r.word}</text>
+      <text class="word" x="${r.x}" y="${r.y}"${runeTextStyle(r.word)}>${r.word}</text>
     </g>`
     )
     .join("");

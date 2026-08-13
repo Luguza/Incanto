@@ -302,9 +302,10 @@ function marginRule(P, inset) {
 // lines of script wrap around.
 function pageInitial(P, colour, seed) {
   const u = MARGIN, v = BODY_TOP - GLYPH_H / 2, w = INITIAL.w, h = INITIAL.h;
-  return `<path class="bk-initial-box" d="M${P.p(u, v)} L${P.p(u + w, v)} ` +
-      `L${P.p(u + w, v + h)} L${P.p(u, v + h)} Z"/>` +
-    `<path class="bk-initial" stroke="${colour}" ` +
+  const box = `M${P.p(u, v)} L${P.p(u + w, v)} L${P.p(u + w, v + h)} L${P.p(u, v + h)} Z`;
+  return `<path class="bk-initial-box" d="${box}"/>` +
+    `<path class="bk-initial-rim" d="${box}"/>` +
+    `<path class="bk-initial" stroke="${colour}" filter="${Incanto.darkPaint.flood(colour)}" ` +
       `d="${glyphSub(P, u + w / 2, v + h / 2, h - 4, seed * 7 + 5)}"/>`;
 }
 
@@ -328,7 +329,7 @@ function pageSigil(P, colour, seed) {
     ticks += `M${P.p(SIGIL.u + co * SIGIL.r * 0.9, SIGIL.v + si * SIGIL.r * 0.9)}` +
       `L${P.p(SIGIL.u + co * SIGIL.r, SIGIL.v + si * SIGIL.r)}`;
   }
-  return `<g class="bk-sigil" stroke="${colour}">` +
+  return `<g class="bk-sigil" stroke="${colour}" filter="${Incanto.darkPaint.flood(colour)}">` +
     `<path class="bk-sigil-ring" d="${ring(SIGIL.r, 56)}"/>` +
     `<path class="bk-sigil-ring thin" d="${ring(SIGIL.r * 0.87, 56)}"/>` +
     `<path class="bk-sigil-tick" d="${ticks}"/>` +
@@ -585,9 +586,19 @@ function spellPage(spell, side, under, opts = {}) {
   // the fore-edge where the sheet lifts, and the lit cut along the top edge.
   // Everything laid over the leaf is clipped to it so none of it reaches the
   // cover.
+  // The leaf is drawn as a surface and an edge, not one filled-and-stroked
+  // path: each carries its own flood, and a flood is one colour. The paper's
+  // light-to-gutter ramp is made of floods too (see ramp() in dark-paint.js) —
+  // the gradient in `fill` is what a browser without filters would show, and
+  // what the ramp is matched to. `side < 0` is the left leaf, lit from the left.
   const paper =
     `<path class="bk-leaf" d="${d}"/>` +
     `<g clip-path="url(#bkClip${key})">` +
+      // The paper itself: a plain rectangle carrying the ramp, cut to the leaf
+      // by the clip above. The ramp has to ride a shape of constant width —
+      // see ramp() — and the leaf, drawn in perspective, is not one.
+      `<rect class="bk-paper" x="${side < 0 ? 0 : SPINE_X}" y="0" width="${SPINE_X}" height="${BOOK_H}" ` +
+        `filter="${Incanto.darkPaint.ramp("#cabd95", "#fcf5de", side < 0 ? -1 : 1, 70, 45)}"/>` +
       `<rect class="bk-fibre" x="0" y="0" width="${BOOK_W}" height="${BOOK_H}"/>` +
       `<g class="bk-foxing">` +
         `<ellipse cx="${side < 0 ? 46 : 554}" cy="88" rx="26" ry="17"/>` +
@@ -599,6 +610,7 @@ function spellPage(spell, side, under, opts = {}) {
       `<rect class="bk-foreedge" x="${side < 0 ? 0 : BOOK_W - 54}" y="0" ` +
         `width="54" height="${BOOK_H}" fill="url(#bkFore${key})"/>` +
     `</g>` +
+    `<path class="bk-leaf-edge" d="${d}"/>` +
     `<path class="bk-cut" d="${leafTopEdge(side)}"/>`;
   // Raised as the leaf swings over during a page turn (see setTurn): paper
   // turning away from the light goes dark, and without that a turn reads as a
@@ -740,6 +752,7 @@ function pageStack(side, count) {
     // Opaque, and a shade darker the further out it sits — the edges deeper in
     // the block catch less light. The stroke is the seam between two leaves.
     s += `<path class="bk-stack" fill="${STACK_SHADE[i - 1]}" ` +
+      `filter="${Incanto.darkPaint.flood(STACK_SHADE[i - 1])}" ` +
       `d="M${f(A)} Q${f(t)} ${f(pts[1])} L${f(pts[2])} L${f(D)} Q${f(o)} ${f(A)} Z"/>`;
   }
   return s;
@@ -775,6 +788,7 @@ function coverPath(side, out = 0) {
 // cut head edge, and two blind-tooled fillets running round inside the edge.
 function cover(side) {
   return `<path class="bk-cover" d="${coverPath(side)}"/>` +
+    `<path class="bk-cover-edge" d="${coverPath(side)}"/>` +
     `<g clip-path="url(#bkCoverClip${side < 0 ? "L" : "R"})">` +
       `<rect class="bk-grain" x="0" y="0" width="${BOOK_W}" height="${BOOK_H}"/></g>` +
     `<path class="bk-cover-bevel" d="${coverPath(side, 1.6)}"/>` +

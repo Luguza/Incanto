@@ -119,38 +119,57 @@ try {
   //     for the flat SVG shapes; see the dark-paint defs in index.html).
   //
   //     A DELTA rather than an absolute, so the check survives the art being
-  //     retuned. One-sided, because the failure is always in one direction:
-  //     dark paint coming back LIGHT. The other direction is left loose on
-  //     purpose — the book's paper is a light surface and the filter darkens it
-  //     whatever we do (it needs gradients, so it can't be flooded), which drags
-  //     the average of anything measured against it down a little.
+  //     retuned, and two-sided: the filter's two failure modes are inverting
+  //     dark paint to light AND darkening light paint, and the book is made of
+  //     both — near-black wax over cream parchment.
+  //
+  //     Measured three ways, because an average is the wrong instrument for
+  //     most of this. "surface" is the mean of a solid area. "ink" and "paper"
+  //     read the darkest and the lightest pixels of the SAME box — the written
+  //     block — so one watches the strokes and the other the vellum between
+  //     them. Averaging that box would hide both: thin half-transparent strokes
+  //     barely move the mean of a page that is mostly parchment, and the guard
+  //     would sit there looking green while the hand inverted.
   const darkParts = [
-    ["the rune tree", "upgrade", ".tree-canvas"],
-    ["the book's sealed page", "combat", ".bk-sealed"],
-    ["the rune circle's wells", "combat", ".rune .well"],
+    ["the rune tree", "upgrade", ".tree-canvas", "surface"],
+    ["the book's parchment", "combat", '.bk-page[data-side="-1"] .bk-script', "paper"],
+    ["the hand written on it", "combat", '.bk-page[data-side="-1"] .bk-script', "ink"],
+    ["the book's boards", "combat", ".bk-cover", "surface"],
+    ["the book's sealed page", "combat", ".bk-sealed", "surface"],
+    ["its wax seal", "combat", ".bk-wax", "surface"],
+    ["the rune circle's wells", "combat", ".rune .well", "surface"],
   ];
-  const meanLuma = (target, sel) => target.locator(sel).first().screenshot().then((bytes) =>
+  const measure = (target, sel, how) => target.locator(sel).first().screenshot().then((bytes) =>
     // Decoded on the ORIGINAL page: that one is not being darkened, so the
     // pixels it reads back are the ones the measured page actually painted.
-    page.evaluate(async (bs) => {
+    page.evaluate(async ([bs, mode]) => {
       const bmp = await createImageBitmap(new Blob([new Uint8Array(bs)], { type: "image/png" }));
       const c = document.createElement("canvas");
       c.width = bmp.width; c.height = bmp.height;
       const g = c.getContext("2d");
       g.drawImage(bmp, 0, 0);
-      // Only the bottom third of the box. An element screenshot is its
-      // BOUNDING BOX, so a rune well's would otherwise average in the word
-      // written across its middle and a page's would average in its script —
-      // neither of which is the surface under test.
-      const y0 = Math.floor(bmp.height * 0.66);
+      // For a surface, only the bottom third of the box. An element screenshot
+      // is its BOUNDING BOX, so a rune well's would otherwise average in the
+      // word written across its middle. Ink and paper read the whole box and
+      // pick their pixels out of it by brightness instead.
+      const y0 = mode === "surface" ? Math.floor(bmp.height * 0.66) : 0;
       const d = g.getImageData(0, y0, bmp.width, bmp.height - y0).data;
-      let sum = 0, n = 0;
+      const lum = [];
       for (let i = 0; i < d.length; i += 4) {
         if (d[i + 3] < 8) continue;
-        sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]; n++;
+        lum.push(0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]);
       }
-      return n ? sum / n : -1;
-    }, [...bytes]));
+      if (!lum.length) return -1;
+      if (mode !== "surface") {
+        lum.sort((a, b) => a - b);
+        // the strokes themselves, or the vellum they are written on
+        const part = mode === "ink"
+          ? lum.slice(0, Math.max(1, Math.floor(lum.length * 0.02)))
+          : lum.slice(Math.floor(lum.length * 0.8));
+        return part.reduce((a, b) => a + b, 0) / part.length;
+      }
+      return lum.reduce((a, b) => a + b, 0) / lum.length;
+    }, [[...bytes], how]));
 
   const openPage = async (force) => {
     const p = await browser.newPage({ viewport: { width: 412, height: 726 }, colorScheme: "dark" });
@@ -193,17 +212,17 @@ try {
     c.innerHTML = '<svg width="40" height="40"><circle cx="20" cy="20" r="20" fill="#120e1c"/></svg>';
     document.body.appendChild(c);
   });
-  const canaryA = await meanLuma(plain, "#dark-canary");
-  const canaryB = await meanLuma(forced, "#dark-canary");
+  const canaryA = await measure(plain, "#dark-canary", "surface");
+  const canaryB = await measure(forced, "#dark-canary", "surface");
   check(canaryB - canaryA > 60,
     "the harness really is forcing a browser dark mode on (canary " +
     canaryA.toFixed(0) + " → " + canaryB.toFixed(0) + " of 255)");
-  for (const [what, screen, sel] of darkParts) {
+  for (const [what, screen, sel, how] of darkParts) {
     for (const p of [plain, forced]) { await p.evaluate((s) => navTo(s), screen); }
     await forced.waitForTimeout(500);
-    const a = await meanLuma(plain, sel), b = await meanLuma(forced, sel);
-    check(a > 0 && b > 0 && b - a < 20,
-      `a forced browser dark mode cannot lighten ${what} ` +
+    const a = await measure(plain, sel, how), b = await measure(forced, sel, how);
+    check(a > 0 && b > 0 && Math.abs(a - b) < 20,
+      `a forced browser dark mode cannot repaint ${what} ` +
       `(${a.toFixed(0)} → ${b.toFixed(0)} of 255)`);
   }
   await plain.close();
