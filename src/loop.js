@@ -126,9 +126,21 @@ function updateEnemies(now, dt) {
   for (const e of state.enemies.slice()) {
     if (e.splitAt && now >= e.splitAt) {
       e.splitAt = 0;
-      splitOrShrink(e, now);
+      splitSlime(e, now);
     }
   }
+  // Goo: a walking slime drips a smear behind it every few strides, and every
+  // mark on the floor dries out on its own clock. Planted here rather than in
+  // the draw so a fight running in the background (the player is off studying,
+  // renderScene isn't being called) neither skips its trail nor piles up a list
+  // nobody is watching.
+  for (const e of state.enemies) {
+    if (e.phase !== "walk" || !enemyTypeById(e.type).split) continue;
+    if (e.gooPos != null && Math.abs(e.gooPos - e.pos) < CONFIG.slimeTrailStepTiles) continue;
+    e.gooPos = e.pos;
+    plantGoo(e, now, { jitter: ((e.id * 53) % 5) - 2 });
+  }
+  cullGoo(now);
   const lanes = new Map();
   for (const e of state.enemies) {
     if (!lanes.has(e.lane)) lanes.set(e.lane, []);

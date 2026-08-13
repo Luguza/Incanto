@@ -125,8 +125,8 @@ function rankTiles(rank) {
     const type = enemyTypeById(m.type);
     const spr = enemySprite(type);
     // Measured at the HP it walks in on, because a slime's size is a function of
-    // its HP rather than a constant (see bodyScale) — read off `type.scale`
-    // alone, a big slime would muster in a gap sized for a small one.
+    // the rung it stands on rather than a constant (see bodyScale) — read off
+    // `type.scale` alone, a big slime would muster in a gap sized for a small one.
     s = Math.max(s, (spr.idle.w * bodyScale(type, spawnHP(type))) / TILE);
   }
   return s;
@@ -136,42 +136,59 @@ function rankTiles(rank) {
 // SIZE, AND THE BODIES THAT CHANGE IT. Almost everything in the hall is one
 // fixed size decided by its variant. A slime is not: it carries `split`, and
 // what it IS — how big it is drawn, how hard it hits, what the HP bar calls it
-// — is read off its CURRENT HP against CONFIG.slimeTiers every time that HP
-// moves. See the ladder's own comment in config.js for why it is built that way.
+// — is the rung of CONFIG.slimeTiers its maxHP puts it on, re-read every time it
+// divides. See the ladder's own comment in config.js for why it is built that way.
 // ---------------------------------------------------------------------------
 
 // The HP a variant walks in on. Needed before any body exists, so a pack can be
 // spaced for the size its members are about to be.
+//
+// A SPLITTING body ignores `hpMult` and walks in on the top rung of its ladder.
+// The ladder is the whole of what a slime is worth — three sizes and what each
+// one carries — so letting a second number decide where it enters would mean a
+// slime that starts between two rungs, drawn as one size and worth another.
 function spawnHP(type) {
+  if (type.split) {
+    const ladder = CONFIG.slimeTiers;
+    if (ladder && ladder.length) return ladder[ladder.length - 1].hp;
+  }
   return Math.max(1, Math.round(CONFIG.enemyBaseHP * type.hpMult));
 }
 
-// Which rung of the ladder this much HP sits on, or null for a variant that has
-// no ladder (which is all of them but the slimes). Below the bottom rung there
-// is nothing smaller to become, so the ladder CLAMPS rather than running out —
-// a small slime chipped down to 3 HP is still a small slime.
+// Which rung of the ladder a body of this size stands on, or null for a variant
+// that has no ladder (which is all of them but the slimes). Asked with the body's
+// maxHP, which for a slime is always exactly a rung: it walks in on one and every
+// split hands it the next one down whole. It still CLAMPS at both ends, so a
+// number off the ladder resolves to the nearest rung at or below it rather than
+// to nothing.
 function bodyTier(type, hp) {
   if (!type.split) return null;
   const ladder = CONFIG.slimeTiers;
   if (!ladder || !ladder.length) return null;
   let tier = ladder[0];
-  for (const t of ladder) if (hp >= t.minHP) tier = t;
+  for (const t of ladder) if (hp >= t.hp) tier = t;
   return tier;
 }
 
-// How big a body of this variant is drawn at this much HP, as a multiple of its
-// own sheet art: the variant's `scale`, times whatever rung it is standing on.
+// How big a body of this variant is drawn at this size, as a multiple of its own
+// sheet art: the variant's `scale`, times whatever rung it is standing on.
 function bodyScale(type, hp) {
   const tier = bodyTier(type, hp);
   return (type.scale || 1) * (tier ? tier.scale : 1);
 }
 
-// Fix a body's drawn size, its damage and its name to what its current HP makes
-// it. For everything without a ladder this runs once at spawn and the answer
-// never moves again; for a slime it runs on every hit, which is what makes one
-// visibly shrink as it is worn down.
+// Fix a body's drawn size, its damage and its name to what its rung makes it.
+// For everything without a ladder this runs once at spawn and the answer never
+// moves again; for a slime it runs again on every split, which is what makes the
+// halves visibly smaller than the body they came off.
+//
+// Read off maxHP rather than off the HP left in the bar: a slime's size is the
+// SIZE it is, not the wound it is carrying. (Under the old halving ladder those
+// were the same question and this asked for `hp` — now a 40 nursing 12 points of
+// damage is still a mid-sized slime, and it stays one right up until the next
+// hit divides it.)
 function sizeBody(e, type) {
-  const tier = bodyTier(type, e.hp);
+  const tier = bodyTier(type, e.maxHP);
   const spr = enemySprite(type);
   e.scale = bodyScale(type, e.hp);
   e.w = Math.max(1, Math.round(spr.idle.w * e.scale));
@@ -187,47 +204,105 @@ function sizeBody(e, type) {
 // meteor, a fifth chain hop and a Dornen reflection all divide a slime alike and
 // none of them does it before its own effect has landed.
 //
-// Two things happen here, and the second is conditional on the first. The body
-// is re-sized to whatever its remaining HP now makes it: that alone is the
-// entire effect on a slime too small to divide, and it is why a 24 HP slime
-// taking 10 is ONE 14 HP slime rather than two 7 HP ones. Then, if both halves
-// would still land on the ladder, it comes apart: the half that stays keeps the
-// body it already had and the other half walks in right behind it, both re-sized
-// again to their own share.
+// A slime that survives a hit comes apart into two of the size below, each with
+// a FULL bar of that size's HP: the damage that did it is spent on the dividing
+// and none of it carries into either half. The body that was hit becomes the
+// first half in place; the second walks out from behind it.
 //
-// The two halves add up to exactly what was left, so nothing is created. What
-// the player buys by splitting a slime is more targets, never more HP.
-function splitOrShrink(e, at) {
+// It is the bottom rung that ends this, not the arithmetic — a KLEINER SCHLEIM
+// has nothing smaller to become, so a hit on one is just a hit and it dies when
+// its bar runs out. That is what stops the corridor filling with specks, and it
+// is why a big slime is a fixed seven casts however you cut it up: one to divide
+// it, two to divide the halves, four to finish the quarters.
+//
+// See CONFIG.slimeTiers for why this makes HP on purpose.
+function splitSlime(e, at) {
   const type = enemyTypeById(e.type);
   if (!type.split || e.hp <= 0) return null;
-  sizeBody(e, type);                                    // it is whatever is left of it
-  // A body with a killing blow already booked does not divide — but note the
-  // re-size above still ran, and should have: a non-fatal hit that landed first
-  // really did take it down a size, and it wears that for the moment it has left.
+  // A body with a killing blow already booked does not divide: it is a corpse
+  // that hasn't fallen over yet, and two full-HP halves off one would hand the
+  // player's own kill back to them.
   if (doomed(e)) return null;
-  // The floor: below twice the bottom rung there is no pair of slimes to become,
-  // so the shrink above was the whole of it.
-  if (e.hp < 2 * CONFIG.slimeTiers[0].minHP) return null;
+  const ladder = CONFIG.slimeTiers;
+  const rung = ladder.indexOf(bodyTier(type, e.maxHP));
+  if (rung <= 0) return null;         // the bottom rung — nothing smaller to become
   // The head-count cap is a safety valve on what fits on screen, not a design
   // input — a floor that is already full stops dividing rather than pushing
   // bodies off the end of the track.
   if (livingEnemies().length >= CONFIG.enemyMaxCount) return null;
-  const keep = Math.ceil(e.hp / 2);
-  const shed = e.hp - keep;
+  const next = ladder[rung - 1];
   // Both halves start their bar full at their own size. They are two slimes now,
-  // not one slime sharing a wound, and a bar that opened half-empty would read
-  // as "this one is nearly dead" about a body at full strength for what it is.
-  e.hp = e.maxHP = keep;
+  // not one slime sharing a wound.
+  e.hp = e.maxHP = next.hp;
   sizeBody(e, type);
   const twin = spawnEnemy(at, e.lane, e.pos, e.type);
-  twin.hp = twin.maxHP = shed;
+  twin.hp = twin.maxHP = next.hp;
   sizeBody(twin, type);
   // Behind the parent in its own lane, clear of it by the gap the lane queue
   // keeps anyway — dropped in front it would jump the queue it was just part of.
   twin.pos = e.pos + CONFIG.enemyGapTiles * (bodyTiles(e) + bodyTiles(twin)) / 2;
   twin.frozenUntil = e.frozenUntil;   // a Frostkegel holds both halves, not just the one it caught
   twin.hitFlashAt = at;               // both halves blink on the hit that divided them
+  // The performance (drawn in render-scene): both halves wobble, and a bridge of
+  // goo stretches between them until it snaps. The twin carries the pairing so
+  // the bridge always has two ends to hang off — read from the twin, because the
+  // parent may be divided AGAIN before this one has finished playing.
+  e.splitFxAt = at;
+  e.splitFromId = null;               // whatever it was torn off last time, that rope is long gone
+  twin.splitFxAt = at;
+  twin.splitFromId = e.id;
+  // …and what the tearing leaves on the floor under them.
+  splashGoo(e, at, 5);
   return twin;
+}
+
+// ---------------------------------------------------------------------------
+// THE GOO A SLIME LEAVES ON THE FLOOR (`state.slimeGoo`, drawn by render-scene).
+// A mark is planted in WORLD px — `state.cameraX` plus the body's screen x — so
+// it stays on the flagstone it landed on while the hall scrolls past, rather
+// than sliding along with the camera. Pure decoration: nothing ever reads it
+// back, and the list is capped and culled on age.
+// ---------------------------------------------------------------------------
+
+// One smear under a body. `spread` fattens it (a split splashes wider than a
+// stride) and `jitter` offsets it along the lane so a trail isn't a row of
+// identical stamps. The size wobbles a little per mark for the same reason —
+// stamped at one size they line up into a painted stripe rather than a track.
+function plantGoo(e, at, { spread = 1, jitter = 0 } = {}) {
+  if (!state.slimeGoo) state.slimeGoo = [];
+  if (state.slimeGoo.length >= CONFIG.slimeTrailMax) state.slimeGoo.shift();
+  const vary = 0.8 + ((e.id * 29 + state.slimeGoo.length * 17) % 40) / 100;   // 0,8–1,2, deterministic
+  state.slimeGoo.push({
+    // World px: the camera offset is baked in here and taken back out at draw
+    // time, which is what pins the mark to the floor.
+    x: state.cameraX + e.pos * TILE + jitter,
+    lane: e.lane,
+    rx: Math.max(2, (e.w || 12) * 0.26 * spread * vary),
+    ry: Math.max(1, (e.h || 10) * 0.11 * spread * vary),
+    type: e.type,                     // which colourway it drips (see gooTint)
+    born: at,
+    ttl: CONFIG.slimeTrailFadeMs * (0.75 + 0.5 * ((e.id * 37) % 100) / 100) * (spread > 1 ? 1.35 : 1),
+  });
+  return true;
+}
+
+// The puddle a split throws out: `n` blobs scattered along the lane where the
+// body came apart, so the pair is standing in the mess they made rather than
+// next to it.
+function splashGoo(e, at, n) {
+  for (let i = 0; i < n; i++) {
+    const k = i - (n - 1) / 2;                                  // -…0…+ along the lane
+    plantGoo(e, at, { spread: 1.5 - Math.abs(k) * 0.22, jitter: k * TILE * 0.42 });
+  }
+}
+
+// Marks are planted on the logic clock (see loop.updateEnemies) so a fight that
+// runs while the player is off studying doesn't pile up an unbounded list nobody
+// is watching. Age is the only thing that removes one.
+function cullGoo(now) {
+  const goo = state.slimeGoo;
+  if (!goo || !goo.length) return;
+  state.slimeGoo = goo.filter((g) => now - g.born < g.ttl);
 }
 
 // Put every lane's members in reach order — the body that plants CLOSEST to the
@@ -301,7 +376,10 @@ function spawnEnemy(now, lane, pos, typeId) {
     attackAt: 0,                  // next time this body lands a hit
     attackAnimAt: 0,              // start of the current forward-jab animation
     deathAt: 0,                   // >0: already killed, but only collapses when the blow ARRIVES
-    splitAt: 0,                   // >0: a splitting body, waiting on the same arrival (see splitOrShrink)
+    splitAt: 0,                   // >0: a splitting body, waiting on the same arrival (see splitSlime)
+    splitFxAt: 0,                 // when it last came apart — the wobble + goo bridge play off this
+    splitFromId: null,            // the half it was torn off, so the bridge has two ends
+    gooPos: null,                 // the tile it last dripped a mark on (see plantGoo)
     frozenUntil: 0,               // held fast by a Frostkegel until this moment (see updateEnemies)
     actAt: 0,                     // next summon/mend (0 = hasn't planted yet — see updateSupport)
     actFxAt: 0,                   // when the rune/beam of that act was thrown, for the draw
@@ -369,6 +447,7 @@ function startRun() {
   const now = performance.now();
   state.enemies = [];
   state.enemyShots = [];      // no bolt from a previous run still in the air
+  state.slimeGoo = [];        // and no goo on the floor from the last run's slimes
   state.cameraX = 0;
   state.distance = 0;
   state.cameraVel = 0;
@@ -431,4 +510,4 @@ function shuffleArray(arr) {
   return arr;
 }
 
-window.Incanto.progression = { clearHall, spawnPack, spawnFiller, spawnEnemy, enemyTypeById, typeStandoff, rankTiles, orderRanksByReach, bodyTiles, bodyTier, bodyScale, spawnHP, sizeBody, splitOrShrink, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };
+window.Incanto.progression = { clearHall, spawnPack, spawnFiller, spawnEnemy, enemyTypeById, typeStandoff, rankTiles, orderRanksByReach, bodyTiles, bodyTier, bodyScale, spawnHP, sizeBody, splitSlime, plantGoo, splashGoo, cullGoo, clampLane, trackEdgeTiles, sceneIsEmpty, advanceInboundPack, startRun, layoutCircle, shuffleArray };

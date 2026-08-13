@@ -1062,21 +1062,24 @@ try {
     `the roster keeps opening up to the end (last new body at ${hall.lastDebut} m)`);
 
   //     SPLITTING SLIMES. The opening chapter's bodies divide when they are hurt
-  //     (CONFIG.slimeTiers), and three things about that have to hold or the
-  //     corridor either fills with specks or quietly manufactures HP:
-  //       · a hit that leaves enough behind divides the body, and the two halves
-  //         add up to exactly what was left — never more;
-  //       · a hit that does NOT leave enough divides nothing. The body shrinks a
-  //         size and stays one body, which is what stops the floor filling with
-  //         1 HP fragments each still owed its own cast;
-  //       · the size and the damage follow the HP down, so a fragment is drawn
+  //     (CONFIG.slimeTiers), and four things about that have to hold or the
+  //     mechanic either stops firing or fills the corridor with specks:
+  //       · a slime walks in on the TOP rung of the ladder whatever its hpMult
+  //         says — the ladder is the whole of what it is worth;
+  //       · a hit it survives turns it into TWO of the rung below, each with a
+  //         full bar of that rung's HP. None of the damage carries over, which is
+  //         what makes every non-fatal hit divide instead of almost none of them;
+  //       · the bottom rung divides into nothing. It takes the hit like any other
+  //         body, which is what stops the floor filling with 1 HP fragments each
+  //         still owed its own cast;
+  //       · the size and the damage follow the rung down, so a half is drawn
   //         smaller and hits softer than the body it came off.
   const split = await page.evaluate(async () => {
     const P = window.Incanto.progression;
     const settle = (ms) => new Promise((r) => setTimeout(r, ms));
     const rungs = CONFIG.slimeTiers;
-    const floor = rungs[0].minHP;
-    // A body of exactly `hp`, hit for `dmg`, once the loop has carried the blow out.
+    const top = rungs[rungs.length - 1], floor = rungs[0];
+    // A body on exactly `hp`, hit for `dmg`, once the loop has carried the blow out.
     const strike = async (hp, dmg) => {
       startRun();
       state.enemies = [];
@@ -1084,26 +1087,30 @@ try {
       const e = P.spawnEnemy(performance.now(), 2, 3, "slime");
       e.hp = e.maxHP = hp;
       P.sizeBody(e, P.enemyTypeById("slime"));
-      const was = { w: e.w, dmg: e.dmg };
+      const was = { w: e.w, dmg: e.dmg, name: e.name };
       hitEnemy(e, dmg, performance.now());
       await settle(120);                     // updateEnemies resolves it on the next beats
       const live = livingEnemies();
       return { was, bodies: live.length, hp: live.reduce((n, x) => n + x.hp, 0),
-               w: live[0] && live[0].w, dmg: live[0] && live[0].dmg, name: live[0] && live[0].name };
+               w: live[0] && live[0].w, dmg: live[0] && live[0].dmg, name: live[0] && live[0].name,
+               full: live.every((x) => x.hp === x.maxHP) };
     };
-    const big = await strike(44, 24);        // 20 left, and 20 is twice the floor
-    const shrink = await strike(24, 10);     // 14 left — half of it would be under the floor
-    const edge = await strike(2 * floor + 4, 4);  // exactly on the floor after the hit
-    return { floor, big, shrink, edge, rungs: rungs.length };
+    const walkIn = P.spawnHP(P.enemyTypeById("slimeBlue"));
+    const big = await strike(top.hp, 1);           // survives → two of the rung below
+    const mid = await strike(rungs[1].hp, 1);      // …and those divide again
+    const small = await strike(floor.hp, 1);       // the bottom rung: nothing smaller to become
+    return { walkIn, top: top.hp, mid: rungs[1].hp, floor: floor.hp, big, mids: mid, small };
   });
-  check(split.big.bodies === 2 && split.big.hp === 20,
-    `a hurt slime divides in two and the halves add up to what was left (2 bodies, ${split.big.hp} HP)`);
+  check(split.walkIn === split.top,
+    `a slime walks in on the ladder's top rung, not on its hpMult (${split.walkIn} HP)`);
+  check(split.big.bodies === 2 && split.big.hp === 2 * split.mid && split.big.full,
+    `a hurt slime divides into two of the rung below, both on a FULL bar (2 x ${split.mid} HP)`);
+  check(split.mids.bodies === 2 && split.mids.hp === 2 * split.floor && split.mids.full,
+    `and those divide again, down to the floor (2 x ${split.floor} HP)`);
   check(split.big.w < split.big.was.w && split.big.dmg < split.big.was.dmg,
     `each half is drawn smaller and hits softer than the body it came off (${split.big.was.w}px/${split.big.was.dmg} → ${split.big.w}px/${split.big.dmg})`);
-  check(split.shrink.bodies === 1 && split.shrink.hp === 14 && split.shrink.w < split.shrink.was.w,
-    `too small to divide: it shrinks instead and stays ONE body (${split.shrink.name}, ${split.shrink.hp} HP)`);
-  check(split.edge.bodies === 2 && split.edge.hp === 2 * split.floor,
-    `the floor is exact — at twice the smallest rung it still divides, into two ${split.floor} HP halves`);
+  check(split.small.bodies === 1 && split.small.hp === split.floor - 1,
+    `the smallest slime divides into nothing — it just takes the hit (${split.small.name}, ${split.small.hp} HP)`);
 
   //     THE CADENCE CONTRACT (config.js: `attackMs`). Damage in this hall
   //     trickles: every body swings often and small. Two things have to hold for

@@ -78,6 +78,7 @@ const data = await page.evaluate(({ shares, overrides }) => {
   const { TREE_NODES: N, TREE_EDGES: E, nodeCost, treeBuy } = Incanto.skilltree;
   const { ENCOUNTER_PLAN, packRanks, PACKS } = Incanto.encounters;
   const { spellPower } = Incanto.spells;
+  const { spawnHP, bodyTier } = Incanto.progression;
 
   // How long one cast takes end to end on a phone: the rune has to be TRACED by
   // a thumb before it charges, and that trace — not castChargeMs — is what
@@ -108,7 +109,9 @@ const data = await page.evaluate(({ shares, overrides }) => {
   };
 
   // Build the camp exactly as the plan describes it: rank by rank, lane by lane,
-  // each body carrying its variant's own numbers.
+  // each body carrying its variant's own numbers. HP comes from the game's own
+  // spawn rule rather than from `hpMult`, because a splitting body ignores that
+  // multiplier and walks in on the top rung of its ladder (progression.spawnHP).
   function campBodies(i) {
     const e = ENCOUNTER_PLAN[i];
     const ranks = packRanks({ pack: PACKS[e.pack], reinforce: e.reinforce || 0 });
@@ -116,14 +119,18 @@ const data = await page.evaluate(({ shares, overrides }) => {
     ranks.forEach((rank, r) => {
       for (const m of rank) {
         const t = typeById[m.type] || typeById.skeleton;
+        const hp = spawnHP(t);
+        const tier = bodyTier(t, hp);
         out.push({
           lane: m.lane, rank: r, role: t.role || "melee",
-          hp: CONFIG.enemyBaseHP * t.hpMult,
-          // Rounded and floored exactly as progression.js sizeBody does it. That
-          // used to be a rounding error on a 50-point blow and is now the
-          // difference between 3 and 4 on a skeleton's, because the hall's
-          // cadences are fast enough that a blow is a small integer.
-          dmg: Math.max(1, Math.round(CONFIG.enemyBaseDmg * t.dmgMult)),
+          hp, maxHP: hp, type: t, split: !!t.split,
+          // Rounded and floored exactly as progression.js sizeBody does it, the
+          // rung's own multiplier included. That used to be a rounding error on a
+          // 50-point blow and is now the difference between 3 and 4 on a
+          // skeleton's, because the hall's cadences are fast enough that a blow
+          // is a small integer — and on a slime fragment it is the difference
+          // between 2 and 1.
+          dmg: Math.max(1, Math.round(CONFIG.enemyBaseDmg * t.dmgMult * (tier ? tier.dmgMult : 1))),
           armor: t.armor || 0,
           interval: t.attackMs || CONFIG.enemyAttackIntervalMs,
           windup: Math.max(CONFIG.enemyFirstAttackMs,
@@ -132,6 +139,23 @@ const data = await page.evaluate(({ shares, overrides }) => {
       }
     });
     return out;
+  }
+
+  // A slime that survives a hit becomes TWO of the rung below, each on a full bar
+  // (progression.splitSlime). Modelled here because it is the one thing in the
+  // hall that makes a camp cost more casts than its head count says: the hit that
+  // divides a body is a whole cast that removes no HP from the camp at all, and
+  // the prologue is four camps of nothing else. Mutates the body into the first
+  // half and returns the second, or null if it was already on the bottom rung.
+  function splitBody(b) {
+    const ladder = CONFIG.slimeTiers;
+    let i = 0;
+    for (let k = 0; k < ladder.length; k++) if (b.maxHP >= ladder[k].hp) i = k;
+    if (i <= 0) return null;
+    const rung = ladder[i - 1];
+    b.hp = b.maxHP = rung.hp;
+    b.dmg = Math.max(1, Math.round(CONFIG.enemyBaseDmg * b.type.dmgMult * rung.dmgMult));
+    return Object.assign({}, b);
   }
 
   // One camp, ticked. Returns the HP the hero has left and how long it took;
@@ -174,6 +198,13 @@ const data = await page.evaluate(({ shares, overrides }) => {
         const order = alive.slice().sort((a, b) => a.rank - b.rank || a.lane - b.lane);
         if (order[0]) order[0].hp -= dps * armorMult(order[0].armor);
         if (order[1]) order[1].hp -= dps * SPLASH * armorMult(order[1].armor);
+        // Anything the cast hurt but didn't kill divides, if it is the kind of
+        // body that does (see splitBody).
+        for (const b of [order[0], order[1]]) {
+          if (!b || b.hp <= 0 || !b.split) continue;
+          const twin = splitBody(b);
+          if (twin) alive.push(twin);
+        }
         for (let i = alive.length - 1; i >= 0; i--) if (alive[i].hp <= 0) alive.splice(i, 1);
       }
     }
