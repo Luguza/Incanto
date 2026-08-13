@@ -62,6 +62,14 @@ why combat always looked right on the phone that broke the forge, and why **the
 rune tree is drawn on a canvas** (see the essay above `drawTree` in
 `src/skilltree.js`). Don't move it back.
 
+A canvas brings its own trap, and the tree hit it: **a memoised viewport size
+outlives the element it measured.** `TREE_VP` is module state, the `<canvas>` is
+rebuilt with the screen, and a fresh canvas starts at the default 300×150 — so
+on the second visit to the forge the remembered box matched, `syncTreeViewport`
+reported "unchanged", and the whole web came back stretched across a bitmap a
+fifth of the size it needed. Any such guard has to check the **backing store**
+(`cv.width`/`cv.height`) as well as the box, never the box alone.
+
 **2. An `feFlood` filter** — for an SVG shape that has to stay SVG, which is the
 whole spell book and the rune circle. `src/dark-paint.js` owns it: `flood()` for
 a flat colour, `ramp()` for one running across a shape, `dropShadow()` for a
@@ -92,6 +100,15 @@ Four rules come with it, each learned by getting it wrong:
   change how the shape renders, don't: the page title's letters and outline are
   painted together by `paint-order`, splitting them made the title visibly
   lighter for everyone, so it is left unprotected on purpose.
+- **If the shape was a tap target, hand the target back.** Splitting a
+  filled-and-stroked shape leaves the stroked half with `fill: none`, and an
+  unpainted fill is not hit-tested — so the split silently shrinks the target to
+  the width of the outline. It reached the player once: the rune circle's ring
+  kept its `cursor: pointer` and its `data-` wiring and went completely dead to
+  a thumb, because the only pixels left that could take a press were 1,5 px of
+  edge. The ring carries `pointer-events: all` for exactly that reason (see
+  `.rune .body` in `styles/combat.css`); don't tidy it away. Tests that call
+  `handleRuneClick` will not catch this — the smoke test presses the pixels.
 
 What is at risk is worth knowing precisely, because it decides whether a new
 shape needs any of this. Measured against a forced browser dark mode: an SVG

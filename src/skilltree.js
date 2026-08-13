@@ -1247,12 +1247,21 @@ function syncTreeViewport() {
   const r = cv.getBoundingClientRect();
   if (!r.width || !r.height) return false;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);   // 2 is already past what a phone can show here
+  const pw = Math.round(r.width * dpr), ph = Math.round(r.height * dpr);
+  // The backing store is checked as well as the box, and that is not belt and
+  // braces: TREE_VP outlives the screen but the <canvas> does not. Re-entering
+  // the forge builds a NEW canvas, which starts life at the default 300×150,
+  // and its box measures exactly what the last visit measured — so a check on
+  // the box alone reported "unchanged", returned early, and left the whole web
+  // drawn into 300×150 and stretched across the box. That is the tree coming
+  // back skewed on the second visit.
   const same = TREE_VP.measured && Math.abs(r.width - TREE_VP.w) < 0.5 &&
-    Math.abs(r.height - TREE_VP.h) < 0.5 && TREE_VP.dpr === dpr;
+    Math.abs(r.height - TREE_VP.h) < 0.5 && TREE_VP.dpr === dpr &&
+    cv.width === pw && cv.height === ph;
   if (same) return false;
   TREE_VP.w = r.width; TREE_VP.h = r.height; TREE_VP.dpr = dpr; TREE_VP.measured = true;
-  cv.width = Math.round(r.width * dpr);
-  cv.height = Math.round(r.height * dpr);
+  cv.width = pw;
+  cv.height = ph;
   drawTree(true);
   return true;
 }
