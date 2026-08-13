@@ -395,7 +395,18 @@
   .rune.selected .well { fill: #f2c14e; opacity: 0.16; filter: url(#fl-f2c14e); }
   .rune.matched .well { fill: #5ecf8f; opacity: 0.14; filter: url(#fl-5ecf8f); }
 
-  .rune .body { fill: none; stroke-width: 1.5; cursor: pointer; transition: stroke 100ms linear; }
+  /* `pointer-events: all` is what makes the rune tappable, and it is load-
+     bearing: the ring is the only element in the group that takes a press (the
+     well, the halo and the word are all `none`), and splitting the wash off it
+     left it with `fill: none`. An unpainted fill is not hit-tested by default,
+     so the tap target silently shrank to the 1,5 px ring itself and the whole
+     circle went dead to a thumb. `all` hit-tests the fill region whether it is
+     painted or not, which restores the disc the rune had when it was one
+     filled-and-stroked circle. */
+  .rune .body {
+    fill: none; stroke-width: 1.5; cursor: pointer;
+    pointer-events: all; transition: stroke 100ms linear;
+  }
   .rune.unmatched .body { stroke: rgba(127, 244, 241, 0.35); }
   .rune.selected .body { stroke: #ffe9b0; stroke-width: 2.5; }
   .rune.matched .body { stroke: rgba(143, 231, 180, 0.8); }

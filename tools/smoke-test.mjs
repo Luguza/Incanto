@@ -228,6 +228,52 @@ try {
   await plain.close();
   await forced.close();
 
+  // 2c. The rune circle takes a real thumb. Every other rune check in here calls
+  //     handleRuneClick() directly, which is how the circle once shipped
+  //     completely dead to a finger: splitting the well off the ring left the
+  //     ring with `fill: none`, and an unpainted fill is not hit-tested, so the
+  //     tap target shrank from the whole disc to a 1,5 px outline while every
+  //     test still passed. So this one presses the pixels.
+  await page.evaluate(() => { navTo("combat"); render(performance.now()); });
+  await page.waitForTimeout(300);
+  const runeGeom = await page.evaluate(() => {
+    const mid = (g) => {
+      const b = g.querySelector(".body").getBoundingClientRect();
+      return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+    };
+    const gs = [...document.querySelectorAll("svg.arena .rune")];
+    const id = (g) => Number(g.dataset.id);
+    const from = gs[0];
+    const want = state.runes.find((r) => r.id === id(from)).pairId;
+    const to = gs.find((g) => state.runes.find((r) => r.id === id(g)).pairId === want &&
+      id(g) !== id(from));
+    const p = mid(from);
+    const el = document.elementFromPoint(p.x, p.y);
+    return {
+      hitsRune: !!(el && el.closest && el.closest(".rune")),
+      hit: el ? el.tagName + "." + (el.getAttribute("class") || "?") : "nothing",
+      from: p, to: mid(to), fromId: id(from), toId: id(to),
+    };
+  });
+  check(runeGeom.hitsRune,
+    "the middle of a rune belongs to that rune, not to what is behind it (hit " +
+    runeGeom.hit + ")");
+  await page.mouse.move(runeGeom.from.x, runeGeom.from.y);
+  await page.mouse.down();
+  await page.waitForTimeout(60);
+  const armed = await page.evaluate(() => state.selectedRuneId);
+  check(armed === runeGeom.fromId,
+    "pressing it arms it (selectedRuneId=" + armed + ", expected " + runeGeom.fromId + ")");
+  await page.mouse.move(runeGeom.to.x, runeGeom.to.y, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  const paired = await page.evaluate(() => ({
+    matched: state.runes.filter((r) => r.matchState === "matched").length,
+    armed: state.selectedRuneId,
+  }));
+  check(paired.matched >= 2 && paired.armed === null,
+    "dragging it onto its pair matches them both (" + paired.matched + " matched)");
+
   // 3. The spell book turns under the finger, and ALL of it does. A page turn is
   //    one motion on one progress: the held leaf stands up to the spine over the
   //    first half of the drag, and the leaf it carries over lies down on the far
@@ -339,6 +385,37 @@ try {
   check(tapping.hits === tapping.total && tapping.empty === null,
     "a tap resolves to the node under it, and to nothing off the web (" +
     tapping.hits + "/" + tapping.total + ")");
+
+  //    …and the web comes back the same shape on the SECOND visit. The canvas
+  //    is rebuilt with the screen but TREE_VP outlives it, so a fresh canvas
+  //    arrives at the default 300x150 while the remembered box measures exactly
+  //    what it did last time. syncTreeViewport used to read that as "unchanged"
+  //    and return before sizing the backing store, and the whole tree came back
+  //    stretched across a bitmap a fifth of the size it needed. Leaving and
+  //    re-entering has to leave the backing store matched to the box.
+  const revisit = await page.evaluate(async () => {
+    const shape = () => {
+      const cv = document.getElementById("tree-canvas");
+      const r = cv.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      return {
+        box: [Math.round(r.width), Math.round(r.height)],
+        want: [Math.round(r.width * dpr), Math.round(r.height * dpr)],
+        got: [cv.width, cv.height],
+      };
+    };
+    const go = (s) => { navTo(s); render(performance.now()); };
+    go("upgrade");
+    const first = shape();
+    go("combat"); go("upgrade");
+    const second = shape();
+    return { first, second };
+  });
+  const fits = (s) => s.want.join() === s.got.join();
+  check(fits(revisit.first) && fits(revisit.second),
+    "the tree's canvas is sized to its box on every visit, not just the first " +
+    "(revisit " + revisit.second.got.join("x") + ", box needs " +
+    revisit.second.want.join("x") + ")");
 
   // 5. The skill tree is authored, not grown (see skilltree.js): twelve arms out
   //    of one seed, one connected acyclic graph, every sealed page reachable by
