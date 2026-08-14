@@ -1101,7 +1101,7 @@ try {
       for (const rank of E.packRanks(entry)) {
         for (const m of rank) {
           if (!known.has(m.type)) badType.add(m.type);
-          if (!firstAt.has(m.type)) firstAt.set(m.type, entry.at);
+          if (!firstAt.has(m.type)) firstAt.set(m.type, { at: entry.at, camp: i });
         }
       }
     }
@@ -1109,13 +1109,22 @@ try {
       if (!SPRITES[t.sprite || "skelet"]) badSprite.push(t.id);
       if (!ASSETS.enemy[t.id]) badSprite.push(t.id + " (no frames)");
     }
-    // Nothing new may arrive in a rush: after the opening chapter, each new body
-    // has to be at least a few camps clear of the last one that turned up.
-    const debuts = [...firstAt.values()].sort((a, b) => a - b);
+    // Nothing new may arrive in a rush. This used to be measured in metres — a
+    // new body had to be two camps clear of the last one — and that reading died
+    // with the cut to half length: 42 bodies over 82 camps is a debut every
+    // other camp on average, and holding a two-camp gap would need 210 m of hall
+    // to put them in. What survives the halving, and is the thing that actually
+    // decides whether a body is legible when it arrives, is that a debut gets a
+    // camp TO ITSELF: two new silhouettes must never walk in on the same mark,
+    // where neither can be told from the other.
+    const debuts = [...firstAt.values()].sort((a, b) => a.at - b.at);
+    const perCamp = new Map();
+    for (const d of debuts) perCamp.set(d.camp, (perCamp.get(d.camp) || 0) + 1);
+    const shared = [...perCamp.values()].filter((n) => n > 1).length;
     let tightest = Infinity;
     for (let i = 1; i < debuts.length; i++) {
-      if (debuts[i] < 33) continue;                   // the bone chapter teaches two at once, by design
-      tightest = Math.min(tightest, debuts[i] - debuts[i - 1]);
+      if (debuts[i].at < 33) continue;                 // the bone chapter teaches two at once, by design
+      tightest = Math.min(tightest, debuts[i].at - debuts[i - 1].at);
     }
     return {
       camps: E.ENCOUNTER_PLAN.length,
@@ -1123,9 +1132,10 @@ try {
       past: E.encounterAt(E.ENCOUNTER_PLAN.length),   // the plan runs out rather than looping
       mark: E.nextMark(E.ENCOUNTER_PLAN.length),
       types: CONFIG.enemyTypes.length,
+      spacing: CONFIG.encounterSpacingMetres,
       placed: firstAt.size,
-      lastDebut: debuts[debuts.length - 1],
-      tightest,
+      lastDebut: debuts[debuts.length - 1].at,
+      tightest, shared,
       badPack, badSprite, badType: [...badType],
     };
   });
@@ -1133,8 +1143,8 @@ try {
     `every camp names a real pack, variant and sprite (${hall.camps} camps, ${hall.types} variants)`);
   check(hall.past === null && hall.mark === hall.end,
     `the hall ENDS: past the last camp the only mark left is the door at ${hall.end} m`);
-  check(hall.tightest >= 5,
-    `no new body is rushed in — the tightest gap between two debuts is ${hall.tightest} m`);
+  check(hall.shared === 0 && hall.tightest >= hall.spacing,
+    `no new body is rushed in — every debut gets a camp to itself (tightest gap ${hall.tightest} m)`);
   check(hall.lastDebut > hall.end * 0.9,
     `the roster keeps opening up to the end (last new body at ${hall.lastDebut} m)`);
 
