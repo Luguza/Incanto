@@ -57,24 +57,31 @@ const SHAPES = {
 const pack = (name, shape, types) => ({ name, ranks: SHAPES[shape], types });
 const D = DEFAULT_TYPE;
 
+// PACKS is a LIBRARY, and the chapters below draw on about half of it. Every
+// pack here is a designed formation that has been met at some point in the
+// hall's life; CHAPTERS decides which ones the hero actually walks into. After
+// the schedule was cut to half its camps a good number of these are on the
+// shelf rather than in the plan — they are kept, not deleted, because putting a
+// wave back is then a one-word edit in CHAPTERS rather than a re-design.
+// `previewPlan()` prints what is live; nothing reads a pack the plan never names.
 const PACKS = {
-  // --- Ch. 1 · Schleim: the four camps a new player meets first. One body,
-  // then two, then three, then three big ones — the head count is the whole
-  // escalation, because nothing in here can actually hurt anyone (see the slime
-  // variants in CONFIG.enemyTypes).
+  // --- Ch. 1 · Schleim: the camps a new player meets first. The head count is
+  // the whole escalation, because nothing in here can actually hurt anyone (see
+  // the slime variants in CONFIG.enemyTypes). Every body in the chapter walks in
+  // on the top rung (see progression.spawnHP): a big slime swings for 3 of the
+  // hero's 112, on the slowest beat in the game (dmgMult 0,25 × the top rung's
+  // 1, one blow per 2,4 s).
   //
-  // The last two are WEDGES rather than lines, and that is about the splitting:
-  // three big slimes abreast at one mark stand shoulder to shoulder, and the
-  // moment each divides the lane fills up and the whole camp reads as one green
-  // smear. Staggered in depth they stay countable however often they come apart.
+  // The chapter itself is `schleim` then `schleimnest` — one body, then a wedge
+  // of three. The two on the shelf are the same lesson at the weights in
+  // between: `schleimspur` is the single slime twice over, `schleimrudel` the
+  // nest with a GROSSER SCHLEIM in place of the Tropfling leading it.
   //
-  // `schleimrudel` is the second wedge and the chapter's last word: the same
-  // three-body shape as the nest, but every one of them a GROSSER SCHLEIM rather
-  // than a Tropfling leading two — the same weight of slime, all of it hitting
-  // the same way, which is the shape at its plainest. Every body in the chapter
-  // walks in on the top rung (see progression.spawnHP), and none of it can
-  // threaten anyone: a big slime swings for 3 of the hero's 112, on the slowest
-  // beat in the game (dmgMult 0,25 × the top rung's 1, one blow per 2,4 s).
+  // The three-body camps are WEDGES rather than lines, and that is about the
+  // splitting: three big slimes abreast at one mark stand shoulder to shoulder,
+  // and the moment each divides the lane fills up and the whole camp reads as
+  // one green smear. Staggered in depth they stay countable however often they
+  // come apart.
   //
   // What the wedge is actually for is the splitting. Three full-size slimes come
   // apart into six, and those into twelve — every cast into a slime divides what
@@ -266,14 +273,37 @@ const PACKS = {
 // game's main supply of skeletons. Widening that past ~2.8 m hands the corridor
 // back to the fillers.
 //
-// HOW LONG THE HALL IS, AND WHY. The corridor ENDS: 164 camps, then a door. It
+// HOW LONG THE HALL IS, AND WHY. The corridor ENDS: 82 camps, then a door. It
 // is not an endless tail any more, because a hall with no end has no reward for
-// walking down it and no way to say "you have seen all of this". The length is
-// set by one intention — the player should reach the door at ROUGHLY the point
-// where the rune tree is ~95% bought.
+// walking down it and no way to say "you have seen all of this".
 //
-// Nothing enforces that with a number, and nothing should: the tree is bought
-// with quiz gold and the hall is walked with damage, and welding the two
+// It used to be 164, two camps per idea instead of one. Each chapter has since
+// been cut to HALF its waves — the ladder is intact, every body still steps out
+// alone before it arrives escorted, and the chapter still ends on the heaviest
+// thing it can build out of what it has taught, but it does all of that once.
+// What is gone is the repetition: the reinforced re-runs of a camp already met
+// ([pack, n] entries), the callbacks that replayed an earlier chapter's climax,
+// and the intermediate head counts that only restated the step before them.
+// A chapter is now the shortest version of its own argument, so the hall reads
+// as a sequence of lessons rather than a corridor to be endured, and the door
+// comes at half the walking it used to.
+//
+// That last part is a real change to the balance, and it is not hidden: the
+// hall was sized so the player reached the door at ROUGHLY the point where the
+// rune tree is ~95% bought, and half the camps means half the attrition on the
+// way down, so the door now falls earlier than that. The per-chapter checks in
+// the table below are unchanged — chapter 8 still asks for burst that out-paces
+// a mend — but the hero arrives at each of them with less grind behind him.
+// Measured with `node tools/attrition.mjs`, which is the instrument to re-read
+// after any change here: a build at ~10% of treeGold used to be ground down in
+// chapter 5 and now gets into chapter 7, and the finished build used to fall
+// one camp short of the door and now walks out of it, in 10 minutes rather
+// than 24. The deep chapters are where that slack sits, so if the hall wants
+// tightening again, tighten the VARIANTS in those chapters rather than adding
+// the camps back.
+//
+// Nothing enforces the ~95% with a number, and nothing should: the tree is
+// bought with quiz gold and the hall is walked with damage, and welding the two
 // together would make the fight a progress bar. What ties them is the RAMP.
 // Enemies never scale (see CONFIG.enemyBaseHP) — a camp is exactly as hard as
 // the bodies written into it — so the hall's difficulty is entirely this table,
@@ -293,30 +323,29 @@ const PACKS = {
 // tools/stat-supply.mjs` prints that curve against tree completion, which is the
 // figure to re-tune the deep variants against.
 //
-//     chapter                 camps      metres    the hero it is written for
-//     ----------------------  ---------  --------  ------------------------------
-//      1  Schleim               0–3         0–7    nothing at all · a first-ever minute
-//      2  Knochen               4–17       10–42   a fresh tree · the first two runs
-//      3  Knochenläufer        18–27       45–67   ~10% · flat damage, one page open
-//      4  Kobolde              28–37       70–92   ~20% · a second page
-//      5  Orks                 38–47       95–117  ~30% · the first penetration ranks
-//      6  Imps                 48–57      120–142  ~35% · area damage that reaches the back
-//      7  Die faulenden Reihen 58–67      145–167  ~45% · sustain, or nothing survives the grind
-//      8  Schamanen            68–77      170–192  ~55% · burst enough to out-pace a mend
-//      9  Wogole               78–87      195–217  ~60% · a third page
-//     10  Nekromanten          88–97      220–242  ~65% · picking targets, not just the front
-//     11  Masken               98–107     245–267  ~72% · penetration in earnest
-//     12  Das Eis             108–117     270–292  ~78% · crit, and a fourth page
-//     13  Chorts              118–127     295–317  ~83% · everything at once, quickly
-//     14  Oger                128–137     320–342  ~87% · single-target damage
-//     15  Fleischberge        138–147     345–367  ~91% · both, sustained
-//     16  Das Tor             148–163     370–407  ~95% · a grown tree, and the door
+//     chapter                 camps      metres       the hero it is written for
+//     ----------------------  ---------  -----------  ---------------------------
+//      1  Schleim               0–1        0–2.5     nothing at all · a first-ever minute
+//      2  Knochen               2–8        5–20      a fresh tree · the first two runs
+//      3  Knochenläufer         9–13    22.5–32.5    ~10% · flat damage, one page open
+//      4  Kobolde              14–18      35–45      ~20% · a second page
+//      5  Orks                 19–23    47.5–57.5    ~30% · the first penetration ranks
+//      6  Imps                 24–28      60–70      ~35% · area damage that reaches the back
+//      7  Die faulenden Reihen 29–33    72.5–82.5    ~45% · sustain, or nothing survives the grind
+//      8  Schamanen            34–38      85–95      ~55% · burst enough to out-pace a mend
+//      9  Wogole               39–43    97.5–107.5   ~60% · a third page
+//     10  Nekromanten          44–48     110–120     ~65% · picking targets, not just the front
+//     11  Masken               49–53   122.5–132.5   ~72% · penetration in earnest
+//     12  Das Eis              54–58     135–145     ~78% · crit, and a fourth page
+//     13  Chorts               59–63   147.5–157.5   ~83% · everything at once, quickly
+//     14  Oger                 64–68     160–170     ~87% · single-target damage
+//     15  Fleischberge         69–73   172.5–182.5   ~91% · both, sustained
+//     16  Das Tor              74–81     185–202.5   ~95% · a grown tree, and the door
 //
 // Chapter 1 is the exception to every line under it: it is the ONLY one that is
 // not a check of anything, and it is not part of the ramp — it is the step onto
-// it. Ch. 2 is still the game's real opening, the skeleton-and-brute lesson,
-// unchanged and met by exactly the hero it always was, four camps and 10 m
-// later than before.
+// it. Ch. 2 is still the game's real opening, the skeleton-and-brute lesson, met
+// by exactly the hero it always was, two camps and 5 m later than before.
 //
 // Re-tuning the hall means re-tuning THIS table (and the variants it names), not
 // hunting for a difficulty multiplier — there isn't one.
@@ -325,16 +354,25 @@ const PACKS = {
 // A chapter is a plain list of pack ids in the order they are met. An entry may
 // also be written as [id, reinforce] — `reinforce` appends that many extra
 // copies of the pack's LAST rank, so a shape can be reused at a heavier weight
-// without needing its own entry.
+// without needing its own entry. The plan uses none at the moment: a reinforced
+// re-run of a camp already met was exactly the kind of repetition the cut to
+// half length went after, so the mechanism is here and unused rather than gone.
+//
+// Each chapter below is the halved list. What every one of them still keeps, in
+// this order: the new body ALONE (or leading, where it cannot hurt anyone), the
+// new body escorted, any further new colourways of it, and one closing camp
+// heavy enough to be the chapter's last word. What every one of them dropped:
+// the second pass at a head count already shown, and the callbacks to earlier
+// chapters where a chapter had more than one.
 const CHAPTERS = [
   {
     name: "Schleim",
-    // The ramp's bottom step: four camps of slimes before the first skeleton.
+    // The ramp's bottom step: two camps of slimes before the first skeleton.
     // A player opening the game for the first time has never traced a rune, and
     // the hall used to answer that with a skeleton that hits for 48 out of 112.
-    // These four cost nothing to get wrong — one slime, then two, then a cold
-    // one leading a pair, then three big ones — so the opening minute is spent
-    // learning the circle rather than learning the death screen.
+    // These two cost nothing to get wrong — one slime, then a cold one leading a
+    // pair — so the opening minute is spent learning the circle rather than
+    // learning the death screen.
     //
     // It is also where the hall's one trick body is taught, and taught in
     // order. A slime DIVIDES when it is hurt (see CONFIG.slimeTiers): camp one
@@ -342,99 +380,89 @@ const CHAPTERS = [
     // into two smaller ones with nothing else on screen to confuse the lesson —
     // and the cast after that turns each of those into two smaller ones again,
     // all the way down to four of the smallest, which is the whole ladder taught
-    // on one body. Camp two is the same thing twice over. Camp three brings the
-    // Tropfling, the cold colourway of the same trick.
+    // on one body. Camp two is the wedge: the Tropfling, the cold colourway of
+    // the same trick, leading two of the first camp's slimes — three bodies that
+    // come apart into six and those into twelve, which is the first floor the
+    // corridor makes that holds more targets than the player has casts to spare.
     //
     // The chapter breaks the "one new body alone first" rule on the Tropfling,
     // and deliberately: the rule exists so a body that can kill you is legible
     // before it arrives escorted, and neither of these can. It leads the wedge
     // instead, which is legible enough for something that hits for 4.
-    //
-    // Camp four is the second wedge (`schleimrudel`): three GROSSER SCHLEIM, no
-    // new body in it at all. It adds head count and splitting pressure, not a
-    // lesson — the chapter ends on the fullest floor it can make out of bodies
-    // that cannot punish a slow answer.
-    packs: ["schleim", "schleimspur", "schleimnest", "schleimrudel"],
+    packs: ["schleim", "schleimnest"],
   },
   {
     name: "Knochen",
-    // The hall's original fourteen camps, unchanged: once the vermin are past,
-    // the game still opens on exactly the skeleton-and-brute lesson it always
-    // did, in the same order, at the same head counts.
-    packs: ["spaeher", "paar", "keil", "kolonne", "welle", "koloss", "zange",
-            "reihe", "wache", "trupp", "mauer", "bollwerk", "schwarm", ["mauer", 1]],
+    // The skeleton-and-brute lesson, in the order it always ran, at half its
+    // camps: one skeleton, three, four, then the brute alone — one big
+    // silhouette with nothing to hide behind — then the brute escorted, then a
+    // squad of brutes, then the ten-body mob. The head counts it dropped (paar,
+    // kolonne, zange, reihe, mauer) each restated a step this list already
+    // makes; the shapes are still in PACKS.
+    packs: ["spaeher", "keil", "welle", "koloss", "wache", "bollwerk", "schwarm"],
   },
   {
     name: "Knochenläufer",
-    packs: ["laeufer", "hetze", "trupp", "vorhut", "koloss", "meute",
-            "knochenlauf", "bollwerk", ["hetze", 1], ["meute", 1]],
+    packs: ["laeufer", "hetze", "vorhut", "meute", "knochenlauf"],
   },
   {
     name: "Kobolde",
-    packs: ["kobold", "kobolde", "meute", "blutkobold", "koboldnest", "wache",
-            "frostkobold", ["koboldnest", 1], "koboldheer", ["meute", 2]],
+    packs: ["kobold", "kobolde", "blutkobold", "frostkobold", "koboldheer"],
   },
   {
     name: "Orks",
-    packs: ["ork", "orkpaar", "koboldnest", "orktrupp", "schwarzork", "orkwall",
-            ["knochenlauf", 1], "orkkeil", ["orkwall", 1], ["orkkeil", 1]],
+    packs: ["ork", "orkpaar", "koboldnest", "schwarzork", "orkkeil"],
   },
   {
     name: "Imps",
-    packs: ["imp", "impwurf", "orkkeil", "impdeckung", "impschar", "eisimp",
-            ["koboldheer", 1], "impfeuer", ["impschar", 1], ["impfeuer", 1]],
+    packs: ["imp", "impwurf", "impdeckung", "eisimp", "impfeuer"],
   },
   {
     name: "Die faulenden Reihen",
-    packs: ["zombie", "zombiepaar", "impfeuer", "schlamm", ["schlamm", 1],
-            "sumpf", "faeulnis", "totenzug", ["faeulnis", 1], ["totenzug", 1]],
+    packs: ["zombie", "schlamm", "sumpf", "faeulnis", "totenzug"],
   },
   {
     name: "Schamanen",
-    packs: ["schamane", "heilkreis", "totenzug", "orkheer", "faulmesse",
-            ["heilkreis", 1], "aeltester", ["orkheer", 1], ["faulmesse", 1], ["aeltester", 1]],
+    packs: ["schamane", "heilkreis", "orkheer", "faulmesse", "aeltester"],
   },
   {
     name: "Wogole",
-    packs: ["wogol", "wogolpaar", "knochenwache", "aeltester", "wogolwache",
-            "bleichfeuer", "fernkampf", "schattenimp", "schattenwurf", ["wogolwache", 2]],
+    // Four new bodies in five camps, which is why this one keeps no callback at
+    // all: wogol, then the warden, then the pale wogol, then the void imp, and
+    // the closing mauer is the only camp here that is not an introduction.
+    packs: ["wogol", "knochenwache", "bleichfeuer", "schattenimp", "fernkampf"],
   },
   {
     name: "Nekromanten",
-    packs: ["nekromant", "totenruf", "fernkampf", "grabherr", ["totenruf", 1],
-            "totenfeld", "knochenfuerst", ["grabherr", 1], ["totenfeld", 1], ["knochenfuerst", 1]],
+    packs: ["nekromant", "totenruf", "grabherr", "totenfeld", "knochenfuerst"],
   },
   {
     name: "Masken",
-    packs: ["maske", "maskenpaar", "knochenfuerst", "maskenwall", "blutmaske",
-            "maskenheer", "eisenork", "panzerzug", ["maskenheer", 1], "eisenwall"],
+    packs: ["maske", "maskenwall", "blutmaske", "eisenork", "eisenwall"],
   },
   {
     name: "Das Eis",
-    packs: ["eiszombie", "frostzug", "panzerzug", "frostwall", "frosthof",
-            "bleichruf", "eisheer", ["frosthof", 1], ["eisheer", 1], "bleichfeld"],
+    packs: ["eiszombie", "frostzug", "frostwall", "bleichruf", "eisheer"],
   },
   {
     name: "Chorts",
-    packs: ["chort", "chortpaar", "eisheer", "chortkeil", "aschebrand",
-            "schattenwogol", "hoellenzug", ["aschebrand", 1], ["hoellenzug", 1], "schattenchor"],
+    packs: ["chort", "chortkeil", "aschebrand", "schattenwogol", "hoellenzug"],
   },
   {
     name: "Oger",
-    packs: ["oger", "ogerwache", "hoellenzug", "frostoger", "ogerhof",
-            "frostchort", "ogerpaar", ["ogerhof", 1], ["ogerpaar", 1], "frosthoelle"],
+    packs: ["oger", "ogerwache", "frostoger", "frostchort", "ogerpaar"],
   },
   {
     name: "Fleischberge",
-    packs: ["fleischberg", "bergwache", "ogerpaar", "doppelberg", "berghof",
-            "schwarzoger", "seuchenzug", "pestberg", ["seuchenzug", 1], "pestfeld"],
+    packs: ["fleischberg", "bergwache", "schwarzoger", "pestberg", "pestfeld"],
   },
   {
     name: "Das Tor",
-    packs: ["daemon", "daemonwache", "knochenmaske", "seuchenzug", "daemonhof",
-            "blutmesse", ["daemonwache", 1], "torwache", "ascheteufel", "aschewache",
-            ["berghof", 1], "daemonhof", "hoellenzug", ["torwache", 1],
-            "torwall", "daemonenfuerst"],
+    // The one chapter still worth more than five camps, because it has five new
+    // bodies to spend them on: the demon, the bone mask, the blood shaman, the
+    // ash devil and the lord at the door.
+    packs: ["daemon", "daemonwache", "knochenmaske", "blutmesse", "daemonhof",
+            "ascheteufel", "torwall", "daemonenfuerst"],
   },
 ];
 
