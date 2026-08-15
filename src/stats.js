@@ -420,8 +420,8 @@ function svSpellDetail(spell, power) {
       }),
       svRow({
         label: "Ausbeute des Schauers", value: svNum(power * count, 1), color: c,
-        note: `wenn jeder Brocken einen Körper fasst — sie fallen auf zufällige Stellen des ganzen Ganges, ` +
-          `verteilt über ${svSec(cfg.fallMs + cfg.spreadMs)}`,
+        note: `wenn jeder Brocken einen Körper fasst — sie fallen auf zufällige Stellen über der Horde, ` +
+          `${svTiles(cfg.padTiles, 1)} Streuung darüber hinaus, verteilt über ${svSec(cfg.fallMs + cfg.spreadMs)}`,
       }),
     );
   } else if (spell.id === "shield") {

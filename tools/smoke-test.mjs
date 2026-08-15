@@ -1347,6 +1347,51 @@ try {
   check(flight.kills === 1 && flight.culled,
     "it then collapses, is culled, and is counted exactly once");
 
+  //     THE METEOR'S AIM (see meteorField in spells.js). The shower is random,
+  //     but random OVER THE HORDE: the rocks are rolled inside the mob's
+  //     bounding box grown by CONFIG.spells.meteor.padTiles / padLanes. Both
+  //     halves matter and are checked separately — a barrage that ignored the
+  //     box would waste itself on empty floor, and one that dropped a rock on
+  //     each body would be a volley, not a shower. So: nothing lands outside the
+  //     padded box, and rocks DO land outside the pack itself.
+  const shower = await page.evaluate(() => {
+    startRun();
+    state.heroMaxHP = state.heroHP = 10 ** 6;
+    state.enemies = [];
+    // One tight pack, deliberately parked mid-hall in two of the four lanes, so
+    // "aimed at the horde" and "sprayed over the hall" can't be confused.
+    const at = [[4.6, 1], [5.0, 2], [5.4, 1]];
+    for (const [pos, lane] of at) spawnEnemy(performance.now(), lane, pos, CONFIG.enemyTypes[0].id);
+    for (const e of state.enemies) e.hp = e.maxHP = 10 ** 6;   // nothing dies mid-barrage
+    const cfg = CONFIG.spells.meteor;
+    const field = meteorField(spellTargets());
+    const rocks = [];
+    for (let i = 0; i < 40; i++) {
+      state.spellFx = [];
+      const now = performance.now();
+      SPELL_RESOLVERS.meteor({ castAt: now, now, power: 1, shatter: false, pickTargets: () => [] });
+      for (const f of state.spellFx) if (f.kind === "meteor") rocks.push({ pos: f.pos, lane: f.lane });
+    }
+    const lo = Math.min(...at.map((a) => a[0])), hi = Math.max(...at.map((a) => a[0]));
+    return {
+      n: rocks.length, field, edge: trackEdgeTiles(1), pad: cfg.padTiles,
+      inBox: rocks.every((r) => r.pos >= field.posLo - 1e-6 && r.pos <= field.posHi + 1e-6 &&
+        r.lane >= field.laneLo && r.lane <= field.laneHi),
+      pastPack: rocks.filter((r) => r.pos < lo || r.pos > hi).length,
+      lanes: new Set(rocks.map((r) => r.lane)).size,
+      spread: +(Math.max(...rocks.map((r) => r.pos)) - Math.min(...rocks.map((r) => r.pos))).toFixed(2),
+      wholeLane: at.every(([, lane]) => rocks.some((r) => r.lane === lane)),
+    };
+  });
+  check(shower.inBox && shower.field.posHi - shower.field.posLo < shower.edge * 0.75,
+    `every rock falls on the horde's own stretch of hall, not the whole track ` +
+    `(${shower.n} rocks in ${shower.field.posLo.toFixed(1)}–${shower.field.posHi.toFixed(1)} of ${shower.edge.toFixed(1)} tiles)`);
+  check(shower.pastPack > shower.n * 0.2 && shower.spread > shower.pad,
+    `and it is still a shower, not a volley — ${shower.pastPack} of ${shower.n} land off the pack, ` +
+    `over ${shower.spread} tiles`);
+  check(shower.lanes > 1 && shower.wholeLane,
+    `the padding reaches across the lanes too (${shower.lanes} lanes struck, both occupied ones included)`);
+
   //     And walking onto the hall's last metre ends the run the one way that
   //     isn't dying.
   const cleared = await page.evaluate(() => {

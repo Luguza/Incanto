@@ -38,7 +38,7 @@ const SPELLS = [
   {
     id: "meteor", name: "Meteoritenschauer", theme: "meteor", sector: "met", kind: "damage",
     dmgKey: "dmgMeteor", paramKey: "countMeteor", unlock: "meteor",
-    blurb: "Brocken stürzen auf zufällige Stellen des ganzen Ganges — verheerend gegen eine weit verteilte Horde.",
+    blurb: "Brocken stürzen auf zufällige Stellen über der Horde und ein Stück daneben — verheerend gegen eine weit verteilte Meute.",
   },
   {
     id: "shield", name: "Bannschild", theme: "shield", sector: "shi", kind: "support",
@@ -290,6 +290,47 @@ function pickBlastFocus(bodies, radius, laneRadius) {
   return best;
 }
 
+// Where the Meteoritenschauer's rocks are allowed to fall. The barrage is aimed
+// at the HORDE rather than at the hall: the field is the bounding box of the
+// bodies on camera, grown by `padTiles` along the corridor and `padLanes`
+// across it, then clipped back to the visible track. Nothing inside it is
+// aimed — every rock is still rolled freely within the box — so the spell keeps
+// its character (a scattered shower that thins a spread-out mob) and only stops
+// spending half its rocks on the empty floor in front of and behind the pack.
+//
+// The padding is the whole point of doing it this way rather than dropping a
+// rock on each body: rocks still stray past the edges of the horde, a lone
+// straggler doesn't swallow the entire barrage, and a mob that has bunched up
+// is a smaller box and so a denser rain — which is the reward for spreading the
+// aim rather than for standing anywhere in particular.
+//
+// Bodies still walking on off camera are left out of the box on purpose: a rock
+// landing past the right border is a rock the player never sees fall, so an
+// inbound pack would otherwise drag the whole shower into the wings. With
+// nothing on camera at all there is no horde to aim at, and the field falls
+// back to the whole track — what the spell did before it learned to aim.
+function meteorField(bodies) {
+  const cfg = CONFIG.spells.meteor;
+  const edge = Math.max(1, trackEdgeTiles(1));
+  const lanes = Math.max(1, CONFIG.enemyLanes);
+  const onCamera = bodies.filter((e) => e.pos <= edge);
+  if (!onCamera.length) return { posLo: 0, posHi: edge, laneLo: 0, laneHi: lanes - 1 };
+  let lo = Infinity, hi = -Infinity, laneLo = Infinity, laneHi = -Infinity;
+  for (const e of onCamera) {
+    lo = Math.min(lo, e.pos);
+    hi = Math.max(hi, e.pos);
+    laneLo = Math.min(laneLo, e.lane);
+    laneHi = Math.max(laneHi, e.lane);
+  }
+  const posLo = Math.max(0, lo - cfg.padTiles);
+  return {
+    posLo,
+    posHi: Math.max(posLo, Math.min(edge, hi + cfg.padTiles)),
+    laneLo: Math.max(0, Math.round(laneLo) - cfg.padLanes),
+    laneHi: Math.min(lanes - 1, Math.round(laneHi) + cfg.padLanes),
+  };
+}
+
 const SPELL_RESOLVERS = {
   // Feuerball: one ball of flame thrown into the thick of the mob, which BURSTS
   // where it lands. Everything inside the blast takes FULL power — the rim hits
@@ -413,8 +454,9 @@ const SPELL_RESOLVERS = {
     return dealt;
   },
 
-  // Meteoritenschauer: rocks fall on RANDOM spots across the whole visible
-  // track, not on chosen bodies. Each cracks a small area, so it thins a mob
+  // Meteoritenschauer: rocks fall on RANDOM spots, not on chosen bodies — but
+  // over the stretch of hall the mob actually stands in rather than the whole
+  // visible track (see meteorField). Each cracks a small area, so it thins a mob
   // spread down the corridor instead of deleting whichever rank is in front.
   meteor(ctx) {
     const cfg = CONFIG.spells.meteor;
@@ -424,12 +466,14 @@ const SPELL_RESOLVERS = {
     const aoe = state.mods.spellParam.aoeMeteor || 0;
     const radius = cfg.radiusTiles * (1 + aoe);
     const laneRadius = cfg.laneRadius * (1 + aoe * 0.5);
-    const edge = trackEdgeTiles(1);
-    const lanes = Math.max(1, CONFIG.enemyLanes);
+    const field = meteorField(spellTargets());
     let dealt = 0;
     for (let i = 0; i < count; i++) {
-      const pos = Math.random() * Math.max(1, edge);
-      const lane = Math.floor(Math.random() * lanes);
+      const pos = field.posLo + Math.random() * (field.posHi - field.posLo);
+      // Lanes are whole rows, so the roll is over the rows inside the field
+      // rather than a continuous span — a fractional lane is a spot no body can
+      // ever stand on.
+      const lane = field.laneLo + Math.floor(Math.random() * (field.laneHi - field.laneLo + 1));
       // Spread the barrage over its window so rocks rain down rather than
       // landing as one thud.
       const land = ctx.castAt + cfg.fallMs + Math.random() * cfg.spreadMs;
