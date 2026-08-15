@@ -64,20 +64,20 @@
     border-top: 1px solid #3a3550;
     border-bottom: 1px solid #3a3550;
   }
-  .hero-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 40%; }
-  .enemy-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; min-width: 40%; }
+  /* The hero is the only thing reported under the scene, so his bar has the
+     strip to itself and stretches across it. */
+  .hero-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; flex: 1 1 auto; }
   .bar-label {
     font-size: clamp(10px, 2.7vw, 13px); letter-spacing: 0.5px; color: #b9b3c8; font-weight: 700;
   }
   .bar-label span { color: #efeaff; font-weight: 400; }
   .bar-sub { font-size: clamp(11px, 3vw, 14px); color: #f2c14e; font-weight: 700; }
   .hp-track {
-    width: clamp(120px, 40vw, 300px); height: 12px;
+    width: 100%; height: 12px;
     background: #241f2f; border: 1px solid #3a3550; border-radius: 6px; overflow: hidden;
   }
   .hp-fill { height: 100%; transition: width 180ms linear; }
   .hp-track.hero .hp-fill { background: linear-gradient(90deg, #2f9e57, #5ecf8f); }
-  .hp-track.enemy .hp-fill { background: linear-gradient(90deg, #9a3550, #e5545f); }
   .coin { color: #f2c14e; }
   .gold-line { font-size: clamp(13px, 3.6vw, 17px); color: #f2c14e; font-weight: 700; }
 

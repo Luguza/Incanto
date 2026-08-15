@@ -1301,6 +1301,38 @@ try {
   check(roles.mended, "a healer puts HP back on the wounded body in front of it");
   check(roles.summoned > 0, `a summoner calls in bodies of its own (${roles.summoned})`);
 
+  //     THERE IS NO ENEMY HEALTH BAR, and that is a decision, not an oversight.
+  //     The strip under the scene is the hero's alone — no wave line, no bar
+  //     tracking whichever body happens to be frontmost — and the hall itself
+  //     stays clean: a per-body gauge painted into the scene was built and thrown
+  //     out, because the hall is 200x80 art pixels, bodies queue a 16 px tile
+  //     apart, and "127/176" is 27 px wide. What a body is worth is read off the
+  //     body: its size, its sprite, and the damage popping off it.
+  const hud = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const E = window.Incanto.encounters;
+    startRun();
+    state.heroMaxHP = state.heroHP = 100000;
+    state.enemies = [];
+    spawnPack(performance.now(), { pack: E.PACKS.knochenfuerst, reinforce: 0 });
+    for (let i = 0; i < 40 && state.enemies.some((x) => x.phase === "walk"); i++) await settle(100);
+    render(performance.now());
+    const strip = document.querySelector(".hud-under");
+    return {
+      bodies: livingEnemies().length,
+      hero: !!document.getElementById("hero-hp-fill"),
+      // Anything in the strip that is not the hero's own row, whatever it might
+      // be called — a re-added enemy bar would land here.
+      extras: [...strip.children].filter((c) => !c.classList.contains("hero-hud")).length,
+      // …and nothing anywhere on the screen still writes the hall's numbers out.
+      leftovers: ["wave-label", "enemy-hp-fill", "enemy-gauges"]
+        .filter((id) => document.getElementById(id)),
+    };
+  });
+  check(hud.bodies > 5 && hud.hero && hud.extras === 0 && hud.leftovers.length === 0,
+    `no enemy carries a health bar — the strip is the hero's alone with ${hud.bodies} bodies up` +
+    (hud.leftovers.length ? " (found: " + hud.leftovers.join(", ") + ")" : ""));
+
   //     A spell takes time to cross the hall, and a body it has already killed
   //     must go on running until it ARRIVES — stopping dead and dissolving at the
   //     moment the shape was drawn reads as dying of nothing.
