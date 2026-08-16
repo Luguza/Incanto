@@ -99,13 +99,19 @@ const TAV_FLASKS = [
 // A small painted canvas. `r` is a 1:1 pixel rect — every prop in the room is
 // drawn with it at art resolution, so the furniture is pixel art in the same
 // grid as the sprites standing next to it.
-function tavArt(w, h, draw) {
+//
+// `top` is where the piece's usable surface is, in the art's own coordinates —
+// the middle of a table's boards, not the top of its bounding box. Anything the
+// room stands ON a prop reads it, which is the whole reason a candle knows to
+// sit in the middle of a table instead of hovering off its back edge.
+function tavArt(w, h, draw, top) {
   const cv = document.createElement("canvas");
   cv.width = Math.max(1, Math.round(w));
   cv.height = Math.max(1, Math.round(h));
   const ctx = cv.getContext("2d");
   ctx.imageSmoothingEnabled = false;
   draw(ctx, (x, y, rw, rh, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, rw, rh); });
+  if (top) cv.top = top;
   return cv;
 }
 
@@ -115,17 +121,54 @@ const tavFrames = (rect, opts) =>
 // ---------------------------------------------------------------------------
 // The furniture. A dungeon tileset has no tavern in it — no table, no bar, no
 // stool — so these are drawn here, once, at load, and blitted like any other
-// sprite afterwards. They are drawn the way the SHEET draws a crate: outlined in
-// #222222, flat front face, plank seams in the darker wood, one lit edge along
-// the top, and a round object given a shallow top ellipse (the sheet's own cue —
-// see its column cap and its chest lid). Front-on, never in plan.
+// sprite afterwards.
+//
+// THE PERSPECTIVE IS MEASURED OFF THE SHEET, NOT INVENTED. Everything in this
+// game is seen from a little above and dead on: a box shows its front and its
+// top, never a side. How much top it shows is the one number that decides
+// whether a drawn-in prop stands in the same room as the sheet's own art, and
+// the sheet states it plainly — its crate is 16 px deep and shows 8 rows of lid,
+// its closed chest shows 7, its column cap about 6 for 14 across. Call it half:
+//
+//     a surface D px deep reads as D / 2 px of top face.
+//
+// `tavTop` and `tavRy` are that ratio, and every horizontal surface in this room
+// goes through one of them so none of them can drift from the sheet. Three rules
+// come with it, all copied off the crate:
+//
+//   * the top face is drawn FULL WIDTH — a plain rectangle, or on a round thing
+//     an ellipse of half the radius. Nothing narrows toward the back; this is a
+//     tilt, not a vanishing point.
+//   * it is LIGHTER than the front (the chest's lid is woodLit over a wood
+//     body), and where the two planes meet there is exactly one bright line —
+//     woodEdge on wood, stoneHi on stone. That pair of edges is what makes two
+//     planes read as two planes instead of one flat panel.
+//   * the far edge of the top face is the #222222 outline, same as every other
+//     silhouette edge on the sheet.
+//
+// And a thing standing on legs meets the floor with each leg's own foot. A
+// single bar of ink ruled across the bottom of all of them — which is what the
+// stool and the table used to do — collapses the base into a flat plinth and
+// throws away the tilt the top face just established.
 // ---------------------------------------------------------------------------
 const TP = TAV_PAL;
 
+// How far a surface tilts toward the camera. See the essay above.
+const TAV_TILT = 0.5;
+// Rows of top face shown by a surface `depth` px deep.
+const tavTop = (depth) => Math.max(1, Math.round(depth * TAV_TILT));
+// The same for a round one: the minor radius of a circle of radius `rx`.
+const tavRy = (rx) => Math.max(1, Math.round(rx * TAV_TILT));
+
 // A filled ellipse, row by row. Round tops — a table, a stool's seat, a barrel's
-// rim — are the one shape a stack of rectangles cannot fake.
-function tavOval(r, cx, cy, rx, ry, col) {
-  for (let y = -ry; y <= ry; y++) {
+// head — are the one shape a stack of rectangles cannot fake. `dy0`..`dy1` cut
+// it down to a band of rows, which is how a surface gets an outline on the far
+// arc alone: a barrel's head is flush with its staves, so it must NOT carry a
+// line of #222222 round its near rim the way a table top standing clear of the
+// floor does. That line is precisely what reads as a lid hovering over a cask.
+function tavOval(r, cx, cy, rx, ry, col, dy0, dy1) {
+  const from = dy0 === undefined ? -ry : dy0, to = dy1 === undefined ? ry : dy1;
+  for (let y = from; y <= to; y++) {
     const w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (y / ry) ** 2)));
     if (w <= 0) continue;
     r(cx - w, cy + y, w * 2, 1, col);
@@ -138,30 +181,42 @@ function tavOval(r, cx, cy, rx, ry, col) {
 // #222222 outline can be laid around the whole thing before it is filled, which
 // is how every object on the sheet is built.
 function tavAnvil() {
+  // Two slabs with a waist between them, and each slab gets its own top plane:
+  // three rows of lit steel on the face, two on the splayed base. Without them
+  // an anvil is a silhouette — the face is the part a smith looks down at.
   const spans = [
-    [3, 13], [3, 13], [1, 13], [4, 12],
-    [7, 10], [7, 10], [7, 10],
-    [4, 12], [2, 14], [2, 14],
+    [3, 13], [2, 14], [1, 14],        // the face, seen from above (and the horn)
+    [2, 14], [4, 12],                 // its front, and the taper under it
+    [7, 10], [7, 10],                 // the waist
+    [3, 13], [2, 14],                 // the base, seen from above
+    [2, 14], [2, 14],                 // its front
   ];
-  const shade = [TP.steel, TP.stoneHi, TP.stoneHi, TP.stone,
-    TP.stoneLit, TP.stoneLit, TP.stone,
-    TP.stoneHi, TP.stoneLit, TP.stone];
-  return tavArt(16, 12, (ctx, r) => {
+  const shade = [TP.steel, TP.steel, TP.stoneHi,
+    TP.stoneLit, TP.stone,
+    TP.stoneLit, TP.stone,
+    TP.stoneHi, TP.stoneHi,
+    TP.stoneLit, TP.stone];
+  return tavArt(16, 13, (ctx, r) => {
     spans.forEach(([x0, x1], y) => r(x0 - 1, y, x1 - x0 + 2, 3, TP.ink));
     spans.forEach(([x0, x1], y) => r(x0, y + 1, x1 - x0, 1, shade[y]));
-  });
+  }, { x: 8, y: 3 });
 }
 
 function tavShelf() {
-  const w = 28, h = 48;
+  // A carcass 10 px deep, so five rows of it show on top; each board inside is a
+  // surface too, and gets the two rows of its own that let the books read as
+  // STANDING on it rather than being stuck to a line.
+  const w = 28, deep = 10, top = tavTop(deep), h = 50;
   const books = [TP.red, TP.blueLit, TP.green, TP.gold, TP.bone, TP.blue, TP.greenLit];
   return tavArt(w, h, (ctx, r) => {
-    r(0, 0, w, h, TP.ink);              // outline
-    r(1, 1, w - 2, h - 2, TP.wood);     // carcass
-    r(1, 1, w - 2, 1, TP.woodLit);      // lit top
-    r(3, 3, w - 6, h - 8, TP.pit);      // the dark inside
+    r(0, 0, w, h, TP.ink);                           // outline
+    r(1, 1, w - 2, top, TP.woodLit);                 // the top of the case
+    for (let x = 5; x < w - 2; x += 8) r(x, 1, 1, top, TP.woodDark);   // planks, running away
+    r(1, top + 1, w - 2, 1, TP.woodEdge);            // the lit front edge of the top
+    r(1, top + 3, w - 2, h - top - 5, TP.wood);      // carcass front
+    r(3, top + 4, w - 6, h - top - 9, TP.pit);       // the dark inside
     for (let sh = 0; sh < 4; sh++) {
-      const plankY = 11 + sh * 10;
+      const plankY = 17 + sh * 9;
       let x = 4, i = 0;
       while (x < w - 5) {
         const bw = 2 + (tileHash(sh, i) % 2);
@@ -171,67 +226,129 @@ function tavShelf() {
         if ((tileHash(i, sh + 5) % 4) === 0) r(x, plankY - bh, bw, 1, TP.bone);
         x += bw + 1; i++;
       }
-      r(3, plankY, w - 6, 1, TP.woodLit);            // the shelf itself
-      r(3, plankY + 1, w - 6, 1, TP.woodDark);
+      // The board, drawn AFTER the books: what is left showing is the strip of
+      // it in front of them, which is the two rows of top face a 4 px board has.
+      r(3, plankY, w - 6, 2, TP.woodLit);
+      r(3, plankY + 2, w - 6, 1, TP.woodDark);       // its front edge, in shadow
     }
-    r(1, h - 4, w - 2, 3, TP.woodDark);              // plinth
+    r(1, h - 3, w - 2, 2, TP.woodDark);              // plinth
   });
 }
 
 function tavCounter(w) {
-  const h = 20;
+  // The bar is 14 px deep, which is seven rows of counter top. It used to show
+  // three, and three rows of top is not a bar seen from above — it is a plank
+  // stood on its edge.
+  const deep = 14, top = tavTop(deep), front = 12, h = top + front + 5;
   return tavArt(w, h, (ctx, r) => {
-    r(0, 0, w, h, TP.ink);              // outline
-    r(1, 1, w - 2, 3, TP.wood);         // the top, seen a little from above
-    r(1, 1, w - 2, 1, TP.woodLit);      // its lit edge
-    r(1, 4, w - 2, 1, TP.woodDark);     // under-lip
-    r(1, 5, w - 2, 13, TP.wood);        // front panel
-    for (let x = 4; x < w - 2; x += 7) r(x, 6, 1, 11, TP.woodDark);   // plank seams
-    r(1, 17, w - 2, 2, TP.woodDark);    // foot rail in shadow
-  });
+    r(0, 0, w, h, TP.ink);                        // outline
+    r(1, 1, w - 2, top, TP.woodLit);              // the top, seen from above
+    // The planks run AWAY from the drinker, so their seams line up with the
+    // panelling under them and the two faces read as one piece of joinery.
+    for (let x = 5; x < w - 2; x += 7) r(x, 1, 1, top, TP.woodDark);
+    r(1, top + 1, w - 2, 1, TP.woodEdge);         // the lit front edge of the top
+    r(1, top + 2, w - 2, 1, TP.woodDark);         // under-lip
+    r(1, top + 3, w - 2, front, TP.wood);         // front panel
+    for (let x = 5; x < w - 2; x += 7) r(x, top + 3, 1, front, TP.woodDark);
+    r(1, h - 2, w - 2, 1, TP.woodDark);           // foot rail in shadow
+  }, { x: Math.round(w / 2), y: 1 + Math.round(top / 2) });
+}
+
+// A turned leg, falling in `segs` short segments so it can splay as it goes.
+// Each one ends on its OWN foot of ink: what a table stands on is three points
+// of contact with the boards, not one bar of ink ruled across all of them.
+//
+// `segs` is also how the legs say which of them is FURTHER BACK. The floor
+// recedes at the same half as everything else, so a leg standing four px deeper
+// into the room meets it two px higher up the screen — a shorter leg, ending
+// sooner. Legs of equal length are legs standing in a row against a backdrop,
+// which is what these used to be.
+function tavLeg(r, x0, dx, y0, segs) {
+  for (let i = 0; i < segs; i++) {
+    const x = Math.round(x0 + dx * i), y = y0 + i * 3;
+    r(x - 1, y, 4, 3, TP.ink);
+    r(x, y, 2, 3, TP.woodDark);
+    r(x, y, 1, 3, TP.wood);                      // the lit side of the turning
+  }
+  r(Math.round(x0 + dx * (segs - 1)) - 1, y0 + segs * 3 - 1, 4, 1, TP.ink);
 }
 
 function tavTable() {
-  return tavArt(26, 19, (ctx, r) => {
-    tavOval(r, 13, 5, 13, 5, TP.ink);            // outlined top
-    tavOval(r, 13, 5, 12, 4, TP.wood);
-    tavOval(r, 13, 4, 10, 3, TP.woodLit);        // the lit half of the top
-    r(7, 2, 9, 1, TP.woodEdge);
-    r(4, 8, 18, 1, TP.woodDark);                 // the lip's shadow
-    r(11, 10, 4, 5, TP.wood);                    // pedestal
-    r(11, 10, 1, 5, TP.woodDark);
-    tavOval(r, 13, 16, 7, 2, TP.ink);            // foot
-    tavOval(r, 13, 16, 6, 1, TP.wood);
-  });
+  // A slab 24 across is a slab 24 deep, so its top is a 24 x 12 ellipse — half
+  // as deep as it is wide, the same half the crate's lid is. Under its near rim
+  // sit two rows of the slab's own thickness, which is what stops a round table
+  // reading as a disc lying on the floor.
+  const w = 24, h = 22, cx = 12, cy = 6, rx = 12, ry = tavRy(rx);
+  return tavArt(w, h, (ctx, r) => {
+    // Legs first, so the top is drawn over their heads and each one runs up
+    // UNDER the slab instead of being butted against its outline. Four of them,
+    // one to a quarter: the near one reaches the boards lowest, the two at the
+    // sides stand three px deeper and so stop three px sooner, and the fourth is
+    // right at the back where the slab covers it entirely — which is exactly
+    // what a round table does when you look down on it.
+    tavLeg(r, cx - 1, 0, 10, 4);
+    tavLeg(r, 4, -1, 10, 3);
+    tavLeg(r, 18, 1, 10, 3);
+    tavOval(r, cx, cy + 2, rx, ry, TP.ink);      // the slab's thickness…
+    tavOval(r, cx, cy, rx, ry, TP.ink);          // …and its top
+    tavOval(r, cx, cy + 2, rx - 1, ry - 1, TP.woodDark);   // edge grain, in shadow
+    tavOval(r, cx, cy, rx - 1, ry - 1, TP.wood);
+    tavOval(r, cx, cy - 1, rx - 3, ry - 2, TP.woodLit);    // lit toward the far rim
+    r(cx - 5, cy - 4, 10, 1, TP.woodEdge);
+  }, { x: cx, y: cy + 1 });
 }
 
 function tavStool() {
-  return tavArt(13, 14, (ctx, r) => {
-    tavOval(r, 6, 3, 6, 3, TP.ink);
-    tavOval(r, 6, 3, 5, 2, TP.wood);
-    tavOval(r, 6, 2, 4, 1, TP.woodLit);
-    r(2, 6, 2, 6, TP.woodDark);                  // legs
-    r(9, 6, 2, 6, TP.woodDark);
-    r(5, 7, 2, 5, TP.wood);
-    r(2, 12, 9, 1, TP.ink);
-  });
+  // The same slab-and-legs as the table, one size down. The seat used to sit on
+  // three legs ruled together by a bar of ink along the bottom; now each leg
+  // splays out and lands on its own foot.
+  const w = 14, h = 16, cx = 7, cy = 4, rx = 6, ry = tavRy(rx);
+  return tavArt(w, h, (ctx, r) => {
+    tavLeg(r, cx - 1, 0, 7, 3);                  // the near leg…
+    tavLeg(r, 3, -1, 7, 2);                      // …and the two standing deeper
+    tavLeg(r, 9, 1, 7, 2);
+    tavOval(r, cx, cy + 1, rx, ry, TP.ink);      // the seat's thickness…
+    tavOval(r, cx, cy, rx, ry, TP.ink);          // …and its top
+    tavOval(r, cx, cy + 1, rx - 1, ry - 1, TP.woodDark);
+    tavOval(r, cx, cy, rx - 1, ry - 1, TP.wood);
+    tavOval(r, cx, cy - 1, rx - 2, ry - 1, TP.woodLit);
+    r(cx - 2, cy - 2, 5, 1, TP.woodEdge);
+  }, { x: cx, y: cy });
 }
 
 function tavBarrel() {
-  return tavArt(14, 19, (ctx, r) => {
-    r(0, 2, 14, 17, TP.ink);                     // outline
-    r(1, 3, 12, 15, TP.wood);                    // body
-    r(4, 3, 1, 15, TP.woodDark);                 // staves
-    r(9, 3, 1, 15, TP.woodDark);
-    r(1, 5, 12, 2, TP.stoneLit);                 // iron hoops
-    r(1, 5, 12, 1, TP.stoneHi);
-    r(1, 13, 12, 2, TP.stoneLit);
-    r(1, 13, 12, 1, TP.stoneHi);
-    tavOval(r, 7, 2, 7, 2, TP.ink);              // rim, seen a little from above
-    tavOval(r, 7, 2, 6, 1, TP.woodLit);
-    r(5, 1, 4, 1, TP.woodEdge);
-    r(1, 18, 12, 1, TP.pit);
-  });
+  // The lid is the whole point: a barrel 14 across gets a 14 x 7 ellipse of it.
+  // The old rim was two rows, which reads as a tube cut off square rather than a
+  // cask with a head in it.
+  const w = 14, h = 21, cx = 7, cy = 5, rx = 6, ry = tavRy(rx);
+  return tavArt(w, h, (ctx, r) => {
+    // The staves, drawn a row at a time so they can taper a pixel at the head
+    // and at the foot — a cask bellies out, and the taper is what leaves room
+    // for the head to sit INSIDE the silhouette instead of capping it.
+    // The staves start at the head's OWN centre line, so the head's near half
+    // lies over them and its far half stands clear against nothing. Started any
+    // higher and the staves show up the sides of the head, which is what made
+    // the old lid read as hovering over the cask rather than sitting in it.
+    for (let y = cy; y < h; y++) {
+      const i = y > h - 3 ? 1 : 0;               // and taper a px at the foot
+      r(i, y, w - i * 2, 1, TP.ink);
+      r(i + 1, y, w - i * 2 - 2, 1, TP.wood);
+    }
+    r(4, cy, 1, h - cy - 1, TP.woodDark);        // stave seams
+    r(9, cy, 1, h - cy - 1, TP.woodDark);
+    r(1, cy + 6, w - 2, 2, TP.stoneLit);         // iron hoops, clear of the head
+    r(1, cy + 6, w - 2, 1, TP.stoneHi);
+    r(1, h - 5, w - 2, 2, TP.stoneLit);
+    r(1, h - 5, w - 2, 1, TP.stoneHi);
+    r(2, h - 1, w - 4, 1, TP.pit);               // where it meets the boards
+    // The head, 12 across and 6 deep. Outlined along its far arc only; in front
+    // it is flush with the staves, so it gets a seam rather than a silhouette.
+    tavOval(r, cx, cy, rx, ry, TP.ink);
+    tavOval(r, cx, cy, rx, ry, TP.woodDark, 1, ry);
+    tavOval(r, cx, cy, rx - 1, ry - 1, TP.wood);
+    tavOval(r, cx, cy - 1, rx - 2, ry - 2, TP.woodLit);
+    r(cx - 3, cy - 2, 6, 1, TP.woodEdge);        // the far rim, catching the light
+  }, { x: cx, y: cy });
 }
 
 // The hearth is built into the back wall, and its stonework is the wall's own
@@ -239,14 +356,17 @@ function tavBarrel() {
 // The firebox is left empty; the fire is drawn per frame, so it flickers.
 function tavHearth() {
   const w = 36, h = 44;
+  const mantel = tavTop(8);                      // the shelf is 8 px deep
   return tavArt(w, h, (ctx, r) => {
     r(0, 0, w, h, TP.ink);
-    r(1, 1, w - 2, 5, TP.stoneLit);              // mantel
+    r(1, 1, w - 2, mantel, TP.stoneLit);         // the mantel shelf, seen from above
     r(2, 1, w - 4, 1, TP.stoneHi);
-    r(1, 7, w - 2, h - 8, TP.stone);             // surround
+    r(1, mantel + 1, w - 2, 1, TP.stoneHi);      // its lit front edge
+    r(1, mantel + 2, w - 2, 1, TP.stone);        // and the front of the shelf
+    r(2, mantel + 3, w - 4, h - mantel - 4, TP.stone);   // surround, set back under it
     for (let y = 9; y < h - 5; y += 5) {         // courses, as on wall_mid
-      r(2, y, w - 4, 1, TP.stoneLit);
-      for (let x = 3 + ((y / 5) % 2) * 6; x < w - 3; x += 12) r(x, y - 3, 1, 3, TP.stoneLit);
+      r(3, y, w - 6, 1, TP.stoneLit);
+      for (let x = 4 + ((y / 5) % 2) * 6; x < w - 4; x += 12) r(x, y - 3, 1, 3, TP.stoneLit);
     }
     r(8, 16, 20, h - 16, TP.pit);                // firebox
     r(10, 13, 16, 3, TP.pit);                    // its arch
@@ -331,14 +451,15 @@ function setupTavern(cv) {
   const doorX = Math.max(hearthX + 46, artW - 56);   // 38 px of doorway (see TAV_DOORWAY)
   const counterW = Math.max(52, Math.min(88, Math.round(artW * 0.46)));
   const counterX = Math.round(artW * 0.28);
-  const counterY = fy(0.26);                       // top plank, in art px
-  const counterFeet = counterY + 20;
+  const counterY = fy(0.26);                       // far edge of the top, in art px
+  TAV.counter = tavCounter(counterW);
+  // Read off the art rather than restated: the counter grew when it was given a
+  // real top face, and a hard-coded 20 here would have left its feet inside it.
+  const counterFeet = counterY + TAV.counter.height;
   const shelfX = artW - 32;
   const shelfFeet = fy(0.80);
   const bottleX = counterX + 2;                    // the plank of bottles, on the wall
   const bannerX = doorX > 118 ? 96 : 0;            // only where the wall has room for it
-
-  TAV.counter = tavCounter(counterW);
 
   // Furniture that stands ON the floor: drawn in the depth-sorted pass with the
   // people, so the mage can walk behind a table and in front of the next one.
@@ -759,16 +880,25 @@ function renderTavern(now) {
     ctx.drawImage(TAV.shadow, Math.round(p.x + p.w / 2 - TAV.shadow.width / 2), Math.round(p.feet - 3));
     ctx.drawImage(p.art, Math.round(p.x), Math.round(p.feet - p.h));
     if (p.candle) {
-      // A candle on the table: a stub, a flame, and the light it throws.
-      const cx = Math.round(p.x + p.w / 2), cy = Math.round(p.feet - p.h + 1);
-      ctx.fillStyle = TP.white; ctx.fillRect(cx - 1, cy - 4, 2, 4);
-      ctx.fillStyle = TP.bone; ctx.fillRect(cx, cy - 3, 1, 3);
+      // A candle STANDS on the table. It used to be planted at the top of the
+      // table's bounding box — the far rim of the top ellipse — so it hovered
+      // over the boards rather than resting on them. `art.top` is the middle of
+      // the surface, which is where a thing put down on a table ends up.
+      const t = p.art.top || { x: p.w / 2, y: 1 };
+      const cx = Math.round(p.x + t.x), cy = Math.round(p.feet - p.h + t.y);
+      // Its dish, tilted the same half as the top it sits on: seven across reads
+      // as two rows deep. The shadow under it is what says "on", not "above".
+      ctx.fillStyle = "rgba(0, 0, 0, 0.32)"; ctx.fillRect(cx - 3, cy + 1, 7, 1);
+      ctx.fillStyle = TP.ink;  ctx.fillRect(cx - 3, cy, 7, 1);
+      ctx.fillStyle = TP.gold; ctx.fillRect(cx - 2, cy - 1, 5, 1);
+      ctx.fillStyle = TP.white; ctx.fillRect(cx - 1, cy - 6, 2, 5);
+      ctx.fillStyle = TP.bone;  ctx.fillRect(cx, cy - 5, 1, 4);
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.fillStyle = "rgba(255, 226, 150, 0.95)";
-      ctx.fillRect(cx - 1, cy - 7 - (Math.sin(now / 170 + p.x) > 0 ? 1 : 0), 2, 3);
+      ctx.fillRect(cx - 1, cy - 9 - (Math.sin(now / 170 + p.x) > 0 ? 1 : 0), 2, 3);
       ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 210 + p.x);
-      ctx.drawImage(TAV.glowCandle, cx - 9, cy - 15);
+      ctx.drawImage(TAV.glowCandle, cx - 9, cy - 17);
       ctx.restore();
     }
   }
