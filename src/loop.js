@@ -603,6 +603,11 @@ function rafLoop(now) {
       }
       updateSpawns(now);
       updateEnemies(now, effectiveDt);
+      // A Meteoritenschauer resolves rock by rock as it comes down rather than
+      // all at once at the cast (see updateMeteorRocks) — so it ticks with the
+      // rest of the fight, and keeps falling while the player is off studying,
+      // exactly as the bodies keep walking.
+      updateMeteorRocks(now);
       updateCamera(now, effectiveDt);
       // Rune refill + the deferred tap-cast only make progress at the circle
       // (the player can't cast from another screen), so both are gated on the

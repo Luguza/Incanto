@@ -479,6 +479,7 @@ function startRun() {
   state.castAt = 0;
   state.castChords = null;
   state.spellFx = [];         // no bolts or meteors carried over from the last run
+  state.meteorRocks = [];     // …nor a barrage still falling when it ended
   state.spellPrimeUntil = 0;  // and no Frostkegel charge banked from it either
   state.heroShield = 0;
   state.tapTraceUntil = 0;
