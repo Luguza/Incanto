@@ -257,6 +257,132 @@ function tavHearth() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// The menu. Seven things the keeper can put on the counter, one per item in
+// content.js' BAR_ITEMS — the order's missing word is what gets served, so the
+// two lists have to line up (`tools/check-sentences.mjs` checks that they do).
+//
+// Each is drawn to the same rules as the furniture above: #222222 all the way
+// round, a three-step ramp of ONE material, one bright edge where the hearth
+// catches it, and a shallow ellipse on anything round. They are small — a mug is
+// eleven pixels tall next to a twenty-two pixel mage — so the silhouette carries
+// them: a wedge is a wedge, a goblet has a stem, a drumstick has a bone.
+//
+// `kind` is how it is consumed, and it is the only thing the animation asks:
+// food is bitten DOWN (clipped away from the top) and drink is TIPPED UP.
+// ---------------------------------------------------------------------------
+function tavPane() {                        // il pane — a round loaf, slashed
+  return tavArt(12, 9, (ctx, r) => {
+    tavOval(r, 6, 5, 6, 4, TP.ink);
+    tavOval(r, 6, 5, 5, 3, TP.wood);
+    tavOval(r, 6, 4, 4, 2, TP.woodLit);
+    r(4, 1, 5, 1, TP.woodEdge);             // the crust catching the fire
+    r(4, 3, 1, 3, TP.woodDark);             // the baker's two slashes
+    r(7, 3, 1, 3, TP.woodDark);
+  });
+}
+
+function tavFormaggio() {                   // il formaggio — a wedge, holed
+  const rows = [[5, 7], [4, 8], [3, 9], [2, 10], [1, 11]];
+  return tavArt(12, 9, (ctx, r) => {
+    rows.forEach(([x0, x1], y) => r(x0 - 1, y + 1, x1 - x0 + 2, 3, TP.ink));
+    rows.forEach(([x0, x1], y) => r(x0, y + 2, x1 - x0, 1, TP.gold));
+    r(5, 2, 2, 1, TP.woodEdge);             // lit along the cut face
+    r(4, 4, 1, 1, TP.woodDark);             // holes
+    r(7, 5, 1, 1, TP.woodDark);
+    r(3, 6, 1, 1, TP.woodDark);
+  });
+}
+
+function tavMela() {                        // la mela — apple, leaf, stem
+  return tavArt(10, 11, (ctx, r) => {
+    tavOval(r, 5, 7, 5, 4, TP.ink);
+    tavOval(r, 5, 7, 4, 3, TP.red);
+    tavOval(r, 4, 6, 2, 2, TP.redLit);
+    r(3, 4, 2, 1, TP.woodEdge);             // the shine on the shoulder
+    r(5, 1, 1, 3, TP.ink);                  // stem
+    r(5, 2, 1, 2, TP.woodDark);
+    r(6, 1, 3, 2, TP.ink);                  // leaf
+    r(6, 1, 2, 1, TP.greenLit);
+    r(7, 2, 1, 1, TP.green);
+  });
+}
+
+function tavPollo() {                       // il pollo — a drumstick
+  return tavArt(11, 11, (ctx, r) => {
+    r(2, 6, 4, 5, TP.ink);                  // the bone, running down to the left
+    r(0, 7, 4, 4, TP.ink);                  // and its knuckle at the end
+    tavOval(r, 7, 4, 4, 4, TP.ink);         // the meat, sat on top of it
+    tavOval(r, 7, 4, 3, 3, TP.wood);
+    tavOval(r, 6, 3, 2, 2, TP.woodLit);
+    r(5, 1, 3, 1, TP.woodEdge);             // browned where the fire got it
+    r(8, 5, 1, 1, TP.woodDark);
+    r(3, 7, 2, 3, TP.bone);                 // shaft
+    r(1, 8, 2, 2, TP.bone);                 // knuckle
+    r(1, 8, 2, 1, TP.white);
+  });
+}
+
+function tavVino() {                        // il vino — a goblet
+  // Rows of the bowl, tapering into the stem: a rectangle with a foot reads as a
+  // television, and the taper is the whole difference.
+  const bowl = [[1, 8], [1, 8], [1, 8], [2, 7], [3, 6]];
+  return tavArt(9, 13, (ctx, r) => {
+    bowl.forEach(([x0, x1], y) => r(x0 - 1, y, x1 - x0 + 2, 3, TP.ink));
+    bowl.forEach(([x0, x1], y) => r(x0, y + 1, x1 - x0, 1, TP.steel));
+    r(2, 2, 5, 1, TP.redLit);               // the wine, its surface lit
+    r(2, 3, 5, 1, TP.red);
+    r(3, 4, 3, 1, TP.red);
+    r(4, 5, 1, 1, TP.red);
+    r(2, 1, 3, 1, TP.white);                // a glint on the rim
+    r(3, 6, 3, 4, TP.ink);                  // stem
+    r(4, 6, 1, 4, TP.stoneHi);
+    tavOval(r, 4, 11, 4, 2, TP.ink);        // foot
+    tavOval(r, 4, 11, 3, 1, TP.steel);
+  });
+}
+
+function tavBirra() {                       // la birra — a tankard with a head
+  return tavArt(12, 13, (ctx, r) => {
+    r(8, 4, 4, 6, TP.ink);                  // handle, behind the body
+    r(9, 5, 2, 4, TP.wood);
+    r(0, 2, 9, 11, TP.ink);                 // body
+    r(1, 3, 7, 9, TP.wood);
+    r(3, 3, 1, 9, TP.woodDark);             // staves
+    r(6, 3, 1, 9, TP.woodDark);
+    r(1, 4, 7, 1, TP.stoneLit);             // iron hoops, as on the barrel
+    r(1, 10, 7, 1, TP.stoneLit);
+    tavOval(r, 4, 2, 5, 2, TP.ink);         // the head of foam, brimming over
+    tavOval(r, 4, 2, 4, 1, TP.white);
+    r(2, 0, 4, 1, TP.bone);
+  });
+}
+
+function tavLatte() {                       // il latte — a jug, brim full
+  return tavArt(11, 12, (ctx, r) => {
+    r(8, 5, 3, 5, TP.ink);                  // handle
+    r(9, 6, 1, 3, TP.bone);
+    r(0, 2, 9, 10, TP.ink);                 // body
+    r(1, 3, 7, 8, TP.bone);
+    r(1, 3, 7, 1, TP.white);                // lit shoulder
+    r(1, 9, 7, 2, TP.stoneHi);              // and the shadow it stands in
+    r(6, 1, 3, 2, TP.ink);                  // the spout
+    r(7, 2, 1, 1, TP.bone);
+    tavOval(r, 4, 3, 4, 1, TP.white);       // milk, right at the rim
+  });
+}
+
+// id → { art, kind }. The id IS the Italian word the player taps.
+const TAV_MEAL = {
+  pane:      { build: tavPane,      kind: "eat" },
+  formaggio: { build: tavFormaggio, kind: "eat" },
+  mela:      { build: tavMela,      kind: "eat" },
+  pollo:     { build: tavPollo,     kind: "eat" },
+  vino:      { build: tavVino,      kind: "drink" },
+  birra:     { build: tavBirra,     kind: "drink" },
+  latte:     { build: tavLatte,     kind: "drink" },
+};
+
 function buildTavernArt() {
   const cast = {};
   for (const id in TAV_CAST_SHEET) {
@@ -289,6 +415,10 @@ function buildTavernArt() {
     glowEmber: glowToCanvas(13, "255, 190, 96", 0.55),
     glowCandle: glowToCanvas(9, "255, 214, 132", 0.5),
     glowArcane: glowToCanvas(11, CONFIG.colors.sceneRune.glowRGB, 0.4),
+    glowMeal: glowToCanvas(16, CONFIG.colors.sceneRune.glowRGB, 0.5),
+    meal: Object.fromEntries(
+      Object.entries(TAV_MEAL).map(([id, m]) => [id, m.build()])
+    ),
   };
 }
 
@@ -593,6 +723,9 @@ function tavUpdateActor(a, now, dt) {
     const goal = a.goal;
     a.goal = null; a.arriveAt = 0;
     if (goal && goal.phase) { tavern.focus = null; navTo(goal.phase); return; }
+    // The bar leads nowhere, so arriving IS the event: the keeper looks up and
+    // the order starts (see openBarOrder).
+    if (goal && goal.id === "bar") openBarOrder(now);
   }
   if (a.moving) {
     const dx = a.tx - a.x, dy = a.ty - a.y;
@@ -636,6 +769,12 @@ function tavernGo(id) {
   if (!tavern) return;
   const st = tavern.stations.find((s) => s.id === id);
   if (!st) return;
+  // Mid-order at the bar: tapping the bar again is a stray tap on a panel he is
+  // already standing at, and tapping anywhere else is leaving — the order lapses.
+  if (tavern.meal) {
+    if (id === "bar") return;
+    closeBarOrder();
+  }
   const m = tavern.mage;
   m.tx = st.stand.x; m.ty = st.stand.y;
   m.goal = st; m.arriveAt = 0; m.waitUntil = 0;
@@ -653,6 +792,7 @@ function tavernTapPoint(artX, artY) {
   for (const st of tavern.stations) {
     if (Math.abs(artX - st.x) < 22 && artY > st.y - 34 && artY < st.y + 14) { tavernGo(st.id); return; }
   }
+  if (tavern.meal) closeBarOrder();          // walking off leaves the order behind
   // A tap that lands ON something walks to the nearest clear floor instead of
   // being swallowed: the thumb aimed at a place, not at a pixel.
   let tx = artX, ty = artY;
@@ -678,6 +818,251 @@ function onTavernCanvasTap(e) {
 }
 
 // ---------------------------------------------------------------------------
+// The bar — ordering something to eat.
+//
+// The Schänke is the one station that leads nowhere: tapping it walks the mage
+// to the counter and the exchange happens IN THE ROOM. The keeper greets him,
+// the hero has one line of Italian to finish, and the missing word is the order
+// — tap "birra" into the gap and a tankard is what lands on the counter. He
+// carries it off, eats or drinks it where he stands, and walks away with a
+// shield worth a tenth of his HP (see grantMealShield).
+//
+// It runs as a small stage machine on `tavern.meal` rather than as a screen,
+// because the room is what the player should be watching:
+//
+//   order → reply → serve → eat → cheer → (closed)
+//
+// Only `order` waits on the player; the rest are timed and advance themselves in
+// updateBarMeal. The DOM panel over the canvas re-renders on `dirty` alone, never
+// per frame — it holds the tap targets, and rebuilding it under a thumb would
+// swallow the tap that is landing on it.
+//
+// A wrong word is not a failure state. The keeper says "Come?", the word he
+// couldn't place is struck out, and the order stands — the panel stays open and
+// the player picks again. There is nothing to lose here, so there is nothing to
+// punish; the exchange only ends when it ends well or when the player walks off.
+// ---------------------------------------------------------------------------
+const MEAL_MS = { reply: 650, serve: 560, bite: 340, cheer: 900, after: 800 };
+const MEAL_BITES = 4;                 // bites/sips a serving is worth
+
+const mealPick = (list) => list[Math.floor(Math.random() * list.length)];
+
+// One order off BAR_ORDER_POOL, with the menu to choose from: the answer plus
+// other things the keeper actually stocks. Distractors are the rest of the menu
+// rather than same-part-of-speech words, because at a bar the wrong answer is
+// something else to eat — reading the German and knowing which is which is the
+// whole exercise.
+function barDrawOrder() {
+  let s = mealPick(BAR_ORDER_POOL);
+  for (let i = 0; i < 8 && tavern.lastOrder === s.it; i++) s = mealPick(BAR_ORDER_POOL);
+  tavern.lastOrder = s.it;
+  const tokens = s.it.split(" ");
+  const others = BAR_ITEMS.filter((w) => w !== s.blank);
+  const options = shuffleArray([s.blank, ...sampleN(others, CONFIG.meal.optionCount - 1)]);
+  return { tokens, blankIdx: tokens.indexOf(s.blank), answer: s.blank, de: s.de, options };
+}
+
+// The keeper, wherever the room put him — the plate starts in his hands.
+function barKeeper() {
+  return tavern.people.find((p) => p.cast === "keeper") || null;
+}
+
+function openBarOrder(now) {
+  if (!tavern || tavern.meal) return;          // already mid-order: don't re-deal it
+  const m = tavern.mage;
+  m.moving = false;
+  m.waitUntil = Infinity;                      // he stays at the counter until this is over
+  tavern.meal = {
+    q: barDrawOrder(),
+    greet: mealPick(BAR_KEEPER.greet),
+    reply: mealPick(BAR_KEEPER.serve),
+    puzzled: null,
+    wrong: [],
+    stage: "order",
+    t0: now || performance.now(),
+    bites: 0,
+    bits: [],
+    shield: 0,
+    dirty: true,
+  };
+  renderBarPanel();
+}
+
+function closeBarOrder() {
+  if (!tavern || !tavern.meal) return;
+  tavern.meal = null;
+  tavern.mage.bob = 0;
+  tavern.mage.waitUntil = performance.now() + 400;   // and back to strolling
+  tavern.focus = null;
+  renderBarPanel();
+}
+
+// A tap on the menu. The only handler the panel has.
+function barOrderPick(word) {
+  const meal = tavern && tavern.meal;
+  if (!meal || meal.stage !== "order") return;
+  if (word === meal.q.answer) {
+    meal.stage = "reply";
+    meal.t0 = performance.now();
+    meal.item = word;
+  } else if (!meal.wrong.includes(word)) {
+    meal.wrong.push(word);
+    meal.puzzled = mealPick(BAR_KEEPER.puzzled);
+  }
+  meal.dirty = true;
+}
+
+// The meal in HP: a tenth of the hero's pool, as absorb. It tops the shield UP
+// to that rather than stacking onto it, so a second helping on a full stomach is
+// worth nothing — see CONFIG.meal. During a run it goes straight into the pool
+// he is fighting on; between runs it waits in `state.mealShield`, because
+// startRun clears heroShield and would otherwise eat the meal on the way in.
+function grantMealShield() {
+  const amount = Math.max(1, Math.round(state.heroMaxHP * CONFIG.meal.shieldFraction));
+  if (state.runActive) state.heroShield = Math.max(state.heroShield || 0, amount);
+  else state.mealShield = Math.max(state.mealShield || 0, amount);
+  return amount;
+}
+
+// Crumbs off a bite, drops off a sip: a handful of pixels thrown down and out,
+// tinted from the serving's own art so nothing new enters the room.
+function mealBits(meal, x, y) {
+  const drink = TAV_MEAL[meal.item].kind === "drink";
+  const cols = drink ? [TP.white, TP.bone] : [TP.woodDark, TP.wood, TP.bone];
+  for (let i = 0; i < (drink ? 3 : 4); i++) {
+    meal.bits.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 0.03,
+      vy: -0.012 - Math.random() * 0.012,
+      life: 420 + Math.random() * 220,
+      born: performance.now(),
+      col: cols[i % cols.length],
+    });
+  }
+}
+
+function updateBarMeal(now, dt) {
+  const meal = tavern.meal;
+  if (!meal) return;
+  const since = now - meal.t0;
+  const m = tavern.mage;
+
+  if (meal.stage === "reply" && since >= MEAL_MS.reply) {
+    meal.stage = "serve"; meal.t0 = now; meal.dirty = true;
+  } else if (meal.stage === "serve" && since >= MEAL_MS.serve) {
+    meal.stage = "eat"; meal.t0 = now;
+  } else if (meal.stage === "eat") {
+    const want = Math.min(MEAL_BITES, Math.floor(since / MEAL_MS.bite));
+    while (meal.bites < want) {
+      meal.bites++;
+      mealBits(meal, m.x + (m.facing >= 0 ? 5 : -5), m.y - 14);
+    }
+    if (since >= MEAL_BITES * MEAL_MS.bite) {
+      meal.stage = "cheer"; meal.t0 = now;
+      meal.shield = grantMealShield();       // the plate is empty: this is what it was worth
+      meal.dirty = true;
+    }
+  } else if (meal.stage === "cheer") {
+    // A little hop on the spot — the one moment the mage is pleased with himself.
+    m.bob = Math.max(0, Math.sin((since / MEAL_MS.cheer) * Math.PI * 2) * 3);
+    if (since >= MEAL_MS.cheer) { meal.stage = "done"; meal.t0 = now; m.bob = 0; meal.dirty = true; }
+  } else if (meal.stage === "done" && since >= MEAL_MS.after) {
+    closeBarOrder();
+    return;
+  }
+
+  for (const b of meal.bits) {
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.vy += 0.00016 * dt;                    // they fall
+  }
+  meal.bits = meal.bits.filter((b) => now - b.born < b.life);
+  if (meal.dirty) { meal.dirty = false; renderBarPanel(); }
+}
+
+// Where the serving is, in room coordinates, at this instant.
+function mealSpot(meal, now) {
+  const m = tavern.mage;
+  const hx = m.x + (m.facing >= 0 ? 5 : -5);
+  // Held at the hand, low enough to read against his robe: at chest height a
+  // brown loaf is brown wood on the counter behind him and disappears.
+  const rest = m.y - 9;
+  if (meal.stage === "serve") {
+    const k = barKeeper();
+    const from = k ? { x: k.x, y: k.y - 12 } : { x: hx, y: rest };
+    const t = Math.min(1, (now - meal.t0) / MEAL_MS.serve);
+    return {
+      x: from.x + (hx - from.x) * t,
+      // slid across the counter and lifted off it, rather than teleported
+      y: (from.y + (rest - from.y) * t) - Math.sin(t * Math.PI) * 5,
+      t,
+    };
+  }
+  // Eating: raised to the face as each bite lands, and lowered again. A small
+  // lift on purpose — the serving is nearly as tall as the mage's head, so a big
+  // one sails over his hat instead of reaching his mouth.
+  const lift = meal.stage === "eat"
+    ? Math.max(0, Math.sin(((now - meal.t0) % MEAL_MS.bite) / MEAL_MS.bite * Math.PI)) * 3
+    : 0;
+  return { x: hx, y: rest - lift, t: 1 };
+}
+
+function drawBarMeal(ctx, now) {
+  const meal = tavern && tavern.meal;
+  if (!meal || !meal.item) return;
+  const art = TAV.meal[meal.item];
+  if (!art) return;
+  const m = tavern.mage;
+  const drink = TAV_MEAL[meal.item].kind === "drink";
+  const eaten = meal.stage === "cheer" || meal.stage === "done"
+    ? 1 : meal.bites / MEAL_BITES;
+
+  if (eaten < 1) {
+    const at = mealSpot(meal, now);
+    const x = Math.round(at.x - art.width / 2), y = Math.round(at.y - art.height);
+    ctx.save();
+    if (drink) {
+      // Tipped further back with every sip: the mug empties by the angle it is
+      // held at, which is what drinking looks like at eleven pixels tall.
+      ctx.translate(x + art.width / 2, y + art.height);
+      ctx.rotate((m.facing >= 0 ? -1 : 1) * eaten * 0.6);
+      ctx.drawImage(art, -art.width / 2, -art.height);
+    } else {
+      // Bitten down from the top — what is left is what he has not eaten yet.
+      ctx.beginPath();
+      ctx.rect(x, y + art.height * eaten, art.width, art.height * (1 - eaten));
+      ctx.clip();
+      ctx.drawImage(art, x, y);
+    }
+    ctx.restore();
+  }
+
+  for (const b of meal.bits) {
+    const k = 1 - (now - b.born) / b.life;
+    if (k <= 0) continue;
+    ctx.globalAlpha = Math.min(1, k * 1.6);
+    ctx.fillStyle = b.col;
+    ctx.fillRect(Math.round(b.x), Math.round(b.y), 1, 1);
+  }
+  ctx.globalAlpha = 1;
+
+  // The shield settling on him: the room's arcane glow, and a ring closing in.
+  if (meal.stage === "cheer") {
+    const t = Math.min(1, (now - meal.t0) / MEAL_MS.cheer);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = (1 - t) * 0.9;
+    ctx.drawImage(TAV.glowMeal, Math.round(m.x - 16), Math.round(m.y - 30));
+    ctx.strokeStyle = CONFIG.colors.sceneRune.mid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y - 11, 3 + (1 - t) * 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
 function drawTavernActor(ctx, a, now) {
@@ -685,7 +1070,7 @@ function drawTavernActor(ctx, a, now) {
   if (!skin) return;
   const set = a.moving ? (a.facing < 0 ? skin.runL : skin.run) : (a.facing < 0 ? skin.idleL : skin.idle);
   const f = Math.floor(now / (a.moving ? 110 : 170) + a.phase) % set.length;
-  const x = Math.round(a.x - skin.w / 2), y = Math.round(a.y - skin.h);
+  const x = Math.round(a.x - skin.w / 2), y = Math.round(a.y - skin.h - (a.bob || 0));
   ctx.drawImage(TAV.shadowSm, Math.round(a.x) - TAV.shadowSm.width / 2, Math.round(a.y) - 2);
   ctx.drawImage(set[f], x, y);
 }
@@ -773,6 +1158,10 @@ function renderTavern(now) {
     }
   }
 
+  // What the bar served, over the mage rather than sorted with him: he is
+  // holding it out in front of himself.
+  drawBarMeal(ctx, now);
+
   // The room's own edges, pinned over everything.
   ctx.drawImage(tavern.vignette, 0, 0);
 }
@@ -790,6 +1179,7 @@ function renderTavernFull() {
       <div class="tav-stage" id="tav-stage">
         <canvas class="tav-scene" id="tav-scene"></canvas>
         <div class="tav-chips" id="tav-chips"></div>
+        <div class="tav-order-host" id="tav-order-host"></div>
       </div>
     </div>`;
   tavern = null;                       // the canvas is new, so the room is rebuilt on it
@@ -821,6 +1211,51 @@ function placeTavernChips() {
   }
 }
 
+// The order panel: DOM over the canvas for the same reason the station chips are
+// (crisp text, the game's own delegated dispatch), anchored to the foot of the
+// stage so a thumb reaches the menu and the room stays visible above it.
+//
+// Rendered on `meal.dirty` only — see the note above openBarOrder.
+function renderBarPanel() {
+  const host = document.getElementById("tav-order-host");
+  if (!host) return;
+  const meal = tavern && tavern.meal;
+  if (!meal) { host.innerHTML = ""; return; }
+  const q = meal.q;
+  const answered = meal.stage !== "order";
+  const line = q.tokens
+    .map((t, i) => (i === q.blankIdx
+      ? `<span class="ord-gap${answered ? " filled" : ""}">${answered ? t : "…"}</span>`
+      : `<span>${t}</span>`))
+    .join(" ");
+  const says = (who, l) =>
+    `<p class="ord-says"><span class="ord-who">${who}</span>` +
+    `<span class="ord-it">${l.it}</span><span class="ord-de">${l.de}</span></p>`;
+
+  let foot;
+  if (!answered) {
+    foot = `<div class="ord-opts">` + q.options.map((w) => {
+      const bad = meal.wrong.includes(w);
+      return `<button class="ord-opt${bad ? " wrong" : ""}" data-act="barOrderPick"
+        data-args='["${w}"]'${bad ? " disabled" : ""}>${w}</button>`;
+    }).join("") + `</div>`;
+  } else if (meal.stage === "cheer" || meal.stage === "done") {
+    foot = `<p class="ord-won"><span class="ord-shield">⛨ +${meal.shield}</span>
+      <span class="ord-won-de">Gestärkt — der Schild hält im Gang.</span></p>`
+      + says("Du", BAR_KEEPER.thanks);
+  } else {
+    foot = says("Wirt", meal.reply);
+  }
+
+  host.innerHTML = `
+    <div class="tav-order">
+      ${says("Wirt", meal.puzzled && !answered ? meal.puzzled : meal.greet)}
+      <p class="ord-line">${line}</p>
+      <p class="ord-hint">${q.de}</p>
+      ${foot}
+    </div>`;
+}
+
 function patchTavernContinuous(now) {
   const cv = document.getElementById("tav-scene");
   if (!cv) return;
@@ -833,6 +1268,7 @@ function patchTavernContinuous(now) {
   for (const a of tavern.people) tavUpdateActor(a, now, dt);
   tavUpdateActor(tavern.mage, now, dt);
   if (state.screen !== "tavern") return;   // a station handed off mid-frame
+  updateBarMeal(now, dt);
   renderTavern(now);
   const chips = document.getElementById("tav-chips");
   if (chips) {
@@ -844,4 +1280,5 @@ function patchTavernContinuous(now) {
 
 window.Incanto.tavern = {
   renderTavernFull, patchTavernContinuous, tavernGo, tavernTapPoint, setupTavern,
+  openBarOrder, closeBarOrder, barOrderPick, grantMealShield, TAV_MEAL,
 };

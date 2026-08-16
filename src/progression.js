@@ -481,7 +481,11 @@ function startRun() {
   state.spellFx = [];         // no bolts or meteors carried over from the last run
   state.meteorRocks = [];     // …nor a barrage still falling when it ended
   state.spellPrimeUntil = 0;  // and no Frostkegel charge banked from it either
-  state.heroShield = 0;
+  // The one thing carried in from the tavern: a meal eaten at the bar is the
+  // shield this run starts on (see grantMealShield). Handed over rather than
+  // copied — the plate is empty once he has walked through the door.
+  state.heroShield = state.mealShield || 0;
+  state.mealShield = 0;
   state.tapTraceUntil = 0;
   state.tapTraceFrom = null;
   state.tapTraceTo = null;

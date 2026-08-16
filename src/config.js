@@ -117,6 +117,20 @@ const CONFIG = {
   // wasted until the player goes and studies.
   rewardPerKill: 0.1,   // +10% quiz gold per banked skeleton
   rewardMultMax: 5,     // ceiling on the banked multiplier (×5)
+  // THE BAR (see tavern.js + BAR_ORDER_POOL in content.js). Ordering a meal in
+  // Italian sends the hero into the hall with an absorbing shield on top of his
+  // HP pool — the same pool a Ward shield fills, so it is spent the same way.
+  //
+  // It TOPS UP to the fraction rather than adding to it: a second helping while
+  // the first is untouched does nothing, which is what stops the bar being a
+  // counter you tap ten times before every run. It is a share of max HP rather
+  // than a flat figure so it keeps pace with a grown hero without a second
+  // number to tune, and it is deliberately small — a couple of blows' grace
+  // walking in, not a chapter's worth of armour.
+  meal: {
+    shieldFraction: 0.1,   // of the hero's MAX HP, as absorb
+    optionCount: 4,        // things on the menu to choose between (the answer plus three)
+  },
   quizFeedbackMs: 650,   // how long a wrong match flashes red before clearing
   // Learning history (see vocab-history.js): every word the player meets — in a
   // quiz question or in the rune circle — is tallied, and the words they have

@@ -1633,6 +1633,122 @@ try {
   check(floor.screen === "tavern" && floor.moving && floor.goal === null,
     "a tap on the floor walks him there and changes no screen");
 
+  //      The bar (see tavern.js + BAR_ORDER_POOL). The one station that leads
+  //      nowhere: the hero walks to the counter, orders in Italian, is served,
+  //      eats, and comes away with a shield. Driven entirely by taps — the
+  //      wrong word first, because not losing the order to it is the point.
+  const menu = await page.evaluate(() => {
+    // Every word the pool can ask for has to be something the keeper can
+    // actually put on the counter, or the hero eats nothing.
+    const artless = BAR_ITEMS.filter((id) => !Incanto.tavern.TAV_MEAL[id] || !TAV.meal[id]);
+    state.runActive = false;                 // between runs: the meal waits in state.mealShield
+    state.mealShield = 0; state.heroShield = 0;
+    navTo("tavern");
+    render(performance.now());
+    // Put him across the room, so ordering means walking to the bar first.
+    tavern.mage.x = tavern.walk.x0 + 6; tavern.mage.y = tavern.walk.y1 - 6;
+    tavern.mage.moving = false; tavern.mage.goal = null; tavern.mage.waitUntil = Infinity;
+    return { artless, items: BAR_ITEMS.length, maxHP: state.heroMaxHP };
+  });
+  check(menu.artless.length === 0,
+    "every word on the bar's menu has a serving drawn for it (" + menu.items +
+    " items" + (menu.artless.length ? ", missing: " + menu.artless.join(" ") : "") + ")");
+
+  await page.click('.tav-chip[data-station="bar"]');
+  const toBar = await page.evaluate(() => ({
+    screen: state.screen, moving: tavern.mage.moving,
+    goal: tavern.mage.goal && tavern.mage.goal.id,
+    panel: !!document.querySelector(".tav-order"),
+  }));
+  check(toBar.screen === "tavern" && toBar.moving && toBar.goal === "bar" && !toBar.panel,
+    "tapping the bar sets him walking and opens nothing yet (goal=" + toBar.goal + ")");
+
+  await page.waitForSelector(".tav-order", { timeout: 15000 });
+  const order = await page.evaluate(() => {
+    const opts = [...document.querySelectorAll(".ord-opt")].map((b) => b.textContent.trim());
+    return {
+      screen: state.screen, opts, answer: tavern.meal.q.answer,
+      onMenu: opts.every((w) => BAR_ITEMS.includes(w)),
+      unique: new Set(opts).size === opts.length,
+      want: CONFIG.meal.optionCount,
+      filled: !!document.querySelector(".ord-gap.filled"),
+      hint: (document.querySelector(".ord-hint") || {}).textContent,
+      // The mage is AT the counter, not still crossing the room.
+      atBar: Math.hypot(
+        tavern.mage.x - tavern.stations.find((s) => s.id === "bar").stand.x,
+        tavern.mage.y - tavern.stations.find((s) => s.id === "bar").stand.y) < 2,
+    };
+  });
+  check(order.screen === "tavern" && order.atBar && !order.filled,
+    "reaching the counter is what opens the order, and the room is still the screen");
+  check(order.opts.length === order.want && order.unique && order.onMenu &&
+    order.opts.includes(order.answer) && !!order.hint,
+    "the menu offers " + order.want + " distinct things to order, the right one among them (" +
+    order.opts.join(" · ") + ")");
+
+  // A wrong word: the keeper doesn't understand, that word is struck out, and
+  // the order is still standing. Nothing is lost and nothing is earned.
+  const wrongIdx = order.opts.findIndex((w) => w !== order.answer);
+  await page.click(`.ord-opts .ord-opt:nth-of-type(${wrongIdx + 1})`);
+  await page.waitForTimeout(120);
+  const shrug = await page.evaluate((w) => ({
+    open: !!document.querySelector(".tav-order"),
+    struck: !!document.querySelector(".ord-opt.wrong[disabled]"),
+    stage: tavern.meal.stage,
+    shield: state.mealShield + state.heroShield,
+    sameOrder: tavern.meal.q.answer === w,
+    live: [...document.querySelectorAll(".ord-opt:not([disabled])")].length,
+  }), order.answer);
+  check(shrug.open && shrug.struck && shrug.stage === "order" && shrug.sameOrder &&
+    shrug.live === order.want - 1 && shrug.shield === 0,
+    "a wrong word is struck off the menu and the order stands (" + shrug.live + " left, stage=" +
+    shrug.stage + ", shield=" + shrug.shield + ")");
+
+  // The right one: he is served, he eats it, and the meal is worth a tenth of
+  // his pool. The panel closes itself — no tap needed to get back to the room.
+  const rightIdx = order.opts.indexOf(order.answer);
+  await page.click(`.ord-opts .ord-opt:nth-of-type(${rightIdx + 1})`);
+  const served = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const stages = new Set();
+    let drawn = false;
+    for (let i = 0; i < 160 && tavern.meal; i++) {
+      stages.add(tavern.meal.stage);
+      // The serving is a real thing on the floor of the room, in his hands.
+      if (tavern.meal.item && tavern.meal.stage !== "reply") drawn = true;
+      await settle(50);
+    }
+    return {
+      stages: [...stages], drawn,
+      item: state.mealShield, screen: state.screen,
+      panel: !!document.querySelector(".tav-order"),
+      want: Math.round(state.heroMaxHP * CONFIG.meal.shieldFraction),
+    };
+  });
+  check(served.stages.includes("serve") && served.stages.includes("eat") &&
+    served.stages.includes("cheer") && served.drawn,
+    "the order is poured, carried, eaten and cheered (" + served.stages.join(" → ") + ")");
+  check(!served.panel && served.screen === "tavern" && served.item === served.want,
+    "…and he walks away with ⛨ " + served.item + " of " + menu.maxHP + " LP (wanted " +
+    served.want + ", panel " + (served.panel ? "still open" : "closed") + ")");
+
+  // The shield is banked, not spent: it survives the walk to the door, which is
+  // the whole point of eating BEFORE a run rather than during one.
+  const carried = await page.evaluate(() => {
+    const before = state.mealShield;
+    const second = Incanto.tavern.grantMealShield();      // a second helping on a full stomach
+    const stacked = state.mealShield;
+    startRun();
+    const after = { shield: state.heroShield, meal: state.mealShield };
+    state.runActive = false; state.screen = "tavern";
+    return { before, second, stacked, after };
+  });
+  check(carried.stacked === carried.before,
+    "a second helping tops the shield up rather than stacking it (" + carried.stacked + ")");
+  check(carried.after.shield === carried.before && carried.after.meal === 0,
+    "starting a run pours the meal into the shield pool instead of clearing it (⛨ " +
+    carried.after.shield + ", " + carried.after.meal + " left on the plate)");
+
   // 12. The dev tools on the tree screen (see skilltree.js). They are armed by a
   //     slider and must be unreachable while it is off; armed, they wipe every
   //     purchased rank (asking once first) and let the purse be typed into.
