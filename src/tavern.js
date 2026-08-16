@@ -257,6 +257,132 @@ function tavHearth() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// The menu. Seven things the keeper can put on the counter, one per item in
+// content.js' BAR_ITEMS — the order's missing word is what gets served, so the
+// two lists have to line up (`tools/check-sentences.mjs` checks that they do).
+//
+// Each is drawn to the same rules as the furniture above: #222222 all the way
+// round, a three-step ramp of ONE material, one bright edge where the hearth
+// catches it, and a shallow ellipse on anything round. They are small — a mug is
+// eleven pixels tall next to a twenty-two pixel mage — so the silhouette carries
+// them: a wedge is a wedge, a goblet has a stem, a drumstick has a bone.
+//
+// `kind` is how it is consumed, and it is the only thing the animation asks:
+// food is bitten DOWN (clipped away from the top) and drink is TIPPED UP.
+// ---------------------------------------------------------------------------
+function tavPane() {                        // il pane — a round loaf, slashed
+  return tavArt(12, 9, (ctx, r) => {
+    tavOval(r, 6, 5, 6, 4, TP.ink);
+    tavOval(r, 6, 5, 5, 3, TP.wood);
+    tavOval(r, 6, 4, 4, 2, TP.woodLit);
+    r(4, 1, 5, 1, TP.woodEdge);             // the crust catching the fire
+    r(4, 3, 1, 3, TP.woodDark);             // the baker's two slashes
+    r(7, 3, 1, 3, TP.woodDark);
+  });
+}
+
+function tavFormaggio() {                   // il formaggio — a wedge, holed
+  const rows = [[5, 7], [4, 8], [3, 9], [2, 10], [1, 11]];
+  return tavArt(12, 9, (ctx, r) => {
+    rows.forEach(([x0, x1], y) => r(x0 - 1, y + 1, x1 - x0 + 2, 3, TP.ink));
+    rows.forEach(([x0, x1], y) => r(x0, y + 2, x1 - x0, 1, TP.gold));
+    r(5, 2, 2, 1, TP.woodEdge);             // lit along the cut face
+    r(4, 4, 1, 1, TP.woodDark);             // holes
+    r(7, 5, 1, 1, TP.woodDark);
+    r(3, 6, 1, 1, TP.woodDark);
+  });
+}
+
+function tavMela() {                        // la mela — apple, leaf, stem
+  return tavArt(10, 11, (ctx, r) => {
+    tavOval(r, 5, 7, 5, 4, TP.ink);
+    tavOval(r, 5, 7, 4, 3, TP.red);
+    tavOval(r, 4, 6, 2, 2, TP.redLit);
+    r(3, 4, 2, 1, TP.woodEdge);             // the shine on the shoulder
+    r(5, 1, 1, 3, TP.ink);                  // stem
+    r(5, 2, 1, 2, TP.woodDark);
+    r(6, 1, 3, 2, TP.ink);                  // leaf
+    r(6, 1, 2, 1, TP.greenLit);
+    r(7, 2, 1, 1, TP.green);
+  });
+}
+
+function tavPollo() {                       // il pollo — a drumstick
+  return tavArt(11, 11, (ctx, r) => {
+    r(2, 6, 4, 5, TP.ink);                  // the bone, running down to the left
+    r(0, 7, 4, 4, TP.ink);                  // and its knuckle at the end
+    tavOval(r, 7, 4, 4, 4, TP.ink);         // the meat, sat on top of it
+    tavOval(r, 7, 4, 3, 3, TP.wood);
+    tavOval(r, 6, 3, 2, 2, TP.woodLit);
+    r(5, 1, 3, 1, TP.woodEdge);             // browned where the fire got it
+    r(8, 5, 1, 1, TP.woodDark);
+    r(3, 7, 2, 3, TP.bone);                 // shaft
+    r(1, 8, 2, 2, TP.bone);                 // knuckle
+    r(1, 8, 2, 1, TP.white);
+  });
+}
+
+function tavVino() {                        // il vino — a goblet
+  // Rows of the bowl, tapering into the stem: a rectangle with a foot reads as a
+  // television, and the taper is the whole difference.
+  const bowl = [[1, 8], [1, 8], [1, 8], [2, 7], [3, 6]];
+  return tavArt(9, 13, (ctx, r) => {
+    bowl.forEach(([x0, x1], y) => r(x0 - 1, y, x1 - x0 + 2, 3, TP.ink));
+    bowl.forEach(([x0, x1], y) => r(x0, y + 1, x1 - x0, 1, TP.steel));
+    r(2, 2, 5, 1, TP.redLit);               // the wine, its surface lit
+    r(2, 3, 5, 1, TP.red);
+    r(3, 4, 3, 1, TP.red);
+    r(4, 5, 1, 1, TP.red);
+    r(2, 1, 3, 1, TP.white);                // a glint on the rim
+    r(3, 6, 3, 4, TP.ink);                  // stem
+    r(4, 6, 1, 4, TP.stoneHi);
+    tavOval(r, 4, 11, 4, 2, TP.ink);        // foot
+    tavOval(r, 4, 11, 3, 1, TP.steel);
+  });
+}
+
+function tavBirra() {                       // la birra — a tankard with a head
+  return tavArt(12, 13, (ctx, r) => {
+    r(8, 4, 4, 6, TP.ink);                  // handle, behind the body
+    r(9, 5, 2, 4, TP.wood);
+    r(0, 2, 9, 11, TP.ink);                 // body
+    r(1, 3, 7, 9, TP.wood);
+    r(3, 3, 1, 9, TP.woodDark);             // staves
+    r(6, 3, 1, 9, TP.woodDark);
+    r(1, 4, 7, 1, TP.stoneLit);             // iron hoops, as on the barrel
+    r(1, 10, 7, 1, TP.stoneLit);
+    tavOval(r, 4, 2, 5, 2, TP.ink);         // the head of foam, brimming over
+    tavOval(r, 4, 2, 4, 1, TP.white);
+    r(2, 0, 4, 1, TP.bone);
+  });
+}
+
+function tavLatte() {                       // il latte — a jug, brim full
+  return tavArt(11, 12, (ctx, r) => {
+    r(8, 5, 3, 5, TP.ink);                  // handle
+    r(9, 6, 1, 3, TP.bone);
+    r(0, 2, 9, 10, TP.ink);                 // body
+    r(1, 3, 7, 8, TP.bone);
+    r(1, 3, 7, 1, TP.white);                // lit shoulder
+    r(1, 9, 7, 2, TP.stoneHi);              // and the shadow it stands in
+    r(6, 1, 3, 2, TP.ink);                  // the spout
+    r(7, 2, 1, 1, TP.bone);
+    tavOval(r, 4, 3, 4, 1, TP.white);       // milk, right at the rim
+  });
+}
+
+// id → { art, kind }. The id IS the Italian word the player taps.
+const TAV_MEAL = {
+  pane:      { build: tavPane,      kind: "eat" },
+  formaggio: { build: tavFormaggio, kind: "eat" },
+  mela:      { build: tavMela,      kind: "eat" },
+  pollo:     { build: tavPollo,     kind: "eat" },
+  vino:      { build: tavVino,      kind: "drink" },
+  birra:     { build: tavBirra,     kind: "drink" },
+  latte:     { build: tavLatte,     kind: "drink" },
+};
+
 function buildTavernArt() {
   const cast = {};
   for (const id in TAV_CAST_SHEET) {
@@ -289,6 +415,10 @@ function buildTavernArt() {
     glowEmber: glowToCanvas(13, "255, 190, 96", 0.55),
     glowCandle: glowToCanvas(9, "255, 214, 132", 0.5),
     glowArcane: glowToCanvas(11, CONFIG.colors.sceneRune.glowRGB, 0.4),
+    glowMeal: glowToCanvas(16, CONFIG.colors.sceneRune.glowRGB, 0.5),
+    meal: Object.fromEntries(
+      Object.entries(TAV_MEAL).map(([id, m]) => [id, m.build()])
+    ),
   };
 }
 
@@ -593,6 +723,9 @@ function tavUpdateActor(a, now, dt) {
     const goal = a.goal;
     a.goal = null; a.arriveAt = 0;
     if (goal && goal.phase) { tavern.focus = null; navTo(goal.phase); return; }
+    // The bar leads nowhere, so arriving IS the event: the keeper looks up and
+    // the order starts (see openBarOrder).
+    if (goal && goal.id === "bar") openBarOrder(now);
   }
   if (a.moving) {
     const dx = a.tx - a.x, dy = a.ty - a.y;
@@ -636,6 +769,12 @@ function tavernGo(id) {
   if (!tavern) return;
   const st = tavern.stations.find((s) => s.id === id);
   if (!st) return;
+  // Mid-order at the bar: tapping the bar again is a stray tap on a panel he is
+  // already standing at, and tapping anywhere else is leaving — the order lapses.
+  if (tavern.meal) {
+    if (id === "bar") return;
+    closeBarOrder();
+  }
   const m = tavern.mage;
   m.tx = st.stand.x; m.ty = st.stand.y;
   m.goal = st; m.arriveAt = 0; m.waitUntil = 0;
@@ -648,11 +787,30 @@ function tavernGo(id) {
 // just a backdrop with buttons on it.
 function tavernTapPoint(artX, artY) {
   if (!tavern) return;
+  // The bar's menu is painted into the scene, so it is hit-tested here, before
+  // anything else can claim the tap — the plaques are drawn over the room and
+  // have to take presses over it too.
+  const meal = tavern.meal;
+  if (meal) {
+    for (const c of meal.chips) {
+      if (artX >= c.x - 2 && artX <= c.x + c.w + 2 && artY >= c.y - 2 && artY <= c.y + c.h + 2) {
+        barOrderPick(c.word);
+        return;
+      }
+    }
+    // A tap inside the speech itself is a tap on something being read, not on
+    // the floor behind it: swallow it rather than walking him out of the order.
+    for (const b of [meal.keeperBubble, meal.heroBubble]) {
+      if (b && artX >= b.x && artX <= b.x + b.art.width &&
+          artY >= b.y && artY <= b.y + b.art.height) return;
+    }
+  }
   // A tap near a station counts as tapping the station, so the door and the
   // anvil are hit targets in the picture and not only chips above it.
   for (const st of tavern.stations) {
     if (Math.abs(artX - st.x) < 22 && artY > st.y - 34 && artY < st.y + 14) { tavernGo(st.id); return; }
   }
+  if (tavern.meal) closeBarOrder();          // walking off leaves the order behind
   // A tap that lands ON something walks to the nearest clear floor instead of
   // being swallowed: the thumb aimed at a place, not at a pixel.
   let tx = artX, ty = artY;
@@ -678,6 +836,503 @@ function onTavernCanvasTap(e) {
 }
 
 // ---------------------------------------------------------------------------
+// The bar — ordering something to eat.
+//
+// The Schänke is the one station that leads nowhere: tapping it walks the mage
+// to the counter and the exchange happens IN THE ROOM. The keeper greets him,
+// the hero has one line of Italian to finish, and the missing word is the order
+// — tap "birra" into the gap and a tankard is what lands on the counter. He
+// carries it off, eats or drinks it where he stands, and walks away with a
+// shield worth a tenth of his HP (see grantMealShield).
+//
+// It runs as a small stage machine on `tavern.meal` rather than as a screen,
+// because the room is what the player should be watching:
+//
+//   order → reply → serve → eat → cheer → (closed)
+//
+// Only `order` waits on the player; the rest are timed and advance themselves in
+// updateBarMeal.
+//
+// ALL OF IT IS DRAWN IN THE SCENE — speech in pixel bubbles over the two people
+// talking, the menu as little plaques on the floor below (see layoutBarMeal).
+// This started life as a DOM panel across the foot of the screen and that panel
+// was the wrong object: crisp browser text in a box pasted over a pixel room
+// reads as an interface interrupting the picture, and the exchange it carried is
+// the one thing in this game that is *happening in the room*. Bubbles at the
+// room's own resolution put the words where the mouths are. Two things follow
+// from it, and both are deliberate: the text is baked into small canvases when
+// the stage changes rather than drawn glyph by glyph every frame (see
+// bakeBubble), and the menu is hit-tested against those baked rects in
+// tavernTapPoint, because a plaque painted on the canvas is not a button the
+// browser knows about. The smoke test presses the pixels for that reason.
+//
+// A wrong word is not a failure state. The keeper says "Come?", the word he
+// couldn't place is struck through on the menu, and the order stands — the
+// player picks again. There is nothing to lose here, so there is nothing to
+// punish; the exchange only ends when it ends well or when the player walks off.
+// ---------------------------------------------------------------------------
+const PF = Incanto.pixelFont;
+
+const BUB = {
+  pad: 4,        // between a bubble's text and its outline
+  tail: 3,       // how far the tail sticks out
+  gap: 3,        // between stacked bubbles / menu plaques
+  chipPadX: 7,   // a plaque is its word plus this much either side…
+  chipH: 15,     // …and this tall, which is the thumb, not the text
+  edge: 5,       // nothing is laid out closer than this to the room's edge
+};
+const MEAL_MS = { reply: 650, serve: 560, bite: 340, cheer: 900, after: 800 };
+const MEAL_BITES = 4;                 // bites/sips a serving is worth
+
+const mealPick = (list) => list[Math.floor(Math.random() * list.length)];
+
+// One order off BAR_ORDER_POOL, with the menu to choose from: the answer plus
+// other things the keeper actually stocks. Distractors are the rest of the menu
+// rather than same-part-of-speech words, because at a bar the wrong answer is
+// something else to eat — reading the German and knowing which is which is the
+// whole exercise.
+function barDrawOrder() {
+  let s = mealPick(BAR_ORDER_POOL);
+  for (let i = 0; i < 8 && tavern.lastOrder === s.it; i++) s = mealPick(BAR_ORDER_POOL);
+  tavern.lastOrder = s.it;
+  const tokens = s.it.split(" ");
+  const others = BAR_ITEMS.filter((w) => w !== s.blank);
+  const options = shuffleArray([s.blank, ...sampleN(others, CONFIG.meal.optionCount - 1)]);
+  return { tokens, blankIdx: tokens.indexOf(s.blank), answer: s.blank, de: s.de, options };
+}
+
+// The keeper, wherever the room put him — the plate starts in his hands.
+function barKeeper() {
+  return tavern.people.find((p) => p.cast === "keeper") || null;
+}
+
+// --- bubbles ----------------------------------------------------------------
+// A panel with a chamfered #222222 outline, drawn the way the sheet outlines
+// everything else. `fill` is parchment for speech and dulls for a struck-out
+// plaque; the corner pixels are left out rather than rounded, which is how a
+// four-pixel radius reads at this size.
+function pxPanel(r, x, y, w, h, fill, ink) {
+  r(x + 1, y, w - 2, h, ink);
+  r(x, y + 1, w, h - 2, ink);
+  r(x + 2, y + 1, w - 4, h - 2, fill);
+  r(x + 1, y + 2, w - 2, h - 4, fill);
+}
+
+// One speech bubble, baked. `lines` are { text, col }; `tail` is which side the
+// speaker is on ("up" = the bubble hangs below them, "down" = above them) and
+// `tailAt` how far along the bubble the speaker stands, so the nub points at the
+// mouth rather than at the middle of a bubble that has been shoved off-centre to
+// stay on screen.
+function bakeBubble(lines, tail, tailAt) {
+  const textW = Math.max(1, ...lines.map((l) => PF.width(l.text)));
+  const bw = textW + BUB.pad * 2;
+  const bh = lines.length * PF.LINE + BUB.pad * 2;
+  const th = tail ? BUB.tail : 0;
+  const top = tail === "up" ? th : 0;
+  const cv = tavArt(bw, bh + th, (ctx, r) => {
+    pxPanel(r, 0, top, bw, bh, TP.bone, TP.ink);
+    // The nub, and the hole it opens in the outline it grows out of.
+    const tx = Math.max(3, Math.min(bw - 4, Math.round(tailAt)));
+    for (let i = 0; i < th; i++) {
+      const half = th - i;
+      const y = tail === "up" ? i : bh + i;
+      r(tx - half, y, half * 2 + 1, 1, TP.ink);
+      if (i > 0) r(tx - half + 1, y, half * 2 - 1, 1, TP.bone);
+    }
+    r(tx - 1, tail === "up" ? th : bh - 1, 3, 1, TP.bone);
+    lines.forEach((l, i) => {
+      PF.draw(ctx, l.text, BUB.pad, top + BUB.pad + i * PF.LINE + PF.H - 1, l.col);
+    });
+  });
+  cv.tailSide = tail;
+  return cv;
+}
+
+// The order itself is laid out token by token rather than as one string: the
+// blank is a SLOT, drawn as a plate the answer lands on, and a slot has to know
+// where it sits to be filled. Wrapping is by whole tokens for the same reason.
+function bakeOrderBubble(meal, tailAt) {
+  const q = meal.q;
+  const answered = meal.stage !== "order";
+  const maxW = Math.max(70, Math.min(tavern.artW - BUB.edge * 2 - BUB.pad * 2, 160));
+  const slotW = PF.width(q.answer) + 6;
+  const tokens = q.tokens.map((t, i) => (i === q.blankIdx
+    ? { text: t, w: slotW, slot: true }
+    : { text: t, w: PF.width(t), slot: false }));
+
+  // Wrap: greedy, by token, with a space between.
+  const space = PF.width(" ") + PF.GAP;
+  const rows = [[]];
+  let used = 0;
+  for (const t of tokens) {
+    const add = (rows[rows.length - 1].length ? space : 0) + t.w;
+    if (rows[rows.length - 1].length && used + add > maxW) { rows.push([]); used = 0; }
+    else used += add - t.w;
+    rows[rows.length - 1].push(Object.assign({ x: used }, t));
+    used += t.w;
+  }
+  const hint = PF.wrap(q.de, maxW);
+  const textW = Math.max(
+    ...rows.map((row) => (row.length ? row[row.length - 1].x + row[row.length - 1].w : 0)),
+    ...hint.map((h) => PF.width(h)), 1);
+
+  const bw = textW + BUB.pad * 2;
+  const bodyH = (rows.length + hint.length) * PF.LINE;
+  const bh = bodyH + BUB.pad * 2;
+  const th = BUB.tail;
+  return tavArt(bw, bh + th, (ctx, r) => {
+    pxPanel(r, 0, th, bw, bh, TP.bone, TP.ink);
+    const tx = Math.max(3, Math.min(bw - 4, Math.round(tailAt)));
+    for (let i = 0; i < th; i++) {
+      const half = th - i;
+      r(tx - half, i, half * 2 + 1, 1, TP.ink);
+      if (i > 0) r(tx - half + 1, i, half * 2 - 1, 1, TP.bone);
+    }
+    r(tx - 1, th, 3, 1, TP.bone);
+
+    rows.forEach((row, li) => {
+      const base = th + BUB.pad + li * PF.LINE + PF.H - 1;
+      for (const t of row) {
+        const x = BUB.pad + t.x;
+        if (!t.slot) { PF.draw(ctx, t.text, x, base, TP.ink); continue; }
+        if (answered) {
+          // What he said, on a plate of its own so the eye goes to it.
+          r(x - 1, base - PF.H - 1, t.w + 2, PF.H + 3, TP.gold);
+          PF.draw(ctx, t.text, x + 3, base, TP.ink);
+        } else {
+          r(x, base + 1, t.w, 1, TP.woodDark);        // the line to be filled in
+          r(x + 1, base - 1, 1, 1, TP.stoneLit);      // …and a hint of dots on it
+          r(x + Math.round(t.w / 2), base - 1, 1, 1, TP.stoneLit);
+          r(x + t.w - 2, base - 1, 1, 1, TP.stoneLit);
+        }
+      }
+    });
+    hint.forEach((h, li) => {
+      PF.draw(ctx, h, BUB.pad, th + BUB.pad + (rows.length + li) * PF.LINE + PF.H - 1, TP.stone);
+    });
+  });
+}
+
+// A menu plaque: the word, on parchment, big enough to be pressed. A word the
+// keeper couldn't place keeps its place in the menu but goes grey and struck
+// through — it stays visible because it is the wrong answer to THIS order, which
+// is worth seeing next to the right one.
+function bakeChip(word, wrong) {
+  const w = PF.width(word) + BUB.chipPadX * 2;
+  const h = BUB.chipH;
+  const cv = tavArt(w, h, (ctx, r) => {
+    pxPanel(r, 0, 0, w, h, wrong ? TP.stoneLit : TP.bone, TP.ink);
+    const base = Math.round((h + PF.H) / 2) - 1;
+    PF.draw(ctx, word, BUB.chipPadX, base, wrong ? TP.stone : TP.ink);
+    if (wrong) r(4, base - 2, w - 8, 1, TP.ink);
+  });
+  cv.chipW = w;
+  return cv;
+}
+
+// Everything the bar draws, positioned. Rebuilt when the stage changes rather
+// than every frame — baking text is the expensive part and none of it moves.
+//
+// The hero's words hang directly under him and the menu under those, as one
+// stack: a bubble belongs at the mouth that said it, and a menu that is what he
+// is choosing to say belongs with it. The stack is only pushed up if it would
+// run off the bottom of a short room, which is the one case where being read
+// beats being attached.
+function layoutBarMeal() {
+  const meal = tavern && tavern.meal;
+  if (!meal) return;
+  const { artW, artH } = tavern;
+  const m = tavern.mage;
+  const k = barKeeper();
+  const answered = meal.stage !== "order";
+  const done = meal.stage === "cheer" || meal.stage === "done";
+  const clampX = (x, w) => Math.max(BUB.edge, Math.min(artW - BUB.edge - w, Math.round(x - w / 2)));
+
+  // What he is saying. When the plate is empty there is nothing left to order —
+  // just thanks.
+  const heroLines = done
+    ? [{ text: BAR_KEEPER.thanks.it, col: TP.ink }, { text: BAR_KEEPER.thanks.de, col: TP.stone }]
+    : null;
+  const measure = heroLines ? bakeBubble(heroLines, "up", 0) : bakeOrderBubble(meal, 0);
+  const heroX = clampX(m.x, measure.width);
+  // Re-baked once the x is known, so the nub points at the mage rather than at
+  // the middle of a bubble that has been pushed sideways to stay on screen.
+  const tailAt = m.x - heroX;
+  const heroArt = heroLines ? bakeBubble(heroLines, "up", tailAt) : bakeOrderBubble(meal, tailAt);
+
+  // The menu under it, two to a row.
+  const arts = answered ? [] : meal.q.options.map((w) => bakeChip(w, meal.wrong.includes(w)));
+  const colW = arts.length ? Math.max(...arts.map((a) => a.chipW)) : 0;
+  const rows = Math.ceil(arts.length / 2);
+  const menuH = rows ? rows * (BUB.chipH + BUB.gap) - BUB.gap + BUB.gap : 0;
+
+  const stackH = heroArt.height + menuH;
+  const top = Math.max(BUB.edge, Math.min(Math.round(m.y) + 5, artH - BUB.edge - stackH));
+  meal.heroBubble = { art: heroArt, x: heroX, y: top };
+
+  meal.chips = [];
+  if (arts.length) {
+    // Centred on the MAGE, not on the room: the menu is the bottom of his own
+    // stack, and centring it in a wide room leaves it standing on its own.
+    const x0 = clampX(m.x, colW * 2 + BUB.gap);
+    const y0 = top + heroArt.height + BUB.gap;
+    arts.forEach((art, i) => {
+      const cx = x0 + (i % 2) * (colW + BUB.gap) + Math.round((colW - art.chipW) / 2);
+      const cy = y0 + Math.floor(i / 2) * (BUB.chipH + BUB.gap);
+      meal.chips.push({ art, word: meal.q.options[i], x: cx, y: cy, w: art.chipW, h: BUB.chipH });
+    });
+  }
+
+  // And the keeper's, above his head.
+  const kLine = !answered && meal.puzzled ? meal.puzzled : (answered && !done ? meal.reply : meal.greet);
+  if (k && !done) {
+    const art = bakeBubble(
+      [{ text: kLine.it, col: TP.ink }, { text: kLine.de, col: TP.stone }], "down", 0);
+    const x = clampX(k.x, art.width);
+    meal.keeperBubble = {
+      art: bakeBubble([{ text: kLine.it, col: TP.ink }, { text: kLine.de, col: TP.stone }],
+        "down", k.x - x),
+      x, y: Math.max(BUB.edge, k.y - 24 - art.height),
+    };
+  } else {
+    meal.keeperBubble = null;
+  }
+}
+
+// What the meal was worth, floating off the mage: baked once, when it is
+// granted. Haloed rather than shadowed — it crosses the counter, the floor and
+// whoever is standing between, and a single offset shadow disappears against
+// half of them.
+function bakeMealGain(amount) {
+  const text = `⛨ +${amount}`;
+  const w = PF.width(text) + 2;
+  return tavArt(w, PF.H + 2, (ctx) => {
+    for (const [dx, dy] of [[0, 1], [2, 1], [1, 0], [1, 2]]) PF.draw(ctx, text, dx, dy + PF.H - 1, TP.ink);
+    PF.draw(ctx, text, 1, PF.H, CONFIG.colors.sceneRune.bright);
+  });
+}
+
+function openBarOrder(now) {
+  if (!tavern || tavern.meal) return;          // already mid-order: don't re-deal it
+  const m = tavern.mage;
+  m.moving = false;
+  m.waitUntil = Infinity;                      // he stays at the counter until this is over
+  tavern.meal = {
+    q: barDrawOrder(),
+    greet: mealPick(BAR_KEEPER.greet),
+    reply: mealPick(BAR_KEEPER.serve),
+    puzzled: null,
+    wrong: [],
+    stage: "order",
+    t0: now || performance.now(),
+    bites: 0,
+    bits: [],
+    shield: 0,
+    chips: [],
+    dirty: false,
+  };
+  layoutBarMeal();
+}
+
+function closeBarOrder() {
+  if (!tavern || !tavern.meal) return;
+  tavern.meal = null;
+  tavern.mage.bob = 0;
+  tavern.mage.waitUntil = performance.now() + 400;   // and back to strolling
+  tavern.focus = null;
+}
+
+// A tap on a menu plaque — from the pixels in tavernTapPoint, since the menu is
+// painted into the scene rather than laid over it.
+function barOrderPick(word) {
+  const meal = tavern && tavern.meal;
+  if (!meal || meal.stage !== "order") return;
+  if (word === meal.q.answer) {
+    meal.stage = "reply";
+    meal.t0 = performance.now();
+    meal.item = word;
+  } else if (!meal.wrong.includes(word)) {
+    meal.wrong.push(word);
+    meal.puzzled = mealPick(BAR_KEEPER.puzzled);
+  }
+  meal.dirty = true;
+}
+
+// The meal in HP: a tenth of the hero's pool, as absorb. It tops the shield UP
+// to that rather than stacking onto it, so a second helping on a full stomach is
+// worth nothing — see CONFIG.meal. During a run it goes straight into the pool
+// he is fighting on; between runs it waits in `state.mealShield`, because
+// startRun clears heroShield and would otherwise eat the meal on the way in.
+function grantMealShield() {
+  const amount = Math.max(1, Math.round(state.heroMaxHP * CONFIG.meal.shieldFraction));
+  if (state.runActive) state.heroShield = Math.max(state.heroShield || 0, amount);
+  else state.mealShield = Math.max(state.mealShield || 0, amount);
+  return amount;
+}
+
+// Crumbs off a bite, drops off a sip: a handful of pixels thrown down and out,
+// tinted from the serving's own art so nothing new enters the room.
+function mealBits(meal, x, y) {
+  const drink = TAV_MEAL[meal.item].kind === "drink";
+  const cols = drink ? [TP.white, TP.bone] : [TP.woodDark, TP.wood, TP.bone];
+  for (let i = 0; i < (drink ? 3 : 4); i++) {
+    meal.bits.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 0.03,
+      vy: -0.012 - Math.random() * 0.012,
+      life: 420 + Math.random() * 220,
+      born: performance.now(),
+      col: cols[i % cols.length],
+    });
+  }
+}
+
+function updateBarMeal(now, dt) {
+  const meal = tavern.meal;
+  if (!meal) return;
+  const since = now - meal.t0;
+  const m = tavern.mage;
+
+  if (meal.stage === "reply" && since >= MEAL_MS.reply) {
+    meal.stage = "serve"; meal.t0 = now; meal.dirty = true;
+  } else if (meal.stage === "serve" && since >= MEAL_MS.serve) {
+    meal.stage = "eat"; meal.t0 = now;
+  } else if (meal.stage === "eat") {
+    const want = Math.min(MEAL_BITES, Math.floor(since / MEAL_MS.bite));
+    while (meal.bites < want) {
+      meal.bites++;
+      mealBits(meal, m.x + (m.facing >= 0 ? 5 : -5), m.y - 14);
+    }
+    if (since >= MEAL_BITES * MEAL_MS.bite) {
+      meal.stage = "cheer"; meal.t0 = now;
+      meal.shield = grantMealShield();       // the plate is empty: this is what it was worth
+      meal.gain = bakeMealGain(meal.shield);
+      meal.dirty = true;
+    }
+  } else if (meal.stage === "cheer") {
+    // A little hop on the spot — the one moment the mage is pleased with himself.
+    m.bob = Math.max(0, Math.sin((since / MEAL_MS.cheer) * Math.PI * 2) * 3);
+    if (since >= MEAL_MS.cheer) { meal.stage = "done"; meal.t0 = now; m.bob = 0; meal.dirty = true; }
+  } else if (meal.stage === "done" && since >= MEAL_MS.after) {
+    closeBarOrder();
+    return;
+  }
+
+  for (const b of meal.bits) {
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.vy += 0.00016 * dt;                    // they fall
+  }
+  meal.bits = meal.bits.filter((b) => now - b.born < b.life);
+  if (meal.dirty) { meal.dirty = false; layoutBarMeal(); }
+}
+
+// Where the serving is, in room coordinates, at this instant.
+function mealSpot(meal, now) {
+  const m = tavern.mage;
+  const hx = m.x + (m.facing >= 0 ? 5 : -5);
+  // Held at the hand, low enough to read against his robe: at chest height a
+  // brown loaf is brown wood on the counter behind him and disappears.
+  const rest = m.y - 9;
+  if (meal.stage === "serve") {
+    const k = barKeeper();
+    const from = k ? { x: k.x, y: k.y - 12 } : { x: hx, y: rest };
+    const t = Math.min(1, (now - meal.t0) / MEAL_MS.serve);
+    return {
+      x: from.x + (hx - from.x) * t,
+      // slid across the counter and lifted off it, rather than teleported
+      y: (from.y + (rest - from.y) * t) - Math.sin(t * Math.PI) * 5,
+      t,
+    };
+  }
+  // Eating: raised to the face as each bite lands, and lowered again. A small
+  // lift on purpose — the serving is nearly as tall as the mage's head, so a big
+  // one sails over his hat instead of reaching his mouth.
+  const lift = meal.stage === "eat"
+    ? Math.max(0, Math.sin(((now - meal.t0) % MEAL_MS.bite) / MEAL_MS.bite * Math.PI)) * 3
+    : 0;
+  return { x: hx, y: rest - lift, t: 1 };
+}
+
+function drawBarMeal(ctx, now) {
+  const meal = tavern && tavern.meal;
+  if (!meal || !meal.item) return;
+  const art = TAV.meal[meal.item];
+  if (!art) return;
+  const m = tavern.mage;
+  const drink = TAV_MEAL[meal.item].kind === "drink";
+  const eaten = meal.stage === "cheer" || meal.stage === "done"
+    ? 1 : meal.bites / MEAL_BITES;
+
+  if (eaten < 1) {
+    const at = mealSpot(meal, now);
+    const x = Math.round(at.x - art.width / 2), y = Math.round(at.y - art.height);
+    ctx.save();
+    if (drink) {
+      // Tipped further back with every sip: the mug empties by the angle it is
+      // held at, which is what drinking looks like at eleven pixels tall.
+      ctx.translate(x + art.width / 2, y + art.height);
+      ctx.rotate((m.facing >= 0 ? -1 : 1) * eaten * 0.6);
+      ctx.drawImage(art, -art.width / 2, -art.height);
+    } else {
+      // Bitten down from the top — what is left is what he has not eaten yet.
+      ctx.beginPath();
+      ctx.rect(x, y + art.height * eaten, art.width, art.height * (1 - eaten));
+      ctx.clip();
+      ctx.drawImage(art, x, y);
+    }
+    ctx.restore();
+  }
+
+  for (const b of meal.bits) {
+    const k = 1 - (now - b.born) / b.life;
+    if (k <= 0) continue;
+    ctx.globalAlpha = Math.min(1, k * 1.6);
+    ctx.fillStyle = b.col;
+    ctx.fillRect(Math.round(b.x), Math.round(b.y), 1, 1);
+  }
+  ctx.globalAlpha = 1;
+
+  // The shield settling on him: the room's arcane glow, and a ring closing in.
+  if (meal.stage === "cheer") {
+    const t = Math.min(1, (now - meal.t0) / MEAL_MS.cheer);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = (1 - t) * 0.9;
+    ctx.drawImage(TAV.glowMeal, Math.round(m.x - 16), Math.round(m.y - 30));
+    ctx.strokeStyle = CONFIG.colors.sceneRune.line;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y - 11, 3 + (1 - t) * 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// The talking, and the menu it is waiting on. Drawn last of all — a bubble is
+// read over everything, including the person who said it.
+function drawBarSpeech(ctx, now) {
+  const meal = tavern && tavern.meal;
+  if (!meal) return;
+  const m = tavern.mage;
+  for (const b of [meal.keeperBubble, meal.heroBubble]) {
+    if (b) ctx.drawImage(b.art, b.x, b.y);
+  }
+  for (const c of meal.chips) ctx.drawImage(c.art, c.x, c.y);
+
+  // What it was worth, rising off him and fading as it goes.
+  if (meal.gain && (meal.stage === "cheer" || meal.stage === "done")) {
+    const t = Math.min(1, (now - (meal.stage === "cheer" ? meal.t0 : meal.t0 - MEAL_MS.cheer))
+      / (MEAL_MS.cheer + MEAL_MS.after));
+    ctx.globalAlpha = Math.max(0, 1 - t * t);
+    ctx.drawImage(meal.gain,
+      Math.round(m.x - meal.gain.width / 2),
+      Math.round(m.y - 26 - t * 12));
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
 function drawTavernActor(ctx, a, now) {
@@ -685,7 +1340,7 @@ function drawTavernActor(ctx, a, now) {
   if (!skin) return;
   const set = a.moving ? (a.facing < 0 ? skin.runL : skin.run) : (a.facing < 0 ? skin.idleL : skin.idle);
   const f = Math.floor(now / (a.moving ? 110 : 170) + a.phase) % set.length;
-  const x = Math.round(a.x - skin.w / 2), y = Math.round(a.y - skin.h);
+  const x = Math.round(a.x - skin.w / 2), y = Math.round(a.y - skin.h - (a.bob || 0));
   ctx.drawImage(TAV.shadowSm, Math.round(a.x) - TAV.shadowSm.width / 2, Math.round(a.y) - 2);
   ctx.drawImage(set[f], x, y);
 }
@@ -773,8 +1428,16 @@ function renderTavern(now) {
     }
   }
 
+  // What the bar served, over the mage rather than sorted with him: he is
+  // holding it out in front of himself.
+  drawBarMeal(ctx, now);
+
   // The room's own edges, pinned over everything.
   ctx.drawImage(tavern.vignette, 0, 0);
+
+  // …except the speech, which is over the edges too: the menu is pressed, and
+  // the vignette darkening a plaque would darken a tap target.
+  drawBarSpeech(ctx, now);
 }
 
 // ---------------------------------------------------------------------------
@@ -833,9 +1496,14 @@ function patchTavernContinuous(now) {
   for (const a of tavern.people) tavUpdateActor(a, now, dt);
   tavUpdateActor(tavern.mage, now, dt);
   if (state.screen !== "tavern") return;   // a station handed off mid-frame
+  updateBarMeal(now, dt);
   renderTavern(now);
   const chips = document.getElementById("tav-chips");
   if (chips) {
+    // While the bar is talking the station labels step aside: the menu painted
+    // in the scene is what is being pressed, and a chip floating over it is a
+    // second thing to tap in the same place. The floor still walks him away.
+    chips.classList.toggle("hushed", !!tavern.meal);
     for (const el of chips.children) {
       el.classList.toggle("on", el.dataset.station === tavern.focus);
     }
@@ -844,4 +1512,5 @@ function patchTavernContinuous(now) {
 
 window.Incanto.tavern = {
   renderTavernFull, patchTavernContinuous, tavernGo, tavernTapPoint, setupTavern,
+  openBarOrder, closeBarOrder, barOrderPick, grantMealShield, TAV_MEAL,
 };

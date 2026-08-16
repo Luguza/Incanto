@@ -1157,6 +1157,67 @@ const SENTENCE_POOL = [
   { it: "Io domando il prezzo", de: "Ich frage nach dem Preis", blank: "domando", pos: "verb" },
 ];
 
+// ---------------------------------------------------------------------------
+// The bar — what is said at the Tresen (see tavern.js). The keeper asks, the
+// hero orders, and the missing word IS the order: whatever fills the gap is what
+// lands on the counter, so `blank` and `item` are the same word seen twice, once
+// as language and once as a thing to eat.
+//
+// The same house rules as SENTENCE_POOL apply and `tools/check-sentences.mjs`
+// checks this pool against them too — no punctuation inside a line (tokens split
+// on spaces), the blank one whole token and never the first, and no vocabulary
+// the game doesn't teach. What differs is that there is no `pos`: the distractors
+// are the OTHER things on the menu, which is what a menu is, so every blank here
+// has to be one of BAR_ITEMS. Two lines per item, so the same order doesn't come
+// round twice in a session.
+//
+// Every item needs art in tavern.js (TAV_MEAL) — adding a line for something the
+// keeper cannot actually put on the counter is the one way to break this pool.
+// ---------------------------------------------------------------------------
+const BAR_ITEMS = ["pane", "formaggio", "mela", "pollo", "vino", "birra", "latte"];
+
+const BAR_ORDER_POOL = [
+  { it: "Voglio il pane per favore", de: "Ich will das Brot, bitte", blank: "pane" },
+  { it: "Prendo un pane caldo per favore", de: "Ich nehme ein warmes Brot, bitte", blank: "pane" },
+  { it: "Prendo del formaggio per favore", de: "Ich nehme etwas Käse, bitte", blank: "formaggio" },
+  { it: "Voglio il formaggio per favore", de: "Ich will den Käse, bitte", blank: "formaggio" },
+  { it: "Voglio una mela per favore", de: "Ich will einen Apfel, bitte", blank: "mela" },
+  { it: "Prendo una mela rossa per favore", de: "Ich nehme einen roten Apfel, bitte", blank: "mela" },
+  { it: "Prendo il pollo per favore", de: "Ich nehme das Hähnchen, bitte", blank: "pollo" },
+  { it: "Voglio il pollo caldo per favore", de: "Ich will das warme Hähnchen, bitte", blank: "pollo" },
+  { it: "Voglio un bicchiere di vino", de: "Ich will ein Glas Wein", blank: "vino" },
+  { it: "Prendo il vino rosso per favore", de: "Ich nehme den roten Wein, bitte", blank: "vino" },
+  { it: "Prendo una birra per favore", de: "Ich nehme ein Bier, bitte", blank: "birra" },
+  { it: "Voglio una birra fredda per favore", de: "Ich will ein kaltes Bier, bitte", blank: "birra" },
+  { it: "Voglio un bicchiere di latte", de: "Ich will ein Glas Milch", blank: "latte" },
+  { it: "Prendo il latte caldo per favore", de: "Ich nehme die warme Milch, bitte", blank: "latte" },
+];
+
+// The keeper's half of it. Short enough to read at a glance over a canvas, and
+// every one of them a word the game teaches, so the exchange is comprehensible
+// rather than decoration: he greets, he takes the order, and when the wrong word
+// is tapped he simply doesn't understand — the order is not lost, it is asked
+// again, because a shrug is the feedback and a closed screen would be a
+// punishment.
+const BAR_KEEPER = {
+  greet: [
+    { it: "Buonasera!", de: "Guten Abend!" },
+    { it: "Che prendi?", de: "Was nimmst du?" },
+    { it: "Ecco il menù!", de: "Hier ist die Speisekarte!" },
+  ],
+  serve: [
+    { it: "Subito!", de: "Sofort!" },
+    { it: "Volentieri!", de: "Gerne!" },
+    { it: "Certo!", de: "Sicher!" },
+    { it: "Ecco!", de: "Hier, bitte!" },
+  ],
+  puzzled: [
+    { it: "Come?", de: "Wie bitte?" },
+    { it: "Che?", de: "Was?" },
+  ],
+  thanks: { it: "Grazie!", de: "Danke!" },
+};
+
 // Blank words grouped by part of speech, so fill-in distractors match the
 // answer's kind of word (deduped once at load).
 const BLANKS_BY_POS = (() => {
@@ -1276,5 +1337,6 @@ const CONJ_POOL = [
 
 Object.assign(window.Incanto, {
   WORD_POOL, SENTENCE_POOL, SENTENCE_WORDS, BLANKS_BY_POS,
+  BAR_ITEMS, BAR_ORDER_POOL, BAR_KEEPER,
   CONJ_PERSONS, CONJ_ENDINGS, CONJ_POOL, conjugateRegular,
 });

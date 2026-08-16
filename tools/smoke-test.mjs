@@ -1838,6 +1838,174 @@ try {
   check(floor.screen === "tavern" && floor.moving && floor.goal === null,
     "a tap on the floor walks him there and changes no screen");
 
+  //      The bar (see tavern.js + BAR_ORDER_POOL). The one station that leads
+  //      nowhere: the hero walks to the counter, orders in Italian, is served,
+  //      eats, and comes away with a shield. Driven entirely by taps — the
+  //      wrong word first, because not losing the order to it is the point.
+  const menu = await page.evaluate(() => {
+    // Every word the pool can ask for has to be something the keeper can
+    // actually put on the counter, or the hero eats nothing.
+    const artless = BAR_ITEMS.filter((id) => !Incanto.tavern.TAV_MEAL[id] || !TAV.meal[id]);
+    state.runActive = false;                 // between runs: the meal waits in state.mealShield
+    state.mealShield = 0; state.heroShield = 0;
+    navTo("tavern");
+    render(performance.now());
+    // Put him across the room, so ordering means walking to the bar first.
+    tavern.mage.x = tavern.walk.x0 + 6; tavern.mage.y = tavern.walk.y1 - 6;
+    tavern.mage.moving = false; tavern.mage.goal = null; tavern.mage.waitUntil = Infinity;
+    return { artless, items: BAR_ITEMS.length, maxHP: state.heroMaxHP };
+  });
+  check(menu.artless.length === 0,
+    "every word on the bar's menu has a serving drawn for it (" + menu.items +
+    " items" + (menu.artless.length ? ", missing: " + menu.artless.join(" ") : "") + ")");
+
+  await page.click('.tav-chip[data-station="bar"]');
+  const toBar = await page.evaluate(() => ({
+    screen: state.screen, moving: tavern.mage.moving,
+    goal: tavern.mage.goal && tavern.mage.goal.id,
+    meal: !!tavern.meal,
+  }));
+  check(toBar.screen === "tavern" && toBar.moving && toBar.goal === "bar" && !toBar.meal,
+    "tapping the bar sets him walking and opens nothing yet (goal=" + toBar.goal + ")");
+
+  await page.waitForFunction(() => !!(tavern && tavern.meal), null, { timeout: 15000 });
+  const order = await page.evaluate(() => {
+    const meal = tavern.meal;
+    const opts = meal.chips.map((c) => c.word);
+    const inside = (r) => r.x >= 0 && r.y >= 0 &&
+      r.x + (r.w || r.art.width) <= tavern.artW && r.y + (r.h || r.art.height) <= tavern.artH;
+    return {
+      screen: state.screen, opts, answer: meal.q.answer,
+      onMenu: opts.every((w) => BAR_ITEMS.includes(w)),
+      unique: new Set(opts).size === opts.length,
+      want: CONFIG.meal.optionCount,
+      // Everything the exchange draws is INSIDE the room — a plaque half off the
+      // edge is half a tap target, and a bubble off the top is unread.
+      inside: [meal.heroBubble, meal.keeperBubble, ...meal.chips].every((r) => !r || inside(r)),
+      spoken: !!meal.keeperBubble && !!meal.heroBubble,
+      // The station labels get out of the menu's way while it is up.
+      hushed: !!document.querySelector(".tav-chips.hushed"),
+      // …and no DOM panel is left: the exchange is painted in the scene.
+      dom: document.querySelectorAll("#tav-stage button:not(.tav-chip)").length,
+      atBar: Math.hypot(
+        tavern.mage.x - tavern.stations.find((s) => s.id === "bar").stand.x,
+        tavern.mage.y - tavern.stations.find((s) => s.id === "bar").stand.y) < 2,
+    };
+  });
+  check(order.screen === "tavern" && order.atBar && order.spoken && order.dom === 0,
+    "reaching the counter opens the order as speech in the scene, with no panel over it");
+  check(order.opts.length === order.want && order.unique && order.onMenu &&
+    order.opts.includes(order.answer),
+    "the menu offers " + order.want + " distinct things to order, the right one among them (" +
+    order.opts.join(" · ") + ")");
+  check(order.inside && order.hushed,
+    "every bubble and plaque is drawn inside the room, and the station labels stand aside");
+
+  // Every character the bar can say has to be cut in the font, or a word comes
+  // out with a hole in it (see pixel-font.js).
+  const glyphs = await page.evaluate(() => {
+    const text = [
+      ...BAR_ORDER_POOL.flatMap((o) => [o.it, o.de]),
+      ...Object.values(BAR_KEEPER).flatMap((g) => [].concat(g)).flatMap((l) => [l.it, l.de]),
+      ...BAR_ITEMS, "⛨ +1234567890", "Gestärkt",
+    ].join(" ");
+    const missing = [...new Set(text)].filter((ch) => !Incanto.pixelFont.has(ch));
+    return { missing, chars: new Set(text.toUpperCase()).size };
+  });
+  check(glyphs.missing.length === 0,
+    "the pixel font cuts every character the bar speaks (" + glyphs.chars +
+    " distinct" + (glyphs.missing.length ? ", missing: " + glyphs.missing.join(" ") : "") + ")");
+
+  // The menu is painted onto the canvas, so it is PRESSED, not clicked: art
+  // coordinates → page coordinates → a real tap. A test that called
+  // barOrderPick would pass with the plaques drawn anywhere at all.
+  const pressChip = async (word) => {
+    const at = await page.evaluate((w) => {
+      const c = tavern.meal.chips.find((k) => k.word === w);
+      const r = tavern.cv.getBoundingClientRect();
+      const s = r.width / tavern.artW;
+      return { x: r.left + (c.x + c.w / 2) * s, y: r.top + (c.y + c.h / 2) * s };
+    }, word);
+    await page.mouse.click(at.x, at.y);
+  };
+
+  // A wrong word: the keeper doesn't understand, that word is struck through,
+  // and the order is still standing. Nothing is lost and nothing is earned.
+  const wrongWord = order.opts.find((w) => w !== order.answer);
+  await pressChip(wrongWord);
+  await page.waitForTimeout(120);
+  const shrug = await page.evaluate((w) => ({
+    open: !!tavern.meal,
+    struck: tavern.meal.wrong.length === 1 && tavern.meal.wrong[0] === w,
+    puzzled: !!tavern.meal.puzzled,
+    stage: tavern.meal.stage,
+    shield: state.mealShield + state.heroShield,
+    chips: tavern.meal.chips.length,
+  }), wrongWord);
+  check(shrug.open && shrug.struck && shrug.puzzled && shrug.stage === "order" &&
+    shrug.chips === order.want && shrug.shield === 0,
+    "a wrong word is struck off the menu and the order stands (stage=" + shrug.stage +
+    ", shield=" + shrug.shield + ")");
+
+  // A press on the speech itself is a press on something being read — it must
+  // not send him walking off mid-order.
+  const onBubble = await page.evaluate(async () => {
+    const b = tavern.meal.heroBubble;
+    const r = tavern.cv.getBoundingClientRect();
+    const s = r.width / tavern.artW;
+    return { x: r.left + (b.x + b.art.width / 2) * s, y: r.top + (b.y + b.art.height / 2) * s };
+  });
+  await page.mouse.click(onBubble.x, onBubble.y);
+  await page.waitForTimeout(80);
+  const stayed = await page.evaluate(() => ({ open: !!tavern.meal, moving: tavern.mage.moving }));
+  check(stayed.open && !stayed.moving,
+    "a press on the bubble is swallowed rather than walking him out of the order");
+
+  // The right one: he is served, he eats it, and the meal is worth a tenth of
+  // his pool. The exchange closes itself — no tap needed to get back to the room.
+  await pressChip(order.answer);
+  const served = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const stages = new Set();
+    let drawn = false, spoke = false;
+    for (let i = 0; i < 160 && tavern.meal; i++) {
+      stages.add(tavern.meal.stage);
+      if (tavern.meal.item && tavern.meal.stage !== "reply") drawn = true;
+      if (tavern.meal.stage === "reply" && tavern.meal.keeperBubble) spoke = true;
+      await settle(50);
+    }
+    return {
+      stages: [...stages], drawn, spoke,
+      item: state.mealShield, screen: state.screen,
+      hushed: !!document.querySelector(".tav-chips.hushed"),
+      want: Math.round(state.heroMaxHP * CONFIG.meal.shieldFraction),
+    };
+  });
+  check(served.stages.includes("serve") && served.stages.includes("eat") &&
+    served.stages.includes("cheer") && served.drawn && served.spoke,
+    "the keeper answers, and the order is poured, carried, eaten and cheered (" +
+    served.stages.join(" → ") + ")");
+  check(!served.hushed && served.screen === "tavern" && served.item === served.want,
+    "…and he walks away with ⛨ " + served.item + " of " + menu.maxHP + " LP (wanted " +
+    served.want + "), the room's labels back");
+
+  // The shield is banked, not spent: it survives the walk to the door, which is
+  // the whole point of eating BEFORE a run rather than during one.
+  const carried = await page.evaluate(() => {
+    const before = state.mealShield;
+    const second = Incanto.tavern.grantMealShield();      // a second helping on a full stomach
+    const stacked = state.mealShield;
+    startRun();
+    const after = { shield: state.heroShield, meal: state.mealShield };
+    state.runActive = false; state.screen = "tavern";
+    return { before, second, stacked, after };
+  });
+  check(carried.stacked === carried.before,
+    "a second helping tops the shield up rather than stacking it (" + carried.stacked + ")");
+  check(carried.after.shield === carried.before && carried.after.meal === 0,
+    "starting a run pours the meal into the shield pool instead of clearing it (⛨ " +
+    carried.after.shield + ", " + carried.after.meal + " left on the plate)");
+
   // 12. The dev tools on the tree screen (see skilltree.js). They are armed by a
   //     slider and must be unreachable while it is off; armed, they wipe every
   //     purchased rank (asking once first) and let the purse be typed into.

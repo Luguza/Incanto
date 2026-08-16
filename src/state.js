@@ -30,6 +30,12 @@ function freshState() {
     heroHP: CONFIG.heroBaseHP,
     heroDmg: CONFIG.heroBaseDmg,
     heroShield: 0,             // absorb pool granted by Ward nodes on some casts
+    // A meal eaten at the bar between runs (see tavern.js). It cannot go into
+    // heroShield directly — startRun clears that pool, so a shield taken in the
+    // tavern would be wiped by the very walk into the hall it was meant for. It
+    // waits here instead and is poured into heroShield when the next run begins;
+    // eating DURING a run skips the wait and fills the pool on the spot.
+    mealShield: 0,
     nodeRanks: {},             // { nodeId: rank } — purchased skill-tree ranks
     tree: null,                // { scale, tx, ty, selected } — pan/zoom view state
     // Derived combat modifiers (see skilltree.recomputeMods). Safe defaults so

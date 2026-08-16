@@ -542,7 +542,14 @@
     line-height: 0; overflow: hidden;
   }
   canvas.tav-scene { display: block; image-rendering: pixelated; touch-action: manipulation; }
-  .tav-chips { position: absolute; inset: 0; pointer-events: none; }
+  .tav-chips {
+    position: absolute; inset: 0; pointer-events: none;
+    transition: opacity var(--dur) var(--ease);
+  }
+  /* An order is running in the scene (see layoutBarMeal) — the labels get out of
+     the way of the menu rather than sitting on top of it. */
+  .tav-chips.hushed { opacity: 0; }
+  .tav-chips.hushed .tav-chip { pointer-events: none; }
   .tav-chip {
     position: absolute; transform: translate(-50%, -100%);
     pointer-events: auto; cursor: pointer; white-space: nowrap;
@@ -557,7 +564,8 @@
   }
   .tav-chip:active { background: rgba(40, 32, 58, 0.92); color: var(--ink); }
   .tav-chip.on { color: #17121f; background: var(--arcane); border-color: var(--arcane-lt); }
-  /* A station that leads nowhere yet is quieter — it is furniture with a name,
-     not a door. */
+  /* A station that stays in the room is quieter than one that changes the
+     screen — the bar serves a meal where it stands, it is not a door. */
   .tav-chip.flavour { color: var(--ink-3); border-color: var(--edge); font-weight: 600; }
   .tav-chip.flavour:active { color: var(--ink-2); }
+
