@@ -384,6 +384,25 @@ function renderQuizFoot(q) {
 // The upgrade phase is now the rune skill tree — see src/skilltree.js, which
 // owns renderUpgradeFull (the loop router calls it for the "upgrade" screen).
 
+// THE ARENA'S VIEWBOX IS CROPPED TO THE WHEEL, not to the 600x600 box the wheel
+// is authored in. Everything drawn there is centred on (300,300) and the
+// furthest anything reaches is 285 — the outer ring sits at 273 and the baked
+// star field stops at 285 (see tools/gen_wheel.py) — so the authored box carries
+// 15 units of empty margin on every side. The circle is the thing the thumb
+// aims at and it is HEIGHT-LIMITED on every phone, so that margin was costing
+// about 5 % of its diameter for nothing. Cropping to the content buys it back
+// without moving a single coordinate.
+//
+// It does move the wheel closer to the book, though: at a given box the wheel
+// now draws 600/570 bigger, and the arena's bottom margin in combat.css is a
+// TANGENT clearance derived from the wheel's radius. The two are re-derived
+// together — see the essay above `.combat-screen`, and don't change one alone.
+const ARENA_EXTENT = 285;
+const ARENA_VIEWBOX = [
+  CONFIG.circleCenter.x - ARENA_EXTENT, CONFIG.circleCenter.y - ARENA_EXTENT,
+  2 * ARENA_EXTENT, 2 * ARENA_EXTENT,
+].join(" ");
+
 function renderCombatFull() {
   const { x: cx, y: cy } = CONFIG.circleCenter;
   const slots = layoutCircle(CONFIG.runeCount);
@@ -520,12 +539,10 @@ function renderCombatFull() {
     <div class="screen combat-screen" id="combat-root">
       <div class="scene-wrap"><canvas class="scene" id="scene"></canvas></div>
       <div class="hud-under">
-        <div class="hero-hud">
-          <div class="bar-label">HELD <span id="hero-hp-text"></span></div>
-          <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
-        </div>
+        <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
+        <span class="hp-figures" id="hero-hp-text"></span>
       </div>
-      <svg class="arena" viewBox="0 0 600 600" preserveAspectRatio="xMidYMax meet">
+      <svg class="arena" viewBox="${ARENA_VIEWBOX}" preserveAspectRatio="xMidYMax meet">
         ${arenaDefs}
         ${chordsHtml}
         ${dragLineHtml}
@@ -545,9 +562,13 @@ function patchCombatContinuous(now) {
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
   root.classList.toggle("rune-flash", now < state.runeFlashUntil);
+  // The figures ride at the right-hand end of the bar rather than on a caption
+  // line of their own, and there is no "HELD" in front of them: the strip holds
+  // one bar, so naming it cost a whole row of a phone's height to say something
+  // already obvious. The row it saved goes to the rune circle.
   const shield = Math.floor(state.heroShield || 0);
   document.getElementById("hero-hp-text").textContent =
-    `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}` + (shield > 0 ? ` ⛨${shield}` : "");
+    `${Math.ceil(state.heroHP)}/${state.heroMaxHP}` + (shield > 0 ? ` ⛨${shield}` : "");
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
   // NOTHING UNDER THE SCENE REPORTS ON THE HALL. The strip used to carry a wave
   // line (metres walked, head count, the front body's name and armour) over a bar
