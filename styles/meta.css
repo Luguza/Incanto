@@ -542,7 +542,14 @@
     line-height: 0; overflow: hidden;
   }
   canvas.tav-scene { display: block; image-rendering: pixelated; touch-action: manipulation; }
-  .tav-chips { position: absolute; inset: 0; pointer-events: none; }
+  .tav-chips {
+    position: absolute; inset: 0; pointer-events: none;
+    transition: opacity var(--dur) var(--ease);
+  }
+  /* An order is running in the scene (see layoutBarMeal) — the labels get out of
+     the way of the menu rather than sitting on top of it. */
+  .tav-chips.hushed { opacity: 0; }
+  .tav-chips.hushed .tav-chip { pointer-events: none; }
   .tav-chip {
     position: absolute; transform: translate(-50%, -100%);
     pointer-events: auto; cursor: pointer; white-space: nowrap;
@@ -562,77 +569,3 @@
   .tav-chip.flavour { color: var(--ink-3); border-color: var(--edge); font-weight: 600; }
   .tav-chip.flavour:active { color: var(--ink-2); }
 
-  /* The bar's order panel (see renderBarPanel). It sits at the FOOT of the
-     stage, not over its middle: the exchange it belongs to is happening up at
-     the counter, and a thumb reaches the bottom of a phone. Pointer events are
-     off on the host so the floor stays tappable around it. */
-  .tav-order-host {
-    position: absolute; inset: auto 0 0 0; z-index: 3;
-    display: flex; justify-content: center;
-    padding: 0 8px 10px; pointer-events: none;
-  }
-  .tav-order {
-    pointer-events: auto; width: 100%; max-width: 420px;
-    display: flex; flex-direction: column; gap: 6px;
-    /* The stage zeroes its line-height so the canvas sits flush in it. This is
-       text living inside that stage, so it has to say so again — inherited, every
-       line here collapses to nothing and the panel's lines print over each other. */
-    line-height: 1.35;
-    padding: 10px 12px 12px; border-radius: 14px;
-    background: rgba(14, 11, 20, 0.9); border: 1px solid var(--arcane-3);
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(3px);
-    animation: ordIn 180ms var(--ease) both;
-  }
-  @keyframes ordIn { from { opacity: 0; transform: translateY(10px); } }
-  /* A spoken line: who, what they said, what it means. */
-  .tav-order .ord-says {
-    display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 0;
-  }
-  .ord-who {
-    font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
-    color: var(--ink-3);
-  }
-  .ord-it { font-family: var(--display-font); font-size: 15px; color: var(--gold); }
-  .ord-de { font-size: 11px; color: var(--ink-3); }
-  /* The order itself, and the gap the menu fills. */
-  .ord-line {
-    margin: 2px 0 0; font-size: 17px; line-height: 1.5; color: var(--ink);
-    display: flex; flex-wrap: wrap; gap: 0 6px; align-items: center;
-  }
-  .ord-gap {
-    min-width: 62px; text-align: center; padding: 1px 8px; border-radius: 8px;
-    color: var(--arcane-pale); background: rgba(77, 227, 224, 0.12);
-    border-bottom: 2px solid var(--arcane-3);
-  }
-  .ord-gap.filled {
-    color: #17121f; background: var(--arcane); border-bottom-color: var(--arcane-lt);
-  }
-  .ord-hint { margin: 0; font-size: 12px; color: var(--ink-3); }
-  /* The menu: a grid rather than a wrapping row, so four words come out two by
-     two instead of three-and-a-lonely-one, whatever they are called. */
-  .ord-opts {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;
-  }
-  .ord-opt {
-    min-width: 0; min-height: 44px; cursor: pointer;
-    padding: 9px 12px; border-radius: var(--r-pill);
-    font-size: 15px; font-weight: 700; color: var(--ink);
-    background: rgba(30, 24, 44, 0.9); border: 1px solid var(--arcane-3);
-    transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
-                border-color var(--dur) var(--ease), opacity var(--dur) var(--ease);
-  }
-  .ord-opt:active { background: var(--arcane); color: #17121f; }
-  /* A word the keeper couldn't place: struck out and out of play, but the order
-     stands and the panel stays open. */
-  .ord-opt.wrong {
-    opacity: 0.4; text-decoration: line-through; color: var(--ink-3);
-    border-color: var(--edge); background: rgba(20, 16, 28, 0.8);
-  }
-  .ord-won { margin: 2px 0 0; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-  .ord-shield {
-    font-size: 17px; font-weight: 800; color: var(--arcane-pale);
-    padding: 2px 10px; border-radius: var(--r-pill);
-    background: rgba(77, 227, 224, 0.16); border: 1px solid var(--arcane-3);
-  }
-  .ord-won-de { font-size: 12px; color: var(--ink-3); }
