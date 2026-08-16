@@ -160,6 +160,57 @@ const tavTop = (depth) => Math.max(1, Math.round(depth * TAV_TILT));
 // The same for a round one: the minor radius of a circle of radius `rx`.
 const tavRy = (rx) => Math.max(1, Math.round(rx * TAV_TILT));
 
+// What a prop stands on, in its own art coordinates: an ellipse `rx` across and
+// `ry` deep whose NEAREST point is the row the prop meets the boards. Read by
+// the shadow (see tavShadow) and by nothing else — it is the piece's footprint,
+// not its bounding box, which is why the counter's is fourteen deep however wide
+// the room makes it and the table's is as deep as the slab is round.
+const tavFoot = (cv, rx, ry) => { cv.foot = { rx, ry }; return cv; };
+
+// The contact shadow for a footprint that size, baked once per size.
+//
+// There used to be ONE of these — a 17 px blob — under every prop in the room,
+// drawn centred on the row the prop meets the boards. Both halves of that were
+// wrong, and the second is what the eye actually reads: a shadow centred on the
+// contact row puts half its darkness IN FRONT of the point where the object
+// touches the floor, and an object with floor showing between its feet and its
+// shadow is an object hovering above one. A footprint is an ellipse tilted by
+// the same half as every other surface here, and its NEAREST point is the
+// contact row — so the whole ellipse lies behind the feet, not around them.
+//
+// Two more things follow from putting it there, and both are what let the shadow
+// be SEEN rather than merely be in the right place:
+//
+//   * it is FLAT in the middle and soft only at the rim. shadowToCanvas fades
+//     linearly from the centre out, and under a piece of furniture that spends
+//     the whole gradient on the part of the pool the object is standing on —
+//     what is left showing round the edges is a few percent of black, a shadow
+//     you have to be told is there.
+//   * it is thrown a little to the RIGHT (`TAV_SUN`). A pool centred under a
+//     thing standing flush on the boards is a pool that thing covers every pixel
+//     of: a barrel's silhouette IS its own footprint. The room has one light in
+//     it and it is the hearth, back on the left, so everything casts right, and
+//     two px is enough to put a crescent where it can be read. The same two for
+//     every object — one light, one direction.
+const TAV_SUN = 2;
+const TAV_SHADOWS = {};
+function tavShadow(rx, ry) {
+  const key = `${rx}:${ry}`;
+  if (TAV_SHADOWS[key]) return TAV_SHADOWS[key];
+  TAV_SHADOWS[key] = tavArt(rx * 2 + 1, ry * 2 + 1, (ctx, r) => {
+    for (let py = -ry; py <= ry; py++) {
+      for (let px = -rx; px <= rx; px++) {
+        const d = Math.sqrt((px / rx) ** 2 + (py / ry) ** 2);
+        if (d > 1) continue;
+        const a = 0.42 * Math.min(1, (1 - d) * 3.4);
+        if (a < 0.02) continue;
+        r(px + rx, py + ry, 1, 1, `rgba(8, 5, 12, ${a.toFixed(3)})`);
+      }
+    }
+  });
+  return TAV_SHADOWS[key];
+}
+
 // A filled ellipse, row by row. Round tops — a table, a stool's seat, a barrel's
 // head — are the one shape a stack of rectangles cannot fake. `dy0`..`dy1` cut
 // it down to a band of rows, which is how a surface gets an outline on the far
@@ -172,6 +223,26 @@ function tavOval(r, cx, cy, rx, ry, col, dy0, dy1) {
     const w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (y / ry) ** 2)));
     if (w <= 0) continue;
     r(cx - w, cy + y, w * 2, 1, col);
+  }
+}
+
+// A band running round something CYLINDRICAL — a barrel's iron hoop, a
+// tankard's. It is the same ellipse as every other surface in this room, and it
+// has to be: a hoop lies in a horizontal plane, so seen from a little above it
+// is level with the eye out at the silhouette and dips toward the camera in the
+// middle, by exactly the half `tavRy` gives everything else. Only the near arc
+// shows — the far half of the ring is behind the cask.
+//
+// Ruled flat instead, which is what these were, the hoop states that the surface
+// it lies on is FLAT: two straight lines across a barrel turn it into a plank
+// with a curved lid stuck on the end. The staves and the head can do nothing
+// about it, because a straight line is the strongest statement of the three.
+function tavHoop(r, x0, x1, y, col, hi) {
+  const cx = (x0 + x1) / 2, rx = (x1 - x0) / 2, ry = tavRy(rx);
+  for (let x = x0; x <= x1; x++) {
+    const dy = Math.round(ry * Math.sqrt(Math.max(0, 1 - ((x - cx) / rx) ** 2)));
+    r(x, y + dy, 1, 2, col);
+    if (hi) r(x, y + dy, 1, 1, hi);
   }
 }
 
@@ -196,10 +267,10 @@ function tavAnvil() {
     TP.stoneLit, TP.stone,
     TP.stoneHi, TP.stoneHi,
     TP.stoneLit, TP.stone];
-  return tavArt(16, 13, (ctx, r) => {
+  return tavFoot(tavArt(16, 13, (ctx, r) => {
     spans.forEach(([x0, x1], y) => r(x0 - 1, y, x1 - x0 + 2, 3, TP.ink));
     spans.forEach(([x0, x1], y) => r(x0, y + 1, x1 - x0, 1, shade[y]));
-  }, { x: 8, y: 3 });
+  }, { x: 8, y: 3 }), 9, 4);
 }
 
 function tavShelf() {
@@ -208,7 +279,7 @@ function tavShelf() {
   // STANDING on it rather than being stuck to a line.
   const w = 28, deep = 10, top = tavTop(deep), h = 50;
   const books = [TP.red, TP.blueLit, TP.green, TP.gold, TP.bone, TP.blue, TP.greenLit];
-  return tavArt(w, h, (ctx, r) => {
+  return tavFoot(tavArt(w, h, (ctx, r) => {
     r(0, 0, w, h, TP.ink);                           // outline
     r(1, 1, w - 2, top, TP.woodLit);                 // the top of the case
     for (let x = 5; x < w - 2; x += 8) r(x, 1, 1, top, TP.woodDark);   // planks, running away
@@ -232,15 +303,22 @@ function tavShelf() {
       r(3, plankY + 2, w - 6, 1, TP.woodDark);       // its front edge, in shadow
     }
     r(1, h - 3, w - 2, 2, TP.woodDark);              // plinth
-  });
+  }), 15, 6);
 }
 
 function tavCounter(w) {
   // The bar is 14 px deep, which is seven rows of counter top. It used to show
   // three, and three rows of top is not a bar seen from above — it is a plank
   // stood on its edge.
-  const deep = 14, top = tavTop(deep), front = 12, h = top + front + 5;
-  return tavArt(w, h, (ctx, r) => {
+  //
+  // `front` is what the bar STANDS at, and it is set against the stool drawn up
+  // to it. The near edge of the counter top lands `front + 4` px off the boards,
+  // so eleven puts it at fifteen; a bar stool's seat is at ten (see tavStool),
+  // which is the two thirds a bar you can actually sit at wants. It used to be
+  // twelve against a stool of eight — a counter at the mage's shoulder with a
+  // footstool parked at it.
+  const deep = 14, top = tavTop(deep), front = 11, h = top + front + 5;
+  return tavFoot(tavArt(w, h, (ctx, r) => {
     r(0, 0, w, h, TP.ink);                        // outline
     r(1, 1, w - 2, top, TP.woodLit);              // the top, seen from above
     // The planks run AWAY from the drinker, so their seams line up with the
@@ -251,7 +329,7 @@ function tavCounter(w) {
     r(1, top + 3, w - 2, front, TP.wood);         // front panel
     for (let x = 5; x < w - 2; x += 7) r(x, top + 3, 1, front, TP.woodDark);
     r(1, h - 2, w - 2, 1, TP.woodDark);           // foot rail in shadow
-  }, { x: Math.round(w / 2), y: 1 + Math.round(top / 2) });
+  }, { x: Math.round(w / 2), y: 1 + Math.round(top / 2) }), Math.round(w / 2) + 1, tavTop(deep) + 1);
 }
 
 // A turned leg, falling in `segs` short segments so it can splay as it goes.
@@ -278,42 +356,57 @@ function tavTable() {
   // as deep as it is wide, the same half the crate's lid is. Under its near rim
   // sit two rows of the slab's own thickness, which is what stops a round table
   // reading as a disc lying on the floor.
-  const w = 24, h = 22, cx = 12, cy = 6, rx = 12, ry = tavRy(rx);
-  return tavArt(w, h, (ctx, r) => {
+  //
+  // The legs are FIVE segments, not four, and that is measured off the people
+  // standing round it: the mage is 22 px from boots to hat, so a table he can
+  // eat at is about eleven px from the boards to the near edge of its top, and
+  // the stools drawn up to it are eight. At four segments the two were the same
+  // height and the room read as a set of trays on stands.
+  const w = 24, h = 25, cx = 12, cy = 6, rx = 12, ry = tavRy(rx);
+  return tavFoot(tavArt(w, h, (ctx, r) => {
     // Legs first, so the top is drawn over their heads and each one runs up
     // UNDER the slab instead of being butted against its outline. Four of them,
     // one to a quarter: the near one reaches the boards lowest, the two at the
     // sides stand three px deeper and so stop three px sooner, and the fourth is
     // right at the back where the slab covers it entirely — which is exactly
     // what a round table does when you look down on it.
-    tavLeg(r, cx - 1, 0, 10, 4);
-    tavLeg(r, 4, -1, 10, 3);
-    tavLeg(r, 18, 1, 10, 3);
+    tavLeg(r, cx - 1, 0, 10, 5);
+    tavLeg(r, 4, -1, 10, 4);
+    tavLeg(r, 18, 1, 10, 4);
     tavOval(r, cx, cy + 2, rx, ry, TP.ink);      // the slab's thickness…
     tavOval(r, cx, cy, rx, ry, TP.ink);          // …and its top
     tavOval(r, cx, cy + 2, rx - 1, ry - 1, TP.woodDark);   // edge grain, in shadow
     tavOval(r, cx, cy, rx - 1, ry - 1, TP.wood);
     tavOval(r, cx, cy - 1, rx - 3, ry - 2, TP.woodLit);    // lit toward the far rim
     r(cx - 5, cy - 4, 10, 1, TP.woodEdge);
-  }, { x: cx, y: cy + 1 });
+  }, { x: cx, y: cy + 1 }), rx + 1, ry + 1);
 }
 
-function tavStool() {
-  // The same slab-and-legs as the table, one size down. The seat used to sit on
-  // three legs ruled together by a bar of ink along the bottom; now each leg
-  // splays out and lands on its own foot.
-  const w = 14, h = 16, cx = 7, cy = 4, rx = 6, ry = tavRy(rx);
-  return tavArt(w, h, (ctx, r) => {
-    tavLeg(r, cx - 1, 0, 7, 3);                  // the near leg…
-    tavLeg(r, 3, -1, 7, 2);                      // …and the two standing deeper
-    tavLeg(r, 9, 1, 7, 2);
+// The same slab-and-legs as the table, one size down. The seat used to sit on
+// three legs ruled together by a bar of ink along the bottom; now each leg
+// splays out and lands on its own foot.
+//
+// `bar` is the tall one. A room has two kinds of stool in it and they are not
+// the same object: one is drawn up to a table eleven px high and one to a
+// counter fifteen, so a single stool cannot serve both — parked at the bar, the
+// eight px seat left the drinker's chin at the counter's lip. The bar stool gets
+// a fourth leg segment (a seat at ten) and the footrest ring that comes with the
+// height, which is the detail that says "bar stool" before the height does.
+function tavStool(bar) {
+  const segs = bar ? 4 : 3, y0 = bar ? 6 : 7;
+  const w = 14, h = y0 + segs * 3, cx = 7, cy = 4, rx = 6, ry = tavRy(rx);
+  return tavFoot(tavArt(w, h, (ctx, r) => {
+    tavLeg(r, cx - 1, 0, y0, segs);              // the near leg…
+    tavLeg(r, 3, -1, y0, segs - 1);              // …and the two standing deeper
+    tavLeg(r, 9, 1, y0, segs - 1);
+    if (bar) tavHoop(r, 2, 11, h - 7, TP.stoneLit, TP.stoneHi);   // the footrest
     tavOval(r, cx, cy + 1, rx, ry, TP.ink);      // the seat's thickness…
     tavOval(r, cx, cy, rx, ry, TP.ink);          // …and its top
     tavOval(r, cx, cy + 1, rx - 1, ry - 1, TP.woodDark);
     tavOval(r, cx, cy, rx - 1, ry - 1, TP.wood);
     tavOval(r, cx, cy - 1, rx - 2, ry - 1, TP.woodLit);
     r(cx - 2, cy - 2, 5, 1, TP.woodEdge);
-  }, { x: cx, y: cy });
+  }, { x: cx, y: cy }), rx + 2, ry + 1);
 }
 
 function tavBarrel() {
@@ -321,7 +414,7 @@ function tavBarrel() {
   // The old rim was two rows, which reads as a tube cut off square rather than a
   // cask with a head in it.
   const w = 14, h = 21, cx = 7, cy = 5, rx = 6, ry = tavRy(rx);
-  return tavArt(w, h, (ctx, r) => {
+  return tavFoot(tavArt(w, h, (ctx, r) => {
     // The staves, drawn a row at a time so they can taper a pixel at the head
     // and at the foot — a cask bellies out, and the taper is what leaves room
     // for the head to sit INSIDE the silhouette instead of capping it.
@@ -336,10 +429,9 @@ function tavBarrel() {
     }
     r(4, cy, 1, h - cy - 1, TP.woodDark);        // stave seams
     r(9, cy, 1, h - cy - 1, TP.woodDark);
-    r(1, cy + 6, w - 2, 2, TP.stoneLit);         // iron hoops, clear of the head
-    r(1, cy + 6, w - 2, 1, TP.stoneHi);
-    r(1, h - 5, w - 2, 2, TP.stoneLit);
-    r(1, h - 5, w - 2, 1, TP.stoneHi);
+    // The iron, hooped round the cask rather than ruled across it — see tavHoop.
+    tavHoop(r, 1, w - 2, cy + 4, TP.stoneLit, TP.stoneHi);
+    tavHoop(r, 1, w - 2, h - 8, TP.stoneLit, TP.stoneHi);
     r(2, h - 1, w - 4, 1, TP.pit);               // where it meets the boards
     // The head, 12 across and 6 deep. Outlined along its far arc only; in front
     // it is flush with the staves, so it gets a seam rather than a silhouette.
@@ -348,7 +440,33 @@ function tavBarrel() {
     tavOval(r, cx, cy, rx - 1, ry - 1, TP.wood);
     tavOval(r, cx, cy - 1, rx - 2, ry - 2, TP.woodLit);
     r(cx - 3, cy - 2, 6, 1, TP.woodEdge);        // the far rim, catching the light
-  }, { x: cx, y: cy });
+  }, { x: cx, y: cy }), rx + 2, ry + 1);
+}
+
+// A table and the stools drawn up to it, as one group of props.
+//
+// The stools are in the SAME list as the table and sorted with it, and that is
+// what makes them stools at a table rather than stools near one: the one behind
+// has the smaller `feet`, so it is drawn first and comes back with its seat
+// tucked in under the slab, showing a sliver of seat past the rim and its legs
+// below. The one in front is drawn after and overlaps the near rim instead. A
+// stool clear of the table on both counts — which is what these used to be, a
+// full stool's width off to the side and further down the room — is a stool
+// standing in the same postcode as a table.
+//
+// Two per table, not four. The floor here is what the mage walks and every prop
+// is something he must round (see `p.block`); a table ringed with seats is a
+// table nobody can reach.
+function tavSeating(x, feet) {
+  // The far side of a table 24 across is twelve px of floor behind its near
+  // legs, so that is where the stool on the far side stands: near enough that
+  // the slab takes its seat and leaves the crown of it showing over the far rim.
+  const cx = x + 12;                             // the table's own centre
+  return [
+    { art: TAV.stool, x: cx - 12, feet: feet - 14 },  // behind it, seat under the slab
+    { art: TAV.table, x, feet, candle: true },
+    { art: TAV.stool, x: cx + 2, feet: feet + 3 },    // and one pulled round to the front
+  ];
 }
 
 // The hearth is built into the back wall, and its stonework is the wall's own
@@ -470,8 +588,8 @@ function tavBirra() {                       // la birra — a tankard with a hea
     r(1, 3, 7, 9, TP.wood);
     r(3, 3, 1, 9, TP.woodDark);             // staves
     r(6, 3, 1, 9, TP.woodDark);
-    r(1, 4, 7, 1, TP.stoneLit);             // iron hoops, as on the barrel
-    r(1, 10, 7, 1, TP.stoneLit);
+    tavHoop(r, 1, 7, 4, TP.stoneLit);       // iron hoops, as on the barrel
+    tavHoop(r, 1, 7, 8, TP.stoneLit);
     tavOval(r, 4, 2, 5, 2, TP.ink);         // the head of foam, brimming over
     tavOval(r, 4, 2, 4, 1, TP.white);
     r(2, 0, 4, 1, TP.bone);
@@ -525,12 +643,11 @@ function buildTavernArt() {
     anvil: tavAnvil(),
     shelf: tavShelf(),
     table: tavTable(),
-    stool: tavStool(),
+    stool: tavStool(false),
     barrel: tavBarrel(),
     hearth: tavHearth(),
+    stoolBar: tavStool(true),
     counter: null,                                  // sized with the room
-    shadow: shadowToCanvas(8, 3, 0.42),
-    shadowSm: shadowToCanvas(6, 2, 0.36),
     glowFire: glowToCanvas(30, "255, 156, 66", 0.42),
     glowEmber: glowToCanvas(13, "255, 190, 96", 0.55),
     glowCandle: glowToCanvas(9, "255, 214, 132", 0.5),
@@ -593,33 +710,51 @@ function setupTavern(cv) {
 
   // Furniture that stands ON the floor: drawn in the depth-sorted pass with the
   // people, so the mage can walk behind a table and in front of the next one.
+  //
+  // NOTHING IN A ROOM STANDS BY ITSELF. Everything here was once placed on its
+  // own patch of floor with a clear foot of boards round it, and a room laid out
+  // that way reads as a showroom: each piece separately visible, none of them
+  // touching, no two of them used together. Real furniture crowds — a stool is
+  // shoved under the table it belongs to, a crate leans on the barrel beside it,
+  // the smith's stock is at her elbow because she has to reach it. So props here
+  // OVERLAP on purpose, and the depth sort turns that overlap into a room: a
+  // piece with the larger `feet` is nearer the camera and covers what is behind
+  // it. Reading a layout number as "how far apart" is the mistake; read it as
+  // "which of these is in front".
+  const forgeX = Math.round(artW * 0.05);
   const props = [
-    // the forge corner
-    { art: TAV.anvil, x: Math.round(artW * 0.05), feet: fy(0.11) },
-    { art: TAV.crate, x: Math.round(artW * 0.05) + 46, feet: fy(0.06) },
-    { art: TAV.barrel, x: Math.round(artW * 0.05), feet: fy(0.20) },
-    // the bar
-    { art: TAV.barrel, x: counterX + counterW + 2, feet: counterY + 4 },
-    { art: TAV.crate, x: doorX - 24, feet: fy(0.12) },
+    // The forge corner. The smith's stock stands where she can turn and take
+    // from it: a barrel against the anvil, a crate leaning on the barrel.
+    { art: TAV.anvil, x: forgeX, feet: fy(0.12) },
+    { art: TAV.crate, x: forgeX + 30, feet: fy(0.05) },
+    { art: TAV.barrel, x: forgeX + 20, feet: fy(0.08) },
+    // The bar, with its casks stacked at the near end and the stools pushed
+    // right in under the counter's lip — a stool a hand's width off the bar is a
+    // stool nobody is sitting on.
+    { art: TAV.barrel, x: counterX + counterW - 3, feet: counterY + 8 },
+    { art: TAV.barrel, x: counterX + counterW + 6, feet: counterY + 15 },
+    // Stacked against the wall beside the doorway, where a delivery is set down —
+    // not out on the open floor, which is where it stood and where a single crate
+    // reads as a prop somebody forgot to attach to anything.
+    { art: TAV.crate, x: doorX - 19, feet: floorY + 14 },
     { art: TAV.counter, x: counterX, feet: counterFeet },
-    { art: TAV.stool, x: counterX + 6, feet: counterFeet + 11 },
-    { art: TAV.stool, x: counterX + counterW - 24, feet: counterFeet + 12 },
-    // the tables
-    { art: TAV.table, x: Math.round(artW * 0.03), feet: fy(0.48), candle: true },
-    { art: TAV.stool, x: Math.round(artW * 0.03) + 24, feet: fy(0.52) },
-    { art: TAV.table, x: Math.round(artW * 0.44), feet: fy(0.64), candle: true },
-    { art: TAV.stool, x: Math.round(artW * 0.44) + 24, feet: fy(0.68) },
-    { art: TAV.stool, x: Math.round(artW * 0.44) - 12, feet: fy(0.67) },
-    // the reading corner
+    { art: TAV.stoolBar, x: counterX + 7, feet: counterFeet + 6 },
+    { art: TAV.stoolBar, x: counterX + 28, feet: counterFeet + 7 },
+    { art: TAV.stoolBar, x: counterX + counterW - 22, feet: counterFeet + 6 },
+    // The tables, each with the stools drawn up to it (see tavSeating).
+    ...tavSeating(Math.round(artW * 0.06), fy(0.50)),
+    ...tavSeating(Math.round(artW * 0.44), fy(0.66)),
+    // The reading corner: the scholar's table, tucked against her shelves.
     { art: TAV.shelf, x: shelfX, feet: shelfFeet },
-    { art: TAV.table, x: artW - 76, feet: fy(0.94), candle: true },
-    { art: TAV.stool, x: artW - 88, feet: fy(0.97) },
-    // odds and ends
-    { art: TAV.barrel, x: Math.round(artW * 0.06), feet: fy(0.86) },
-    { art: TAV.crate, x: Math.round(artW * 0.22), feet: fy(0.92) },
+    ...tavSeating(artW - 72, fy(0.93)),
+    // Odds and ends, stacked in the near corner rather than scattered over it.
+    { art: TAV.barrel, x: Math.round(artW * 0.06), feet: fy(0.87) },
+    { art: TAV.crate, x: Math.round(artW * 0.06) + 12, feet: fy(0.91) },
   ];
   for (const p of props) {
     p.w = p.art.width; p.h = p.art.height;
+    p.foot = p.art.foot
+      || { rx: Math.round(p.w / 2) + 1, ry: Math.max(3, Math.round(p.w / 4) + 1) };
     // What the mage may not walk through: the prop's own footprint, widened a
     // little so he rounds a table rather than clipping its corner.
     p.block = { x0: p.x - 3, x1: p.x + p.w + 3, y0: p.feet - Math.min(p.h, 14), y1: p.feet + 7 };
@@ -672,7 +807,7 @@ function setupTavern(cv) {
   // Three stand at their post and one carries drinks around; the mage is the
   // player's own figure and wanders the whole open floor.
   const actor = (cast, x, y, extra) => Object.assign({
-    cast, x, y, tx: x, ty: y, facing: 1, moving: false,
+    cast, x, y, tx: x, ty: y, facing: 1, moving: false, path: null,
     waitUntil: 0, goal: null, arriveAt: 0, phase: tileHash(x | 0, y | 0) % 4,
     roam: null, speed: TAV_WALK_MS,
   }, extra || {});
@@ -681,13 +816,15 @@ function setupTavern(cv) {
     roam: walk, wander: true, waitUntil: 0,
   });
   const people = [
-    actor("smith", Math.round(artW * 0.05) + 28, fy(0.10), { facing: -1 }),
+    // At the anvil, not beside it: her feet are above its own, so the depth sort
+    // draws the anvil over her legs and she is standing AT the thing she works.
+    actor("smith", forgeX + 9, fy(0.10), { facing: 1 }),
     // Behind the bar: his feet are above the counter's, so the depth sort draws
     // the counter over his legs and he reads as standing behind it.
     actor("keeper", counterX + Math.round(counterW * 0.6), counterY + 6, { facing: 1 }),
-    actor("scholar", shelfX - 12, shelfFeet + 3, { facing: 1 }),
-    actor("guest", counterX + 22, counterFeet + 13, { facing: 1 }),
-    actor("guest2", Math.round(artW * 0.03) + 30, fy(0.50), { facing: -1 }),
+    actor("scholar", shelfX - 11, shelfFeet + 2, { facing: 1 }),
+    actor("guest", counterX + 24, counterFeet + 10, { facing: 1 }),
+    actor("guest2", Math.round(artW * 0.06) + 34, fy(0.53), { facing: -1 }),
     actor("maid", Math.round(artW * 0.5), fy(0.72), {
       wander: true, speed: TAV_WALK_MS * 1.15,
       roam: { x0: 16, x1: artW - 26, y0: fy(0.34), y1: fy(0.96) },
@@ -705,7 +842,10 @@ function setupTavern(cv) {
     lastNow: 0,
     bg: null,
     vignette: null,
+    nav: null,
   };
+  // The furniture never moves, so the floor is mapped once (see buildTavernNav).
+  tavern.nav = buildTavernNav();
   tavern.bg = buildTavernBg();
   tavern.vignette = buildTavernVignette();
   return true;
@@ -826,6 +966,84 @@ function tavBlocked(x, y) {
   return tavern ? tavBlockedIn(tavern.props, tavern.walk, x, y) : false;
 }
 
+// The floor as a grid, and a route across it.
+//
+// SLIDING ALONG A WALL IS NOT PATHFINDING, and a furnished room is exactly where
+// the difference shows. Walking here used to be: step toward the goal, and if
+// that is blocked give up the blocked axis and keep the other. It gets a figure
+// round a single table and nothing else. Wedge it into the corner where two
+// pieces meet — both axes blocked at once — and the walk simply ENDED: the mage
+// stopped against a barrel and forgot the bar he was sent to.
+//
+// That was survivable only while nothing in the room touched anything else, and
+// it made every layout number load-bearing in a way no layout number should be:
+// the smoke test's walk to the bar passed because its diagonal cleared a barrel
+// by two pixels. Move that barrel three pixels and the room is broken — not
+// visibly, which is worse. A tavern is meant to be crowded (see the essay over
+// `props`), so the crowding had to stop costing anything.
+//
+// A* over a four-pixel grid, then. The library is already vendored for the
+// corridor's lane routing (vendor-astar.js), the walls are the same `p.block`
+// rectangles the old slide consulted, and the grid is built ONCE with the room —
+// the furniture never moves, so a route never needs replanning. What comes back
+// is kept as CORNERS only: the straight runs between them are the walk, so the
+// mage still crosses the floor in long diagonal strides rather than stepping
+// cell to cell.
+const NAV_CELL = 4;
+
+function buildTavernNav() {
+  const { walk, props } = tavern;
+  const cols = Math.ceil((walk.x1 - walk.x0) / NAV_CELL) + 1;
+  const rows = Math.ceil((walk.y1 - walk.y0) / NAV_CELL) + 1;
+  const weights = [];
+  for (let c = 0; c < cols; c++) {
+    const col = new Array(rows);
+    for (let r = 0; r < rows; r++) {
+      col[r] = tavBlockedIn(props, walk, walk.x0 + c * NAV_CELL, walk.y0 + r * NAV_CELL) ? 0 : 1;
+    }
+    weights.push(col);
+  }
+  return { graph: new Graph(weights, { diagonal: true }), cols, rows };
+}
+
+const navClamp = (v, hi) => Math.max(0, Math.min(hi - 1, Math.round(v)));
+
+// The corners of a route from where `a` stands to (tx, ty), or null for "walk
+// straight at it" — which is the right answer both when the two are in plain
+// sight of each other and when the figure is standing INSIDE something (a room
+// rebuilt at another size can leave him in a stool that wasn't there a frame
+// ago) and has to walk out before any of this means anything.
+function tavRoute(a, tx, ty) {
+  const nav = tavern && tavern.nav;
+  if (!nav) return null;
+  const { walk } = tavern;
+  const at = (x, y) => nav.graph.grid
+    [navClamp((x - walk.x0) / NAV_CELL, nav.cols)]
+    [navClamp((y - walk.y0) / NAV_CELL, nav.rows)];
+  const start = at(a.x, a.y), goal = at(tx, ty);
+  if (start === goal) return null;
+  // `closest` so an unreachable corner of the room still gets him as near as the
+  // floor allows, rather than leaving him standing where he was told to go.
+  const path = astar.search(nav.graph, start, goal, { closest: true });
+  if (!path.length) return null;
+  const pts = [];
+  for (let i = 0; i < path.length - 1; i++) {
+    const prev = i === 0 ? start : path[i - 1], here = path[i], next = path[i + 1];
+    if (here.x - prev.x !== next.x - here.x || here.y - prev.y !== next.y - here.y) {
+      pts.push({ x: walk.x0 + here.x * NAV_CELL, y: walk.y0 + here.y * NAV_CELL });
+    }
+  }
+  return pts.length ? pts : null;
+}
+
+// Send a figure somewhere. The one way anyone in this room is given a
+// destination, so the route is planned in exactly one place.
+function tavWalkTo(a, x, y) {
+  a.tx = x; a.ty = y;
+  a.path = tavRoute(a, x, y);
+  a.moving = Math.hypot(a.x - x, a.y - y) > 1.2 || !!a.path;
+}
+
 // A free spot inside `roam` to stroll to. Tries a handful of times and gives up
 // rather than looping — a frame with nowhere to go simply waits another beat.
 function tavPickSpot(roam) {
@@ -849,13 +1067,20 @@ function tavUpdateActor(a, now, dt) {
     if (goal && goal.id === "bar") openBarOrder(now);
   }
   if (a.moving) {
-    const dx = a.tx - a.x, dy = a.ty - a.y;
+    // The next corner of the route, or the destination once the corners are
+    // walked. Between two corners the floor is clear, so this is a straight line
+    // and nothing has to be tested against the furniture on the way.
+    const leg = a.path && a.path.length ? a.path[0] : null;
+    const wx = leg ? leg.x : a.tx, wy = leg ? leg.y : a.ty;
+    const dx = wx - a.x, dy = wy - a.y;
     const dist = Math.hypot(dx, dy);
     // Somewhere to BE is walked at a purpose; an idle stroll is not. The player
     // asked for a phase, so the mage doesn't dawdle on his way to it.
     const step = a.speed * (a.goal ? 2.6 : 1) * dt;
     if (dist <= Math.max(step, 0.8)) {
-      a.x = a.tx; a.y = a.ty; a.moving = false;
+      a.x = wx; a.y = wy;
+      if (leg) { a.path.shift(); return; }        // round the corner and carry on
+      a.moving = false;
       if (a.goal) {
         a.facing = a.goal.face || a.facing;
         a.arriveAt = now + 240;
@@ -864,24 +1089,15 @@ function tavUpdateActor(a, now, dt) {
       }
       return;
     }
-    const nx = a.x + (dx / dist) * step, ny = a.y + (dy / dist) * step;
-    // Slide along whichever axis is free rather than walking into a table; if
-    // both are blocked the destination is unreachable, so give it up. Standing
-    // inside something is the one case that ignores all of it and simply walks
-    // out — a room rebuilt at another size can leave a figure inside a stool
-    // that wasn't there a frame ago, and being stuck for ever is not an option.
-    if (tavBlocked(a.x, a.y)) { a.x = nx; a.y = ny; }
-    else if (!tavBlocked(nx, ny)) { a.x = nx; a.y = ny; }
-    else if (!tavBlocked(nx, a.y)) { a.x = nx; }
-    else if (!tavBlocked(a.x, ny)) { a.y = ny; }
-    else { a.moving = false; a.goal = null; a.waitUntil = now + 500; return; }
+    a.x += (dx / dist) * step;
+    a.y += (dy / dist) * step;
     if (Math.abs(dx) > 1.5) a.facing = dx > 0 ? 1 : -1;
     return;
   }
   if (!a.wander || a.goal || now < a.waitUntil) return;
   const spot = tavPickSpot(a.roam);
   if (!spot) { a.waitUntil = now + 900; return; }
-  a.tx = spot.x; a.ty = spot.y; a.moving = true;
+  tavWalkTo(a, spot.x, spot.y);
 }
 
 // A tap on a station: walk the mage over, and (for the three that lead
@@ -897,9 +1113,8 @@ function tavernGo(id) {
     closeBarOrder();
   }
   const m = tavern.mage;
-  m.tx = st.stand.x; m.ty = st.stand.y;
   m.goal = st; m.arriveAt = 0; m.waitUntil = 0;
-  m.moving = Math.hypot(m.x - m.tx, m.y - m.ty) > 1.2;
+  tavWalkTo(m, st.stand.x, st.stand.y);
   if (!m.moving) { m.facing = st.face || m.facing; m.arriveAt = performance.now() + 200; }
   tavern.focus = st.id;
 }
@@ -943,7 +1158,9 @@ function tavernTapPoint(artX, artY) {
     tx = spot.x; ty = spot.y;
   }
   const m = tavern.mage;
-  m.tx = tx; m.ty = ty; m.goal = null; m.arriveAt = 0; m.waitUntil = 0; m.moving = true;
+  m.goal = null; m.arriveAt = 0; m.waitUntil = 0;
+  tavWalkTo(m, tx, ty);
+  m.moving = true;
   tavern.focus = null;
 }
 
@@ -1462,7 +1679,11 @@ function drawTavernActor(ctx, a, now) {
   const set = a.moving ? (a.facing < 0 ? skin.runL : skin.run) : (a.facing < 0 ? skin.idleL : skin.idle);
   const f = Math.floor(now / (a.moving ? 110 : 170) + a.phase) % set.length;
   const x = Math.round(a.x - skin.w / 2), y = Math.round(a.y - skin.h - (a.bob || 0));
-  ctx.drawImage(TAV.shadowSm, Math.round(a.x) - TAV.shadowSm.width / 2, Math.round(a.y) - 2);
+  // Behind the boots, not around them — the shadow's near edge is the row they
+  // stand on. See tavShadow; it was drawn centred here too, and a figure with
+  // three rows of shadow in front of his own feet floats the same way a prop does.
+  const sh = tavShadow(7, 3);
+  ctx.drawImage(sh, Math.round(a.x - sh.width / 2) + TAV_SUN, Math.round(a.y) - sh.height + 2);
   ctx.drawImage(set[f], x, y);
 }
 
@@ -1532,7 +1753,9 @@ function renderTavern(now) {
   for (const d of drawables) {
     if (d.a) { drawTavernActor(ctx, d.a, now); continue; }
     const p = d.p;
-    ctx.drawImage(TAV.shadow, Math.round(p.x + p.w / 2 - TAV.shadow.width / 2), Math.round(p.feet - 3));
+    const sh = tavShadow(p.foot.rx, p.foot.ry);
+    ctx.drawImage(sh, Math.round(p.x + p.w / 2 - sh.width / 2) + TAV_SUN,
+      Math.round(p.feet) - sh.height + 2);
     ctx.drawImage(p.art, Math.round(p.x), Math.round(p.feet - p.h));
     if (p.candle) {
       // A candle STANDS on the table. It used to be planted at the top of the
