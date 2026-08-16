@@ -1838,6 +1838,43 @@ try {
   check(floor.screen === "tavern" && floor.moving && floor.goal === null,
     "a tap on the floor walks him there and changes no screen");
 
+  //      …and he gets there from ANYWHERE. The room is meant to be crowded, so
+  //      the floor is searched with A* (tavern.js buildTavernNav) rather than
+  //      slid along — the walk this replaced ended on the spot when a corner
+  //      blocked both axes at once, which made the layout numbers load-bearing:
+  //      one barrel moved three px and a station became unreachable, silently.
+  //      Every station, from every corner, with the phase hand-off disarmed so
+  //      the walk itself is what is measured.
+  const corners = await page.evaluate(async () => {
+    navTo("tavern");
+    const w = tavern.walk, m = tavern.mage;
+    const spots = [[w.x0 + 4, w.y0 + 4], [w.x1 - 4, w.y0 + 4],
+      [w.x0 + 4, w.y1 - 4], [w.x1 - 4, w.y1 - 4]];
+    const bad = [];
+    for (const st of tavern.stations) {
+      for (const [x, y] of spots) {
+        m.x = x; m.y = y; m.moving = false; m.goal = null; m.waitUntil = Infinity;
+        m.arriveAt = 0; m.path = null;
+        tavern.meal = null;
+        tavernGo(st.id);
+        const t0 = performance.now();
+        // Stepped by hand, so no frame of this can hand a phase over.
+        while (m.goal && performance.now() - t0 < 4000) {
+          await new Promise((r) => requestAnimationFrame(r));
+          m.arriveAt = 0;
+          tavUpdateActor(m, performance.now(), 16);
+        }
+        const d = Math.hypot(m.x - st.stand.x, m.y - st.stand.y);
+        if (d > 2) bad.push(`${st.id}@${x | 0},${y | 0}=${d.toFixed(0)}px`);
+      }
+    }
+    m.goal = null; m.waitUntil = 0;
+    return { bad, tried: tavern.stations.length * spots.length };
+  });
+  check(corners.bad.length === 0,
+    "every station is reachable from every corner of the crowded room (" +
+    corners.tried + " walks" + (corners.bad.length ? ", stuck: " + corners.bad.join(" · ") : "") + ")");
+
   //      The bar (see tavern.js + BAR_ORDER_POOL). The one station that leads
   //      nowhere: the hero walks to the counter, orders in Italian, is served,
   //      eats, and comes away with a shield. Driven entirely by taps — the
