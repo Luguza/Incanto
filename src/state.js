@@ -78,6 +78,7 @@ function freshState() {
     packIndex: 0,             // how far through the encounter plan this run has walked (see encounters.js)
     emptySinceMs: 0,          // when the corridor last went visibly bare (0 = something is on camera)
     fillerLane: -1,           // rotates so consecutive dead-air fillers spread across the lanes
+    laneRouteAt: 0,           // when the mob last re-read the floor for a way round (see pathfind.js)
     cameraX: 0,               // hallway scroll (px): grows as the hero strides right down the corridor
     distance: 0,              // metres walked this run (cameraX / TILE) — triggers the encounter plan
     cameraVel: 0,             // current pan speed (px/ms), eased toward its target so starts/stops aren't abrupt

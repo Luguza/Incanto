@@ -296,7 +296,9 @@ function plantGoo(e, at, { spread = 1, jitter = 0 } = {}) {
     // World px: the camera offset is baked in here and taken back out at draw
     // time, which is what pins the mark to the floor.
     x: state.cameraX + e.pos * TILE + jitter,
-    lane: e.lane,
+    // The row it was DRAWN on, so a smear dripped while the slime is crossing
+    // between two lanes lands under it rather than on the row it left.
+    lane: e.laneVis != null ? e.laneVis : e.lane,
     rx: Math.max(2, (e.w || 12) * 0.26 * spread * vary),
     ry: Math.max(1, (e.h || 10) * 0.11 * spread * vary),
     type: e.type,                     // which colourway it drips (see gooTint)
@@ -390,6 +392,14 @@ function spawnEnemy(now, lane, pos, typeId) {
     range: type.range != null ? type.range : CONFIG.enemyAttackRangeTiles,
     slot: id,                     // per-enemy constant, only used to de-sync the idle animation
     lane,
+    // Crossing to another lane (see pathfind.js). `lane` is the row it belongs to
+    // and is what the queue is resolved from; `laneVis` is the row it is DRAWN on,
+    // easing across behind it. The other three are the route: which lane it is
+    // headed for, the turn it is walking up to, and when it last crossed.
+    laneVis: lane,
+    laneGoal: null,
+    laneStep: null,
+    laneMovedAt: 0,
     pos,
     phase: "walk",                // walk | idle | attack | frozen | dying
     phaseAt: now,

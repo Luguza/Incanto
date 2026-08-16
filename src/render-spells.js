@@ -23,7 +23,7 @@ function fxPoint(stored, targetId) {
       const art = enemyArt(e);
       return {
         x: Math.round(scene.enemyLineX + e.pos * TILE),
-        y: (scene.laneY[e.lane] ?? scene.feetY) - art.h + art.chest,
+        y: laneFloorY(e) - art.h + art.chest,
       };
     }
   }
@@ -239,7 +239,7 @@ const SPELL_FX = {
     if (!scene) return;
     const c = CONFIG.colors.spell.meteor;
     const x = Math.round(scene.enemyLineX + f.pos * TILE);
-    const groundY = scene.laneY[Math.min(f.lane, scene.laneY.length - 1)] ?? scene.feetY;
+    const groundY = laneFloorY(f.lane);
     if (now < f.landAt) {
       const q = (now - f.born) / Math.max(1, f.landAt - f.born);
       // Falls steeply from off the top of the frame, trailing embers.

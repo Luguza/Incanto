@@ -1301,6 +1301,126 @@ try {
   check(roles.mended, "a healer puts HP back on the wounded body in front of it");
   check(roles.summoned > 0, `a summoner calls in bodies of its own (${roles.summoned})`);
 
+  //     THE MOB LOOKS FOR A WAY ROUND (see pathfind.js). A lane is a strict queue
+  //     and only its front body reaches melee, so a column of six in one lane used
+  //     to come at the hero in single file with three lanes of open floor beside
+  //     it. Now a body that is walled in runs A* over the hall and crosses. Four
+  //     things are measured, and only the first is about spreading out: the
+  //     column fills the empty lanes and really does swing; nothing ever ends up
+  //     sharing a tile with anybody (a change of lane must not be a way through a
+  //     body); and the change is a SLIDE, drawn between the two rows rather than
+  //     a jump from one to the other.
+  const spread = await page.evaluate(async () => {
+    const E = window.Incanto.encounters;
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    startRun();
+    state.heroMaxHP = state.heroHP = 10 ** 6;
+    state.mods.regen = 0;
+    state.packIndex = E.ENCOUNTER_PLAN.length;   // no camps, no fillers — just these six
+    state.enemies = [];
+    // All six in one lane, and unkillable: what is measured here is the marching,
+    // not the hero's aim.
+    for (let i = 0; i < 6; i++) {
+      const b = spawnEnemy(performance.now(), 1, 2 + i * 1.3, CONFIG.enemyTypes[0].id);
+      b.hp = b.maxHP = 10 ** 6;
+    }
+    const hp0 = state.heroHP;
+    let slid = 0, shared = 0, swinging = 0;
+    for (let i = 0; i < 160; i++) {
+      await settle(50);
+      for (const e of state.enemies) if (Math.abs(e.laneVis - e.lane) > 0.05) slid++;
+      // No two bodies of one lane may ever come inside the clearance the march
+      // itself keeps — a sidestep that lands on top of somebody is a body walked
+      // through, however good the reason for it.
+      for (const a of state.enemies) {
+        for (const b of state.enemies) {
+          if (a.id >= b.id || a.lane !== b.lane) continue;
+          if (Math.abs(a.pos - b.pos) < Incanto.loop.laneSpacing(a, b) - 0.05) shared++;
+        }
+      }
+      swinging = Math.max(swinging, state.enemies.filter((e) => e.phase === "attack").length);
+    }
+    const per = {};
+    for (const e of state.enemies) per[e.lane] = (per[e.lane] || 0) + 1;
+    return {
+      bodies: state.enemies.length, lanes: Object.keys(per).length, per, slid, shared, swinging,
+      hurt: Math.round(hp0 - state.heroHP), of: CONFIG.enemyLanes,
+    };
+  });
+  check(spread.bodies === 6 && spread.lanes === spread.of,
+    `six bodies stacked in one lane spread over all ${spread.of} of them (` +
+    Object.keys(spread.per).sort().map((l) => `${l}:${spread.per[l]}`).join(" ") + ")");
+  check(spread.swinging >= spread.of && spread.hurt > 0,
+    `…and ${spread.swinging} of them reach the hero at once instead of one (${spread.hurt} damage taken)`);
+  check(!spread.shared, "no body ever crosses INTO another one — the march's own clearance holds throughout");
+  check(spread.slid > 0, `the change of lane is a slide, drawn between the two rows (${spread.slid} frames caught mid-step)`);
+
+  //     …and the part that needs a search rather than a nudge sideways: when the
+  //     lane next door is a wall, the body has to go ROUND it. Asked of the search
+  //     directly, because the answer that matters most is the negative one — a
+  //     floor with no way through must come back "no", so a boxed-in body holds
+  //     its place in the queue instead of shuffling against the wall forever.
+  const around = await page.evaluate(async () => {
+    const E = window.Incanto.encounters;
+    const P = window.Incanto.pathfind;
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const mk = (lane, pos) => {
+      const b = spawnEnemy(performance.now(), lane, pos, CONFIG.enemyTypes[0].id);
+      b.hp = b.maxHP = 10 ** 6;
+      return b;
+    };
+    const clear = () => {
+      startRun();
+      state.heroMaxHP = state.heroHP = 10 ** 6;
+      state.mods.regen = 0;
+      state.packIndex = E.ENCOUNTER_PLAN.length;
+      state.enemies = [];
+    };
+    const routeTo = (b, lane) => P.laneRouteFor(P.buildLaneGrid(CONFIG.enemyLanes), b, lane);
+
+    // (a) THE SEARCH, ASKED DIRECTLY. A body five tiles out has the stretch from
+    //     the melee line to its own feet to work with and nothing else, so lane 1
+    //     sealed across exactly that stretch puts lanes 2 and 3 out of reach.
+    clear();
+    const boxed = mk(0, 5);
+    const wall = [2, 3, 4, 5].map((c) => mk(1, c));
+    const walled = routeTo(boxed, 2).length;
+    // Open one gate in it, two tiles ahead of where the body stands, and the
+    // same question has an answer — and the answer is the gate, not a shuffle
+    // sideways into the wall.
+    state.enemies = state.enemies.filter((b) => b !== wall[1]);
+    const gate = P.laneStepFrom(boxed, routeTo(boxed, 2));
+
+    // (b) AND THE WALK. The shape a pack really makes: lane 0 three deep with the
+    //     hero already busy, one body in lane 1 parked square on the rearmost
+    //     one's sidestep, two lanes of open floor past it. Getting there means
+    //     walking up the hall first and turning where lane 1 is clear.
+    clear();
+    mk(0, CONFIG.enemyStandoffTiles); mk(0, 2.8);
+    const straggler = mk(0, 6);
+    const blocker = mk(1, 6);
+    const from = { lane: straggler.lane, pos: straggler.pos };
+    let turnedAt = null;
+    for (let i = 0; i < 240 && straggler.lane !== 2; i++) {
+      await settle(50);
+      if (turnedAt == null && straggler.lane !== from.lane) turnedAt = straggler.pos;
+    }
+    return {
+      walled, wall: wall.length, gate,
+      from: from.lane, to: straggler.lane, blocker: +blocker.pos.toFixed(1),
+      turnedAt: turnedAt == null ? null : +turnedAt.toFixed(1), start: from.pos,
+    };
+  });
+  check(around.walled === 0,
+    `a lane sealed across the whole stretch a body can cover (${around.wall} bodies) is answered ` +
+    `"no way through" rather than fudged`);
+  check(around.gate && around.gate.lane === 1 && around.gate.pos === 3,
+    `one gate in that wall and the search comes back with the gate itself — cross at ${around.gate ? around.gate.pos : "?"} tiles, ` +
+    `not at the 5 it is standing on`);
+  check(around.to === 2 && around.turnedAt != null && around.turnedAt < around.start - 0.5,
+    `and a straggler walled in behind its own rank goes ROUND the body blocking its sidestep — ` +
+    `lane ${around.from} → ${around.to}, turning at ${around.turnedAt} tiles rather than the ${around.start} it set off from`);
+
   //     A spell takes time to cross the hall, and a body it has already killed
   //     must go on running until it ARRIVES — stopping dead and dissolving at the
   //     moment the shape was drawn reads as dying of nothing.
