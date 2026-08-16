@@ -274,6 +274,54 @@ try {
   check(paired.matched >= 2 && paired.armed === null,
     "dragging it onto its pair matches them both (" + paired.matched + " matched)");
 
+  // 2d. THE WHEEL IS AS BIG AS THE BOOK LETS IT BE, and no bigger. The circle is
+  //     height-limited on every phone, so it is grown by taking height off the
+  //     strip above it and by cropping the arena's viewBox to the wheel's own
+  //     extent — which walks it straight at the open book below. What must not
+  //     touch is the rune BUBBLES: the book paints over the arena, so a bubble
+  //     that reached the paper would be a tap target with the top of a page laid
+  //     across it. (The faint outermost ring does now pass behind the pages;
+  //     that is the trade, and it is written up over .combat-screen.)
+  //
+  //     The closest approach is a TANGENT distance about three quarters of the
+  //     way out along each page's top edge, not the vertical gap at the notch —
+  //     so this walks the edges rather than comparing bounding boxes, and it
+  //     does it at the shortest screen the game is built for, where the wheel
+  //     sits lowest relative to the book.
+  const wheelFit = await page.evaluate(() => {
+    const arena = document.querySelector("svg.arena");
+    const at = (x, y) => {
+      const p = arena.createSVGPoint(); p.x = x; p.y = y;
+      return p.matrixTransform(arena.getScreenCTM());
+    };
+    const c = at(CONFIG.circleCenter.x, CONFIG.circleCenter.y);
+    const R = at(CONFIG.circleCenter.x + CONFIG.circleRadius + CONFIG.runeRadius,
+                 CONFIG.circleCenter.y).x - c.x;
+    let gap = Infinity;
+    for (const edge of document.querySelectorAll(".spellbook .bk-cut")) {
+      const ctm = edge.getScreenCTM(), L = edge.getTotalLength();
+      for (let i = 0; i <= 400; i++) {
+        const q = edge.getPointAtLength((i / 400) * L).matrixTransform(ctm);
+        gap = Math.min(gap, Math.hypot(q.x - c.x, q.y - c.y) - R);
+      }
+    }
+    const box = arena.getBoundingClientRect();
+    return {
+      gap, R,
+      // Nothing may be cut off the top or the sides either.
+      fits: c.y - R > box.top - 0.5 && c.x - R > -0.5 && c.x + R < window.innerWidth + 0.5,
+      // What the wheel is worth as a share of the screen it has to live on.
+      share: (2 * R) / Math.min(window.innerWidth, window.innerHeight),
+      vw: window.innerWidth,
+    };
+  });
+  check(wheelFit.gap > 6 && wheelFit.fits,
+    `the wheel clears the open book by a real margin (${wheelFit.gap.toFixed(1)}px ` +
+    `from paper to the nearest rune bubble)`);
+  check(wheelFit.share > 0.62,
+    `…while still filling the screen it sits on (${(2 * wheelFit.R).toFixed(0)}px of rune ` +
+    `circle across a ${wheelFit.vw}px-wide phone, ${Math.round(wheelFit.share * 100)}%)`);
+
   // 3. The spell book turns under the finger, and ALL of it does. A page turn is
   //    one motion on one progress: the held leaf stands up to the spine over the
   //    first half of the drag, and the leaf it carries over lies down on the far
@@ -1420,6 +1468,43 @@ try {
   check(around.to === 2 && around.turnedAt != null && around.turnedAt < around.start - 0.5,
     `and a straggler walled in behind its own rank goes ROUND the body blocking its sidestep — ` +
     `lane ${around.from} → ${around.to}, turning at ${around.turnedAt} tiles rather than the ${around.start} it set off from`);
+
+  //     THERE IS NO ENEMY HEALTH BAR, and that is a decision, not an oversight.
+  //     The strip under the scene is the hero's alone — no wave line, no bar
+  //     tracking whichever body happens to be frontmost — and the hall itself
+  //     stays clean: a per-body gauge painted into the scene was built and thrown
+  //     out, because the hall is 200x80 art pixels, bodies queue a 16 px tile
+  //     apart, and "127/176" is 27 px wide. What a body is worth is read off the
+  //     body: its size, its sprite, and the damage popping off it.
+  const hud = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const E = window.Incanto.encounters;
+    startRun();
+    state.heroMaxHP = state.heroHP = 100000;
+    state.enemies = [];
+    spawnPack(performance.now(), { pack: E.PACKS.knochenfuerst, reinforce: 0 });
+    for (let i = 0; i < 40 && state.enemies.some((x) => x.phase === "walk"); i++) await settle(100);
+    render(performance.now());
+    const strip = document.querySelector(".hud-under");
+    return {
+      bodies: livingEnemies().length,
+      hero: !!document.getElementById("hero-hp-fill"),
+      // The strip holds ONE bar. A re-added enemy bar would be a second.
+      bars: strip.querySelectorAll(".hp-track").length,
+      heroBar: !!strip.querySelector(".hp-track.hero #hero-hp-fill"),
+      // …and nothing anywhere on the screen still writes the hall's numbers out.
+      leftovers: ["wave-label", "enemy-hp-fill", "enemy-gauges"]
+        .filter((id) => document.getElementById(id)),
+      // The strip is one row, no taller than the bar plus its padding: the row
+      // it used to spend on a "HELD" caption is the rune circle's now.
+      height: strip.getBoundingClientRect().height,
+    };
+  });
+  check(hud.bodies > 5 && hud.hero && hud.bars === 1 && hud.heroBar && hud.leftovers.length === 0,
+    `no enemy carries a health bar — the strip is the hero's alone with ${hud.bodies} bodies up` +
+    (hud.leftovers.length ? " (found: " + hud.leftovers.join(", ") + ")" : ""));
+  check(hud.height <= 28,
+    `…and it is one row tall, figures beside the bar rather than over it (${Math.round(hud.height)}px)`);
 
   //     A spell takes time to cross the hall, and a body it has already killed
   //     must go on running until it ARRIVES — stopping dead and dissolving at the
