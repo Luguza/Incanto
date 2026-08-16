@@ -625,6 +625,30 @@ const CONFIG = {
   // up flush against the right border, half-under the 16px edge vignette.
   enemyMaxEmptyMs: 1500,     // longest the screen may sit empty before a filler skeleton walks in
   enemyLanes: 4,             // parallel depth rows the mob streams in on
+  // ---------------------------------------------------------------------------
+  // LOOKING FOR A WAY ROUND (see pathfind.js).
+  //
+  // A lane is a strict queue and only its front body reaches melee, so how much
+  // of a pack actually fights the hero used to depend on which lanes it happened
+  // to be authored into: three bodies written into one lane came at him in single
+  // file while three lanes of open floor stood empty beside them. Now a body that
+  // is walled in runs A* over the hall and crosses to a free lane if there is a
+  // way through. The ceiling is unchanged — one melee attacker per lane, four in
+  // all — but the mob FILLS it instead of leaving slots empty, so a camp's head
+  // count is what decides its pressure.
+  //
+  // These three numbers are the whole of its pacing, and each is set against
+  // something the hall already does:
+  enemyLaneRoutePlanMs: 220,   // how often the mob re-reads the floor. Well under the
+                               // ~900ms a body needs to walk one tile, so a route is
+                               // re-checked several times over its own length.
+  enemyLaneHoldMs: 900,        // …and how long a body that has just crossed stays put.
+                               // Longer than one plan by a wide margin, which is what
+                               // stops two even lanes trading bodies back and forth.
+  enemyLaneChangeMs: 360,      // the sideways slide, drawn. The lane itself changes in
+                               // one go (the queue can't hold half a body); this is the
+                               // picture catching up, and it is shorter than the
+                               // shortest wind-up so nothing swings from between rows.
   // March + melee. A skeleton's `pos` is measured in TILES to the right of the
   // hero's front edge (0 = touching the hero). One pos-unit maps to exactly one
   // 16px floor tile on screen, and the queue keeps > 1 tile between neighbours,

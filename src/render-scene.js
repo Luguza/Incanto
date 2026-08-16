@@ -96,6 +96,27 @@ function setupScene(cv) {
   return true;
 }
 
+// THE FLOOR LINE A BODY'S FEET STAND ON. Lanes are drawn rows, but a body that is
+// crossing between two of them stands BETWEEN two rows for the length of the
+// slide (see `laneVis` in pathfind.js) — so this reads the drawn row and
+// interpolates, rather than indexing `scene.laneY` with the logical lane.
+//
+// Everything anchored to a body goes through here, not just the sprite: its
+// shadow, the number that pops when it is hit, the healer's beam, the goo rope
+// between two halves of a slime. Indexing the array directly leaves those behind
+// on the row the body has already left, which reads as the effect belonging to
+// somebody else. Takes an enemy, or a bare lane number for the effects that carry
+// one (a meteor's crater knows its lane, not its body).
+function laneFloorY(e) {
+  const ys = scene && scene.laneY;
+  if (!ys || !ys.length) return scene ? scene.feetY : 0;
+  const raw = typeof e === "number" ? e : (e.laneVis != null ? e.laneVis : e.lane);
+  const t = Math.max(0, Math.min(ys.length - 1, raw || 0));
+  const i = Math.floor(t);
+  const j = Math.min(ys.length - 1, i + 1);
+  return ys[i] + (ys[j] - ys[i]) * (t - i);
+}
+
 // Scatter the corridor's furnishings across the whole strip so nothing sits at a
 // fixed screen mark and the layout only repeats every strip-length. Pillars keep
 // a steady bay cadence (architecture reads as deliberate); fountains, banners and
@@ -354,7 +375,7 @@ function renderScene(now) {
   // jab on every strike while attacking.
   const skl = SHEET.skeletIdle;
   const sceneX = (pos) => scene.enemyLineX + pos * TILE;
-  const laneFeetY = (e) => scene.laneY[e.lane] ?? feetY;
+  const laneFeetY = (e) => laneFloorY(e);
   // Draw back lanes (higher up the floor) first, and within a lane the nearer
   // ones last, so closer skeletons overlap the ranks behind them.
   const ordered = state.enemies.slice().sort(
@@ -558,7 +579,7 @@ function drawSupportFx(ctx, now, e, cx, ly) {
     const t = state.enemies.find((o) => o.id === e.healTargetId);
     if (t) {
       const tx = scene.enemyLineX + t.pos * TILE;
-      const ty = (scene.laneY[t.lane] ?? scene.feetY) - t.h * 0.6;
+      const ty = laneFloorY(t) - t.h * 0.6;
       const fy = ly - e.h * 0.6;
       ctx.fillStyle = `rgba(${rgb}, 0.9)`;
       for (let i = 0; i <= 12; i++) {
@@ -634,7 +655,7 @@ function drawSlimeGoo(ctx, now) {
     if (t < 0 || t >= 1) continue;
     const x = scene.enemyLineX + (g.x - state.cameraX);
     if (x < -24 || x > scene.artW + 24) continue;              // off camera: nothing to draw
-    const y = (scene.laneY[g.lane] ?? scene.feetY) - 1;
+    const y = laneFloorY(g.lane) - 1;
     const spread = 1 + 0.4 * Math.min(1, t * 5);               // it settles outward, then holds
     const fade = t < 0.1 ? t / 0.1 : Math.pow(1 - (t - 0.1) / 0.9, 1.1);
     const tint = gooTint(g.type);
@@ -668,9 +689,9 @@ function drawSplitGoo(ctx, now, e) {
   // Both ends ride the same drawing offsets the bodies do, or the rope would hang
   // off where they really stand while they are still sliding apart.
   const ax = scene.enemyLineX + other.pos * TILE + splitSlideX(now, other);
-  const ay = (scene.laneY[other.lane] ?? scene.feetY) - other.h * 0.62;
+  const ay = laneFloorY(other) - other.h * 0.62;
   const bx = scene.enemyLineX + e.pos * TILE + splitSlideX(now, e);
-  const by = (scene.laneY[e.lane] ?? scene.feetY) - e.h * 0.62;
+  const by = laneFloorY(e) - e.h * 0.62;
   const tint = gooTint(e.type);
   // The strand parts at `snap`: before that it is one rope, after it two stubs
   // pulling back into the bodies they hang off.
@@ -722,7 +743,7 @@ function drawSplitGoo(ctx, now, e) {
   // Drips: blobs that were hanging off the rope when it went, falling to the lane
   // floor and splatting. Deterministic off the twin's id — no randomness in the
   // scene, and the same split always drips the same way.
-  const floor = (scene.laneY[e.lane] ?? scene.feetY) - 1;
+  const floor = laneFloorY(e) - 1;
   for (let d = 0; d < 5; d++) {
     const u = 0.2 + ((e.id * 17 + d * 29) % 60) / 100;         // spread along the rope
     const start = 0.16 + ((e.id * 7 + d * 13) % 30) / 100;     // …and let go at different moments
@@ -851,7 +872,7 @@ function renderDmgFloats(ctx, now) {
       const e = state.enemies.find((en) => en.id === f.targetId);
       if (e) {
         ax = scene.enemyLineX + e.pos * TILE;
-        ay = (scene.laneY[e.lane] ?? scene.feetY) - enemyArt(e).h - 3;
+        ay = laneFloorY(e) - enemyArt(e).h - 3;
       }
     }
     const topY = Math.round(ay - t * rise);

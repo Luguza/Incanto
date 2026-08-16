@@ -213,7 +213,7 @@ function applySpellHit(target, amount, at, opts = {}) {
     born: at,
     targetId: target.id,
     x: scene ? scene.enemyLineX + target.pos * TILE : 0,
-    y: scene ? (scene.laneY[target.lane] ?? scene.feetY) - enemyArt(target).h - 3 : 0,
+    y: scene ? laneFloorY(target) - enemyArt(target).h - 3 : 0,
   });
   if (target.hp <= 0 && target.phase !== "dying") {
     // Killed — but the blow is still in the air. Only the MOMENT of its death is
@@ -246,7 +246,7 @@ function enemyPoint(e) {
   const art = enemyArt(e);
   return {
     x: Math.round(scene.enemyLineX + e.pos * TILE),
-    y: (scene.laneY[e.lane] ?? scene.feetY) - art.h + art.chest,
+    y: laneFloorY(e) - art.h + art.chest,
   };
 }
 
