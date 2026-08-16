@@ -1347,6 +1347,160 @@ try {
   check(flight.kills === 1 && flight.culled,
     "it then collapses, is culled, and is counted exactly once");
 
+  //     THE METEOR'S AIM (see meteorField in spells.js). The shower is random,
+  //     but random OVER THE HORDE: the rocks are rolled inside the mob's
+  //     bounding box grown by CONFIG.spells.meteor.padTiles / padLanes. Both
+  //     halves matter and are checked separately — a barrage that ignored the
+  //     box would waste itself on empty floor, and one that dropped a rock on
+  //     each body would be a volley, not a shower. So: nothing lands outside the
+  //     padded box, and rocks DO land outside the pack itself.
+  const shower = await page.evaluate(() => {
+    startRun();
+    state.heroMaxHP = state.heroHP = 10 ** 6;
+    state.enemies = [];
+    // One tight pack, deliberately parked mid-hall in two of the four lanes, so
+    // "aimed at the horde" and "sprayed over the hall" can't be confused.
+    const at = [[4.6, 1], [5.0, 2], [5.4, 1]];
+    for (const [pos, lane] of at) spawnEnemy(performance.now(), lane, pos, CONFIG.enemyTypes[0].id);
+    for (const e of state.enemies) e.hp = e.maxHP = 10 ** 6;   // nothing dies mid-barrage
+    const cfg = CONFIG.spells.meteor;
+    const field = meteorField(spellTargets());
+    const rocks = [];
+    for (let i = 0; i < 40; i++) {
+      state.spellFx = [];
+      state.meteorRocks = [];
+      const now = performance.now();
+      SPELL_RESOLVERS.meteor({ castAt: now, now, power: 1, shatter: false, pickTargets: () => [] });
+      // The barrage is scheduled, not resolved: run the clock past the last
+      // rock's landing so every one of them commits and strikes.
+      updateMeteorRocks(now + cfg.fallMs + cfg.spreadMs + 1);
+      for (const f of state.spellFx) if (f.kind === "meteor") rocks.push({ pos: f.pos, lane: f.lane });
+    }
+    const lo = Math.min(...at.map((a) => a[0])), hi = Math.max(...at.map((a) => a[0]));
+    return {
+      n: rocks.length, field, edge: trackEdgeTiles(1), pad: cfg.padTiles,
+      left: state.meteorRocks.length,
+      inBox: rocks.every((r) => r.pos >= field.posLo - 1e-6 && r.pos <= field.posHi + 1e-6 &&
+        r.lane >= field.laneLo && r.lane <= field.laneHi),
+      pastPack: rocks.filter((r) => r.pos < lo || r.pos > hi).length,
+      lanes: new Set(rocks.map((r) => r.lane)).size,
+      spread: +(Math.max(...rocks.map((r) => r.pos)) - Math.min(...rocks.map((r) => r.pos))).toFixed(2),
+      wholeLane: at.every(([, lane]) => rocks.some((r) => r.lane === lane)),
+    };
+  });
+  check(shower.inBox && shower.field.posHi - shower.field.posLo < shower.edge * 0.75 && !shower.left,
+    `every rock falls on the horde's own stretch of hall, not the whole track ` +
+    `(${shower.n} rocks in ${shower.field.posLo.toFixed(1)}–${shower.field.posHi.toFixed(1)} of ${shower.edge.toFixed(1)} tiles)`);
+  check(shower.pastPack > shower.n * 0.2 && shower.spread > shower.pad,
+    `and it is still a shower, not a volley — ${shower.pastPack} of ${shower.n} land off the pack, ` +
+    `over ${shower.spread} tiles`);
+  check(shower.lanes > 1 && shower.wholeLane,
+    `the padding reaches across the lanes too (${shower.lanes} lanes struck, both occupied ones included)`);
+
+  //     …and it aims at the horde WHERE IT IS WHEN THE ROCK FALLS. Up to 1,7 s
+  //     of charge, fall and barrage-spread sits between the shape being drawn
+  //     and a stone hitting the floor, so a shower that picked its spots at cast
+  //     time cratered the flagstones a marching pack had already left. Each rock
+  //     commits as it starts falling and hurts whoever is under it when it
+  //     lands: driven in real time against a body walking in, every rock has to
+  //     land near where that body was at ITS OWN moment, not at the cast's.
+  const tracking = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    startRun();
+    state.heroMaxHP = state.heroHP = 10 ** 6;
+    state.mods.regen = 0;
+    state.enemies = [];
+    const e = spawnEnemy(performance.now(), 1, 9.4, CONFIG.enemyTypes[0].id);
+    e.hp = e.maxHP = 10 ** 6;                 // it has to survive the whole barrage to be walked at
+    state.spellFx = []; state.meteorRocks = [];
+    const cast = performance.now();
+    const posAtCast = e.pos;
+    SPELL_RESOLVERS.meteor({ castAt: cast, now: cast, power: 1, shatter: false, pickTargets: () => [] });
+    // Sample where the body actually is, frame by frame, while the rocks fall —
+    // and collect the rocks as they appear, since a spent effect is culled off
+    // state.spellFx long before the last one has come down.
+    const track = [];
+    const seen = new Set();
+    const rocks = [];
+    const cfg = CONFIG.spells.meteor;
+    // Sampled across the barrage's whole window rather than until the last rock
+    // happens to land — the window is fixed, the last rock's moment inside it is
+    // a die roll, and the drift measured below has to be the window's.
+    const windowMs = cfg.fallMs + cfg.spreadMs;
+    while (performance.now() - cast < windowMs + 200) {
+      track.push({ t: performance.now(), pos: e.pos });
+      for (const f of state.spellFx) {
+        if (f.kind === "meteor" && !seen.has(f)) { seen.add(f); rocks.push(f); }
+      }
+      await settle(25);
+    }
+    const posAt = (t) => track.reduce((best, s) =>
+      Math.abs(s.t - t) < Math.abs(best.t - t) ? s : best, track[0]).pos;
+    return {
+      n: rocks.length, walked: +(posAtCast - e.pos).toFixed(2), pad: cfg.padTiles,
+      left: state.meteorRocks.length,
+      // Each rock against the body as it stood at that rock's OWN commit moment
+      // — the padded box it was rolled inside of, so the bound is exact.
+      offBorn: rocks.map((f) => +Math.abs(f.pos - posAt(f.born)).toFixed(2)),
+      // …and how far an aim taken at the cast has gone stale by the end of the
+      // barrage's window, which is the whole of the bug this replaced.
+      staleBy: +Math.abs(posAtCast - posAt(cast + windowMs)).toFixed(2),
+    };
+  });
+  const worstBorn = Math.max(...tracking.offBorn);
+  check(tracking.n >= 3 && !tracking.left && tracking.walked > 0.6,
+    `a barrage comes down on a body still walking in (${tracking.n} rocks over ${tracking.walked} tiles of march)`);
+  check(worstBorn <= tracking.pad + 0.05,
+    `every rock is rolled over the horde as it stands when THAT rock starts falling ` +
+    `(worst ${worstBorn} tiles from it, padding ${tracking.pad})`);
+  check(tracking.staleBy > 0.6,
+    `— an aim taken at the cast is ${tracking.staleBy} tiles stale by the end of the barrage`);
+
+  //     A crater is a ring drawn on the floor, so an impact point too near a
+  //     frame edge leaves the screen on one side and comes back on the other:
+  //     a rock at the hero's feet painting half a ring at the far wall reads as
+  //     the spell landing twice. The AIM is held in far enough for the whole
+  //     crater to fit; the radius the player bought is never trimmed to do it.
+  const crater = await page.evaluate(() => {
+    startRun();
+    state.heroMaxHP = state.heroHP = 10 ** 6;
+    state.enemies = [];
+    // A wide-crater build, with the pack right on top of the hero — the case
+    // that used to spill the ring off the left edge.
+    state.mods.spellParam.aoeMeteor = 0.75;
+    const cfg = CONFIG.spells.meteor;
+    const radius = cfg.radiusTiles * (1 + state.mods.spellParam.aoeMeteor);
+    for (const [pos, lane] of [[CONFIG.enemyStandoffTiles, 1], [2.1, 2]]) {
+      const b = spawnEnemy(performance.now(), lane, pos, CONFIG.enemyTypes[0].id);
+      b.hp = b.maxHP = 10 ** 6;
+    }
+    const rocks = [];
+    for (let i = 0; i < 30; i++) {
+      state.spellFx = []; state.meteorRocks = [];
+      const now = performance.now();
+      SPELL_RESOLVERS.meteor({ castAt: now, now, power: 1, shatter: false, pickTargets: () => [] });
+      updateMeteorRocks(now + cfg.fallMs + cfg.spreadMs + 1);
+      for (const f of state.spellFx) if (f.kind === "meteor") rocks.push(f);
+    }
+    // The ring as render-spells draws it: centred on enemyLineX + pos*TILE.
+    const edges = rocks.map((f) => ({
+      left: scene.enemyLineX + (f.pos - f.radius) * TILE,
+      right: scene.enemyLineX + (f.pos + f.radius) * TILE,
+      r: f.radius,
+    }));
+    return {
+      n: rocks.length, radius, artW: scene.artW, hall: +(scene.artW / TILE).toFixed(1),
+      offLeft: edges.filter((e) => e.left < -0.01).length,
+      offRight: edges.filter((e) => e.right > scene.artW + 0.01).length,
+      keptRadius: edges.every((e) => Math.abs(e.r - radius) < 1e-9),
+    };
+  });
+  check(crater.n > 0 && !crater.offLeft && !crater.offRight,
+    `a wide crater is aimed to stay inside the frame — no ring wrapping off one edge and back on the other ` +
+    `(${crater.n} rocks, ${crater.radius.toFixed(1)}-tile radius in a ${crater.hall}-tile frame)`);
+  check(crater.keptRadius,
+    "…and it is the aim that moved, not the radius the player bought");
+
   //     And walking onto the hall's last metre ends the run the one way that
   //     isn't dying.
   const cleared = await page.evaluate(() => {

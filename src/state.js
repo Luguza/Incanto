@@ -92,6 +92,7 @@ function freshState() {
     spellOrder: SPELLS.map((s) => s.id),
     bookSpread: 0,
     spellFx: [],              // queued scene effects for render-spells (bolts, arcs, meteors, auras)
+    meteorRocks: [],          // rocks of a Meteoritenschauer still in the sky (see updateMeteorRocks)
     castSpell: STARTER_SPELL, // which spell the in-progress cast animation belongs to
     spellPrimeUntil: 0,       // a Frostkegel primes the next cast to shatter frozen bodies
     poolIndex: 0,

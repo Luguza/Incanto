@@ -752,10 +752,18 @@ const CONFIG = {
              // crit on top of a fully-invested page, so it sets the game's single
              // largest number and is what the three-digit ceiling binds against.
              primeMult: 2.0, castMs: 620 },
-    // Meteoritenschauer — rocks fall on random spots across the WHOLE visible
-    // track, not on chosen targets. Low per-hit damage over a wide, random area:
-    // it thins a spread-out mob rather than deleting a front rank.
+    // Meteoritenschauer — rocks fall on random spots, but over the STRETCH OF
+    // HALL THE MOB OCCUPIES rather than the whole visible track: the barrage is
+    // aimed at the horde's bounding box, grown by `padTiles` along the corridor
+    // and `padLanes` across it, and every rock is still rolled freely inside
+    // that box. Nothing is aimed at a body, so it stays the spell that thins a
+    // spread-out mob instead of deleting a front rank — it simply stops wasting
+    // half a barrage on the empty floor in front of and behind the horde.
+    // The padding is what keeps it a shower and not a volley of guided rocks:
+    // rocks still stray past the edges of the pack, and a lone body does not
+    // eat every one of them.
     meteor: { dmgMult: 0.5, count: 4, radiusTiles: 1.7, laneRadius: 1.4,
+              padTiles: 2.2, padLanes: 1,
               spreadMs: 900, fallMs: 380, impactMs: 260 },
     // Bannschild — absorb, not damage. Its pool is derived from spell power the
     // same way damage is, and it stacks onto whatever Ward nodes already grant.

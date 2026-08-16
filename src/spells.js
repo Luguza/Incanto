@@ -38,7 +38,7 @@ const SPELLS = [
   {
     id: "meteor", name: "Meteoritenschauer", theme: "meteor", sector: "met", kind: "damage",
     dmgKey: "dmgMeteor", paramKey: "countMeteor", unlock: "meteor",
-    blurb: "Brocken stürzen auf zufällige Stellen des ganzen Ganges — verheerend gegen eine weit verteilte Horde.",
+    blurb: "Brocken stürzen auf zufällige Stellen über der Horde und ein Stück daneben — verheerend gegen eine weit verteilte Meute.",
   },
   {
     id: "shield", name: "Bannschild", theme: "shield", sector: "shi", kind: "support",
@@ -290,6 +290,114 @@ function pickBlastFocus(bodies, radius, laneRadius) {
   return best;
 }
 
+// Where the Meteoritenschauer's rocks are allowed to fall. The barrage is aimed
+// at the HORDE rather than at the hall: the field is the bounding box of the
+// bodies on camera, grown by `padTiles` along the corridor and `padLanes`
+// across it, then clipped back to the visible track. Nothing inside it is
+// aimed — every rock is still rolled freely within the box — so the spell keeps
+// its character (a scattered shower that thins a spread-out mob) and only stops
+// spending half its rocks on the empty floor in front of and behind the pack.
+//
+// The padding is the whole point of doing it this way rather than dropping a
+// rock on each body: rocks still stray past the edges of the horde, a lone
+// straggler doesn't swallow the entire barrage, and a mob that has bunched up
+// is a smaller box and so a denser rain — which is the reward for spreading the
+// aim rather than for standing anywhere in particular.
+//
+// Bodies still walking on off camera are left out of the box on purpose: a rock
+// landing past the right border is a rock the player never sees fall, so an
+// inbound pack would otherwise drag the whole shower into the wings. With
+// nothing on camera at all there is no horde to aim at, and the field falls
+// back to the whole track — what the spell did before it learned to aim.
+//
+// The box is finally held far enough from both frame edges that the CRATER fits
+// on screen, which is what `radius` is for. A crater is drawn as a ring on the
+// floor: centre one too near an edge and the ring leaves the screen on one side
+// and comes back on the other, so a rock that fell by the hero's feet paints
+// half a ring at the far wall and reads as the spell landing twice. The radius
+// itself is never touched — an upgrade the player walked to has to stay the
+// size he bought — the AIM moves instead; and a crater simply wider than the
+// hall has nowhere left to sit, so its aim collapses to the middle of the hall.
+function meteorField(bodies, radius = CONFIG.spells.meteor.radiusTiles) {
+  const cfg = CONFIG.spells.meteor;
+  const edge = Math.max(1, trackEdgeTiles(1));
+  const lanes = Math.max(1, CONFIG.enemyLanes);
+  // The frame's own edges in track tiles: pos 0 sits `enemyLineX` px in from the
+  // left, and the art ends `artW` px from it.
+  const leftTiles = scene ? -scene.enemyLineX / TILE : 0;
+  const rightTiles = scene ? (scene.artW - scene.enemyLineX) / TILE : edge;
+  let fitLo = leftTiles + radius, fitHi = rightTiles - radius;
+  if (fitLo > fitHi) fitLo = fitHi = (fitLo + fitHi) / 2;
+  const fit = (p) => Math.max(fitLo, Math.min(fitHi, p));
+
+  const onCamera = bodies.filter((e) => e.pos <= edge);
+  if (!onCamera.length) return { posLo: fit(0), posHi: fit(edge), laneLo: 0, laneHi: lanes - 1 };
+  let lo = Infinity, hi = -Infinity, laneLo = Infinity, laneHi = -Infinity;
+  for (const e of onCamera) {
+    lo = Math.min(lo, e.pos);
+    hi = Math.max(hi, e.pos);
+    laneLo = Math.min(laneLo, e.lane);
+    laneHi = Math.max(laneHi, e.lane);
+  }
+  return {
+    posLo: fit(Math.max(0, lo - cfg.padTiles)),
+    posHi: fit(Math.min(edge, hi + cfg.padTiles)),
+    laneLo: Math.max(0, Math.round(laneLo) - cfg.padLanes),
+    laneHi: Math.min(lanes - 1, Math.round(laneHi) + cfg.padLanes),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rocks in the air. The shower is SCHEDULED by its resolver and resolved here,
+// one rock at a time, because a barrage that picked its spots at cast time was
+// aiming at a hall that had already moved on: the rune's charge, the rock's
+// fall and the barrage's own spread put up to 1,7 s between the shape being
+// drawn and a stone hitting the floor, and a marching pack covers a lot of
+// corridor in that time — the rocks cratered the flagstones behind it.
+//
+// So a rock is committed only when it STARTS FALLING (that is the last moment
+// it can be: the streak is on screen from then on and it falls straight down),
+// and it cracks whoever is standing under it when it LANDS rather than whoever
+// stood there when it was thrown. What is left is the flight itself, which is
+// the part the player can see coming and walk out of.
+// ---------------------------------------------------------------------------
+function updateMeteorRocks(now) {
+  const rocks = state.meteorRocks;
+  if (!rocks || !rocks.length) return;
+  const cfg = CONFIG.spells.meteor;
+  let dealt = 0;
+  for (const rock of rocks) {
+    // Committed: it picks its spot out of the field as the horde stands NOW.
+    if (rock.pos === null && now >= rock.bornAt) {
+      const field = meteorField(spellTargets(), rock.radius);
+      rock.pos = field.posLo + Math.random() * (field.posHi - field.posLo);
+      // Lanes are whole rows, so the roll is over the rows inside the field
+      // rather than a continuous span — a fractional lane is a spot no body can
+      // ever stand on.
+      rock.lane = field.laneLo + Math.floor(Math.random() * (field.laneHi - field.laneLo + 1));
+      pushFx({
+        kind: "meteor", spell: "meteor", born: rock.bornAt, landAt: rock.landAt,
+        until: rock.landAt + cfg.impactMs, pos: rock.pos, lane: rock.lane, radius: rock.radius,
+      });
+    }
+    // Landed: it cracks the floor and everything standing on it.
+    if (rock.pos !== null && now >= rock.landAt) {
+      rock.spent = true;
+      for (const e of spellTargets()) {
+        if (Math.abs(e.pos - rock.pos) > rock.radius) continue;
+        if (Math.abs(e.lane - rock.lane) > rock.laneRadius) continue;
+        dealt += applySpellHit(e, rock.power, now, {
+          shatter: rock.shatter, color: CONFIG.colors.spell.meteor.rgb,
+        });
+      }
+    }
+  }
+  state.meteorRocks = rocks.filter((r) => !r.spent);
+  // Leech feeds on what the rocks actually hit, as they hit it — the cast
+  // itself carried no damage for castActiveSpell to feed it.
+  if (dealt > 0 && state.mods.leech > 0) healHero(dealt * state.mods.leech);
+}
+
 const SPELL_RESOLVERS = {
   // Feuerball: one ball of flame thrown into the thick of the mob, which BURSTS
   // where it lands. Everything inside the blast takes FULL power — the rim hits
@@ -413,9 +521,16 @@ const SPELL_RESOLVERS = {
     return dealt;
   },
 
-  // Meteoritenschauer: rocks fall on RANDOM spots across the whole visible
-  // track, not on chosen bodies. Each cracks a small area, so it thins a mob
+  // Meteoritenschauer: rocks fall on RANDOM spots, not on chosen bodies — but
+  // over the stretch of hall the mob actually stands in rather than the whole
+  // visible track (see meteorField). Each cracks a small area, so it thins a mob
   // spread down the corridor instead of deleting whichever rank is in front.
+  //
+  // The cast only SCHEDULES the barrage: each rock picks its spot as it begins
+  // to fall and does its damage where it lands, both in updateMeteorRocks. This
+  // is the one page whose damage isn't booked at cast time, and it has to be —
+  // every other spell either follows a body or arrives at once, while a rock
+  // falls on a patch of floor the horde may have walked off by then.
   meteor(ctx) {
     const cfg = CONFIG.spells.meteor;
     const count = cfg.count + (state.mods.spellParam.countMeteor || 0);
@@ -424,29 +539,19 @@ const SPELL_RESOLVERS = {
     const aoe = state.mods.spellParam.aoeMeteor || 0;
     const radius = cfg.radiusTiles * (1 + aoe);
     const laneRadius = cfg.laneRadius * (1 + aoe * 0.5);
-    const edge = trackEdgeTiles(1);
-    const lanes = Math.max(1, CONFIG.enemyLanes);
-    let dealt = 0;
+    if (!state.meteorRocks) state.meteorRocks = [];
     for (let i = 0; i < count; i++) {
-      const pos = Math.random() * Math.max(1, edge);
-      const lane = Math.floor(Math.random() * lanes);
       // Spread the barrage over its window so rocks rain down rather than
       // landing as one thud.
       const land = ctx.castAt + cfg.fallMs + Math.random() * cfg.spreadMs;
-      for (const e of spellTargets()) {
-        if (Math.abs(e.pos - pos) > radius) continue;
-        if (Math.abs(e.lane - lane) > laneRadius) continue;
-        dealt += applySpellHit(e, ctx.power, land, {
-          shatter: ctx.shatter, color: CONFIG.colors.spell.meteor.rgb,
-        });
-      }
-      pushFx({
-        kind: "meteor", spell: "meteor", born: land - cfg.fallMs, landAt: land,
-        until: land + cfg.impactMs, pos, lane, radius,
+      state.meteorRocks.push({
+        bornAt: land - cfg.fallMs, landAt: land,
+        pos: null, lane: 0, radius, laneRadius,
+        power: ctx.power, shatter: ctx.shatter, spent: false,
       });
     }
     state.castTargetId = null;
-    return dealt;
+    return 0;    // nothing has hit anything yet — the rocks are still in the sky
   },
 
   // Bannschild: the same spell power, banked as absorb instead of spent as
@@ -523,5 +628,6 @@ function castActiveSpell(now) {
 window.Incanto.spells = {
   SPELLS, SPELL_BY_ID, STARTER_SPELL, spellUnlocked, activeSpellId, activeSpell,
   spellSelect, spellPower, castActiveSpell, primeActive, castChargeMs, applySpellHit,
+  meteorField, updateMeteorRocks,
   normalizeSpellOrder, bookOrder, bookSpells, bookSlot, swapBookPages,
 };
