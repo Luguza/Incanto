@@ -384,6 +384,25 @@ function renderQuizFoot(q) {
 // The upgrade phase is now the rune skill tree — see src/skilltree.js, which
 // owns renderUpgradeFull (the loop router calls it for the "upgrade" screen).
 
+// THE ARENA'S VIEWBOX IS CROPPED TO THE WHEEL, not to the 600x600 box the wheel
+// is authored in. Everything drawn there is centred on (300,300) and the
+// furthest anything reaches is 285 — the outer ring sits at 273 and the baked
+// star field stops at 285 (see tools/gen_wheel.py) — so the authored box carries
+// 15 units of empty margin on every side. The circle is the thing the thumb
+// aims at and it is HEIGHT-LIMITED on every phone, so that margin was costing
+// about 5 % of its diameter for nothing. Cropping to the content buys it back
+// without moving a single coordinate.
+//
+// It does move the wheel closer to the book, though: at a given box the wheel
+// now draws 600/570 bigger, and the arena's bottom margin in combat.css is a
+// TANGENT clearance derived from the wheel's radius. The two are re-derived
+// together — see the essay above `.combat-screen`, and don't change one alone.
+const ARENA_EXTENT = 285;
+const ARENA_VIEWBOX = [
+  CONFIG.circleCenter.x - ARENA_EXTENT, CONFIG.circleCenter.y - ARENA_EXTENT,
+  2 * ARENA_EXTENT, 2 * ARENA_EXTENT,
+].join(" ");
+
 function renderCombatFull() {
   const { x: cx, y: cy } = CONFIG.circleCenter;
   const slots = layoutCircle(CONFIG.runeCount);
@@ -520,16 +539,10 @@ function renderCombatFull() {
     <div class="screen combat-screen" id="combat-root">
       <div class="scene-wrap"><canvas class="scene" id="scene"></canvas></div>
       <div class="hud-under">
-        <div class="hero-hud">
-          <div class="bar-label">HELD <span id="hero-hp-text"></span></div>
-          <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
-        </div>
-        <div class="enemy-hud">
-          <div class="bar-label" id="wave-label"></div>
-          <div class="hp-track enemy"><div class="hp-fill" id="enemy-hp-fill"></div></div>
-        </div>
+        <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
+        <span class="hp-figures" id="hero-hp-text"></span>
       </div>
-      <svg class="arena" viewBox="0 0 600 600" preserveAspectRatio="xMidYMax meet">
+      <svg class="arena" viewBox="${ARENA_VIEWBOX}" preserveAspectRatio="xMidYMax meet">
         ${arenaDefs}
         ${chordsHtml}
         ${dragLineHtml}
@@ -549,51 +562,20 @@ function patchCombatContinuous(now) {
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
   root.classList.toggle("rune-flash", now < state.runeFlashUntil);
+  // The figures ride at the right-hand end of the bar rather than on a caption
+  // line of their own, and there is no "HELD" in front of them: the strip holds
+  // one bar, so naming it cost a whole row of a phone's height to say something
+  // already obvious. The row it saved goes to the rune circle.
   const shield = Math.floor(state.heroShield || 0);
   document.getElementById("hero-hp-text").textContent =
-    `${Math.ceil(state.heroHP)} / ${state.heroMaxHP}` + (shield > 0 ? ` ⛨${shield}` : "");
+    `${Math.ceil(state.heroHP)}/${state.heroMaxHP}` + (shield > 0 ? ` ⛨${shield}` : "");
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
-  // The enemy bar tracks the frontmost skeleton — the one the next spell will
-  // hit — while the label shows how deep the hero has pushed (metres walked, the
-  // stat the horde's density ramps on), his kill tally, and how many are on screen.
-  const remaining = livingEnemies();
-  const front = frontEnemy();
-  const count = remaining.length;
-  // Name the front body — the bar tracks that one, and an ogre's eightfold HP
-  // pool would otherwise look like a bar that's stuck. Every variant is named
-  // now that the hall holds thirty of them: "which of these am I hitting" is a
-  // question the player asks constantly once the corridor stops being skeletons.
-  // The body's own name first, then its variant's: a splitting slime renames
-  // itself every time it divides (GROSSER SCHLEIM → SCHLEIM → KLEINER SCHLEIM,
-  // see sizeBody), so the bar has to read the body rather than the table it came
-  // off.
-  const frontType = front && enemyTypeById(front.type);
-  const frontName = front && (front.name || (frontType && frontType.name));
-  const frontLabel = frontName ? ` · ${frontName}` : "";
-  // Armour is shown as the share of every hit it turns aside, not as raw points:
-  // that's the number the player actually feels, and it visibly falls as
-  // penetration nodes are bought (see armorReduction).
-  const reduction = front ? armorReduction(front) : 0;
-  const armorLabel = reduction > 0 ? ` ⛨${Math.round(reduction * 100)}%` : "";
-  // Depth reads against the length of the hall rather than as a bare count: the
-  // corridor ends (see encounters.HALL_END_METRES), so "how far in am I" is a
-  // fraction, not an ever-growing number with no scale to judge it by.
-  //
-  // The rest of the line describes WHAT IS IN FRONT OF HIM, and so it changes
-  // with the fight: while bodies are up it names them and counts them, and on
-  // the walk between camps — the only moment there is any time to read it — it
-  // gives the chapter instead. Two facts sharing one line rather than fighting
-  // over it: on a phone this label is about forty characters wide, and a body
-  // called BLEICHER NEKROMANT plus a chapter called DIE FAULENDEN REIHEN does
-  // not fit on any of them.
-  const where = front
-    ? `${count} GEGNER${frontLabel}${armorLabel}`
-    : chapterAt(state.distance).name.toUpperCase();
-  document.getElementById("wave-label").innerHTML =
-    `${Math.floor(state.distance)}/${HALL_END_METRES} M · ${where}`;
-  const enemyPct = front ? (100 * front.hp / front.maxHP) : 0;
-  document.getElementById("enemy-hp-fill").style.width = enemyPct.toFixed(1) + "%";
-
+  // NOTHING UNDER THE SCENE REPORTS ON THE HALL. The strip used to carry a wave
+  // line (metres walked, head count, the front body's name and armour) over a bar
+  // tracking whichever body happened to be frontmost; both are gone, and the hero
+  // has the strip to himself. There is no enemy health bar anywhere — not here,
+  // and not in the hall either. What the player reads off a body is the body: its
+  // size, its sprite, and the damage numbers popping off it.
   renderScene(now);
 
   // The book answers a cast: while a freshly queued effect is still in the air,

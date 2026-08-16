@@ -17,14 +17,30 @@
      quarters of the way out along it, not at either end.
 
      Solving |dist(wheel centre, page-top line)| = R + gap gives the 141/600
-     below. Measured, that leaves ~20px between the paper and the rune bubbles
-     (the wheel's solid outer elements, R = 263) and a few px against the faint
-     outermost ring, holding on viewports from 390x720 to 820x1000 — while the
-     wheel's lowest point still sits ~20px BELOW the wings' top corners, i.e.
-     down inside the V. The space the book opens up is used, it just never
-     touches paper. Re-derive if either geometry moves; tools-side, walk the
-     page's top edge and take the minimum distance rather than trusting the
-     vertical gap, which is not where the two shapes come closest. */
+     below.
+
+     WHAT THAT GAP IS NOW. The arena's viewBox is cropped to the wheel's own
+     extent rather than the 600-unit box it is drawn in (see ARENA_VIEWBOX in
+     screens.js), so at a given box the wheel renders 600/570 — about 5 % —
+     bigger, and it is that much closer to the paper. Measured by walking both
+     page-top edges in screen pixels, the margin now leaves 0,030–0,032 of the
+     board width between the paper and the rune bubbles: 11 px at 360 wide,
+     15 px at 480. The bubbles are the tap targets and they stay clear at every
+     size — that is the constraint, and it is what the smoke test checks.
+
+     The FAINT OUTERMOST RING no longer clears it, and that is deliberate. It
+     reaches 285 where the bubbles reach 263, so its lower arcs now pass behind
+     the pages — the book is `z-index: 3` over the arena, so it occludes them
+     and the wheel reads as sitting behind the book rather than clipped by it.
+     Trading that decoration for a circle 12 % wider is the right way round on a
+     phone: the wheel is HEIGHT-limited on every one of them, so this margin and
+     the height of `.hud-under` above it are the only two things deciding how big
+     the thing the thumb aims at can be.
+
+     Re-derive if either geometry moves, and re-derive BOTH — the crop and this
+     margin are one calculation. Tools-side, walk the page's top edge and take
+     the minimum distance rather than trusting the vertical gap, which is not
+     where the two shapes come closest. */
   .combat-screen {
     position: relative;
     display: flex; flex-direction: column;
@@ -55,29 +71,34 @@
     display: block;
     image-rendering: pixelated;
   }
+  /* ONE ROW, AND AS SHORT AS THE BAR ITSELF. The hero is the only thing reported
+     under the scene, so the bar runs the width of the strip and its figures sit
+     at the right-hand end of it — no caption line above, no "HELD" in front. The
+     row that saved is height the rune circle gets instead, and the circle is
+     height-limited on every phone (the wheel scales to min(box width, box
+     height)), so it is height, not width, that decides how big the thing the
+     thumb aims at can be. */
   .hud-under {
     flex: 0 0 auto;
     width: 100%;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 8px max(3vw, env(safe-area-inset-left)) 8px max(3vw, env(safe-area-inset-right));
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px max(3vw, env(safe-area-inset-left)) 5px max(3vw, env(safe-area-inset-right));
     background: #1b1624;
     border-top: 1px solid #3a3550;
     border-bottom: 1px solid #3a3550;
   }
-  .hero-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 40%; }
-  .enemy-hud { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; min-width: 40%; }
-  .bar-label {
-    font-size: clamp(10px, 2.7vw, 13px); letter-spacing: 0.5px; color: #b9b3c8; font-weight: 700;
+  .hp-figures {
+    flex: 0 0 auto;
+    font-size: clamp(11px, 3vw, 13px); line-height: 1; color: #efeaff;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
   }
-  .bar-label span { color: #efeaff; font-weight: 400; }
-  .bar-sub { font-size: clamp(11px, 3vw, 14px); color: #f2c14e; font-weight: 700; }
   .hp-track {
-    width: clamp(120px, 40vw, 300px); height: 12px;
+    flex: 1 1 auto;
+    width: 100%; height: 12px;
     background: #241f2f; border: 1px solid #3a3550; border-radius: 6px; overflow: hidden;
   }
   .hp-fill { height: 100%; transition: width 180ms linear; }
   .hp-track.hero .hp-fill { background: linear-gradient(90deg, #2f9e57, #5ecf8f); }
-  .hp-track.enemy .hp-fill { background: linear-gradient(90deg, #9a3550, #e5545f); }
   .coin { color: #f2c14e; }
   .gold-line { font-size: clamp(13px, 3.6vw, 17px); color: #f2c14e; font-weight: 700; }
 
