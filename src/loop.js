@@ -141,6 +141,14 @@ function updateEnemies(now, dt) {
     plantGoo(e, now, { jitter: ((e.id * 53) % 5) - 2 });
   }
   cullGoo(now);
+  // Before anything is grouped: the mob looks for a way round. A body queued
+  // behind one that is already fighting crosses to a lane where the melee slot is
+  // going begging, if A* can find it a way through the bodies in between (see
+  // pathfind.js). Planned a few times a second, stepped every frame — and done
+  // HERE, ahead of the grouping below, because a body that crosses this frame has
+  // to be resolved in the queue it has just joined rather than the one it left.
+  planLaneRoutes(now);
+  advanceLaneChanges(now, dt);
   const lanes = new Map();
   for (const e of state.enemies) {
     if (!lanes.has(e.lane)) lanes.set(e.lane, []);
@@ -278,7 +286,13 @@ function updateEnemies(now, dt) {
       // has planted, wherever in the lane it stands. That exemption is the whole
       // point of a ranged body: it makes the corridor's back half dangerous, so
       // "kill the front rank" stops being the entire plan.
-      const engaged = e.role === "ranged" ? blocked : (frontRank && settled);
+      // …and a body still SLIDING between two rows is out of the fight for as
+      // long as the slide lasts, whichever way it fights. It has committed to its
+      // new lane and may already hold that lane's front slot, but it is drawn
+      // between the two — a blow thrown from there lands from nowhere the player
+      // can point at. It keeps its running legs instead (the `walk` branch below).
+      const crossing = laneSliding(e);
+      const engaged = crossing ? false : e.role === "ranged" ? blocked : (frontRank && settled);
       if (engaged && e.pos <= e.range + 1e-3) {
         // Six tenths of its own beat before the first blow — never shorter than
         // the floor, so the quickest bodies still announce themselves (the note
@@ -287,7 +301,7 @@ function updateEnemies(now, dt) {
           e.phase = "attack";
           e.attackAt = now + enemyWindupMs(e);
         }
-      } else if (!blocked) {
+      } else if (!blocked || crossing) {
         e.phase = "walk";
       } else {
         e.phase = "idle";
@@ -364,7 +378,7 @@ function enemyMeleeStrike(now, e) {
         color: CONFIG.colors.dmgFloat.enemy,
         targetId: e.id,
         x: scene.enemyLineX + e.pos * TILE,
-        y: (scene.laneY[e.lane] ?? scene.feetY) - enemyArt(e).h - 3,
+        y: laneFloorY(e) - enemyArt(e).h - 3,
       });
     }
     // Thorns are CONTACT damage — there is nothing in flight to wait for, so a
@@ -402,7 +416,7 @@ function fireEnemyShot(now, e) {
     // Where it left from, snapshotted now: the caster may be dust by the time
     // the mote arrives, and a bolt that re-reads a dead shooter's position would
     // snap back to the origin on the frame it dies.
-    from: scene ? { x: scene.enemyLineX + e.pos * TILE, y: (scene.laneY[e.lane] ?? scene.feetY) - e.h * 0.55 } : null,
+    from: scene ? { x: scene.enemyLineX + e.pos * TILE, y: laneFloorY(e) - e.h * 0.55 } : null,
   });
 }
 
@@ -500,7 +514,7 @@ function mendAlly(now, e, spec) {
       color: CONFIG.colors.spell.heal.rgb,
       targetId: best.id,
       x: scene.enemyLineX + best.pos * TILE,
-      y: (scene.laneY[best.lane] ?? scene.feetY) - best.h - 3,
+      y: laneFloorY(best) - best.h - 3,
     });
   }
 }

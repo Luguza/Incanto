@@ -165,22 +165,40 @@ const data = await page.evaluate(({ shares, overrides }) => {
   // hp <= 0 means the corridor ended here.
   function fightCamp(bodies, hp, maxHp, dps, regen) {
     const alive = bodies.slice();
-    // A lane fights front-to-back: only its leading body swings. A ranged body
-    // is exempt (loop.js) — it shoots over the rank in front of it.
     const engagedAt = new Map();
     let t = 0, nextCast = TRACE_MS + Incanto.spells.castChargeMs();
-    const laneFront = () => {
-      const front = {};
-      for (const b of alive) {
-        if (!front[b.lane] || b.rank < front[b.lane].rank) front[b.lane] = b;
+    // WHO IS SWINGING. A lane still fights front-to-back — one melee body per
+    // lane reaches the hero — but which bodies fill those slots is no longer
+    // decided by the formation: a body walled in behind one that is already
+    // fighting crosses to a lane whose slot is going begging (pathfind.js). So
+    // the melee ceiling is the LANE COUNT rather than the number of lanes the
+    // pack happened to be written into, and a camp's head count is what sets its
+    // pressure. Front rank first, since that is who arrives first and so who
+    // takes the near slots.
+    //
+    // Everything else is exempt from the queue for the same reasons the game
+    // exempts it: a ranged body shoots over the rank in front of it, and a
+    // summoner or healer works from wherever it planted.
+    //
+    // The crossing is not free here either — a body only counted as swinging
+    // once it has a slot, and `engagedAt` is dropped the moment it stops, so a
+    // body that changes lane re-arms and pays ADVANCE_MS + its own wind-up
+    // before its next blow, which is about what the walk across costs it.
+    const lanes = Math.max(1, CONFIG.enemyLanes);
+    const swinging = () => {
+      const set = new Set();
+      let slots = lanes;
+      for (const b of alive.slice().sort((a, c) => a.rank - c.rank || a.lane - c.lane)) {
+        if (b.role !== "melee") { set.add(b); continue; }
+        if (slots > 0) { set.add(b); slots--; }
       }
-      return front;
+      return set;
     };
     while (alive.length && hp > 0 && t < 600000) {
       t += TICK;
-      const front = laneFront();
+      const front = swinging();
       for (const b of alive) {
-        const swings = b.role === "ranged" || front[b.lane] === b;
+        const swings = front.has(b);
         if (!swings) { engagedAt.delete(b); continue; }
         if (!engagedAt.has(b)) {
           // Front rank walks in; anyone stepping up over a corpse takes less.
