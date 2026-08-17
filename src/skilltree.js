@@ -54,6 +54,12 @@ const TREE_THEMES = {
   crit:      { color: "#f2c14e", glow: "242,193,78",  label: "Präzision"    }, // crit chance + crit damage
   sustain:   { color: "#e5679a", glow: "229,103,154", label: "Zehrung"      }, // regen + life leech
   guard:     { color: "#4de3e0", glow: "77,227,224",  label: "Bewahrung"    }, // shields + fail-protection
+  // Armour is guard's cousin and deliberately not guard's colour: a shield is a
+  // thing that appears and is spent, plate is a thing you are wearing. Steel,
+  // and the same steel a mitigated hit pops in on the canvas
+  // (CONFIG.colors.dmgFloat.armored), so "that number was bitten into" reads the
+  // same in the hall and in the tree.
+  armor:     { color: "#b0c0d0", glow: "176,192,208", label: "Panzerung"    }, // damage taken, turned aside
   fortune:   { color: "#d9a441", glow: "217,164,65",  label: "Fortuna"      }, // gold + walk speed
   focus:     { color: "#c08cff", glow: "192,140,255", label: "Sammlung"     }, // cast speed
   thorn:     { color: "#ff3b30", glow: "255,59,48",   label: "Dornen"       }, // the five unique thorn caches
@@ -85,6 +91,10 @@ const RUNE_GLYPHS = {
   crit:      [["g",0,-12,2.6,-2.6,12,0,2.6,2.6,0,12,-2.6,2.6,-12,0,-2.6,-2.6]],
   sustain:   [["d","M0,-11 C7,-3 7,7 0,10 C-7,7 -7,-3 0,-11 Z"]],
   guard:     [["g",0,-11,9,-6,9,4,0,11,-9,4,-9,-6]],
+  // A banded plate with its rivets — squared off where `guard`'s shield is
+  // pointed, so the two read as related without either being mistaken for the
+  // other at the size a rune is actually drawn.
+  armor:     [["g",-9,-10,9,-10,9,10,-9,10],["l",-9,-3,9,-3],["l",-9,3,9,3],["c",0,-6.5,1.3],["c",0,6.5,1.3]],
   fortune:   [["c",0,0,9],["g",0,-4,4,0,0,4,-4,0]],
   focus:     [["c",0,0,4.5],["l",0,-6.5,0,-12],["l",0,6.5,0,12],["l",-6.5,0,-12,0],["l",6.5,0,12,0],["l",-4.6,-4.6,-8.5,-8.5],["l",4.6,4.6,8.5,8.5]],
   thorn:     [["d","M-10,9 C-4,4 4,-4 10,-9"],["l",-6,5,-9,-1],["l",-1,0,2,-6],["l",4,-5,1,-11],["l",-3,2,-6,8],["l",2,-3,5,3]],
@@ -175,10 +185,51 @@ const MAX_NUDGE = 14;              // per-pass movement cap, so the relaxation c
 const RELAX_CELLS = 34;            // repulsion lookup grid; RELAX_SPAN/RELAX_CELLS must stay >= REPEL_RADIUS
 const RELAX_SPAN = 5200;
 
-// A node's effect grows gently with its ring — enough that a deep node is
-// clearly the better one, not so much that walking one arm to its tip is worth
-// more than everything else a build could reach with the same gold.
-const VAL_PER_RING = 0.14;
+// HOW FAST A NODE GROWS WITH ITS DEPTH. This is the SHAPE of the whole power
+// curve, and it is the number that decides whether growing the tree is felt in
+// the hall.
+//
+// It used to be written as a straight line — `1 + 0.14 * (ring - 1)`, a ring-19
+// node worth 3,5 shallow ones — and that turned out to be the reason the game
+// stopped being about stats. The totals in CONFIG.treeTotals are divided across
+// the tree in proportion to these weights, so a flat curve leaves most of the
+// supply in the SHALLOW rings; and gold buys cheapest-reachable-first, so the
+// shallow rings are exactly what a player owns early. Measured with
+// tools/stat-supply.mjs: ten percent of the gold held a THIRD of the flat damage
+// supply, which was already enough to clear camps meant to be a wall. Past that
+// the tree had little left to pay out, and the run came down to whether the
+// player could match pairs.
+//
+// A STRAIGHT LINE CANNOT FIX THAT, however steep it is drawn, and that is worth
+// writing down because it was tried first. A cheapest-first build reaches about
+// ring 11 at a tenth of the gold; on a line, the ratio between a ring-17 node
+// and a ring-8 one tends to 16/7 — barely more than double — no matter how large
+// the slope. So the nodes just past where the money runs out can never be worth
+// much more than the ones just before it, and the curve stays flat where it
+// matters. A POWER curve has no such ceiling: at ring^1.7 the same pair is 3,4
+// apart and the outer third of the tree holds most of everything.
+//
+// So: a node's value is its ring raised to this power (times its archetype's own
+// `ringVal`, for a grain that has to stay coarse). Ring 19 is worth ~150 ring-1
+// nodes — which reads extreme until you remember it is also the ring you can
+// only reach by buying eighteen nodes' worth of path to get there, and that
+// applyTreeTotals normalises the whole thing back onto CONFIG.treeTotals
+// afterwards. What the exponent sets is not how much power exists; it is WHERE
+// IN THE TREE that power sits.
+//
+// THE SHALLOWEST NODES ARE MEANT TO BE NEARLY NOTHING, and that was checked
+// rather than assumed. `ring^1.7` runs 1 to 150 across the tree, so a ring-1
+// Zähigkeit grants "+0,1 LP" — it passes the no-zeros guard and still buys
+// nothing anybody can feel, which looks like a reason to start the curve a ring
+// or three inside the seed (`(ring + 3)^1.7`). Measured, that trade is bad both
+// ways: at 2.000 gold it moved the hero from 20 damage to 28 — six study
+// sessions still buying almost nothing either way — while at 40.000 it handed
+// the mid build nine more camps and put the corridor's gate back where it was
+// before any of this. The early game is slow because the tree is 250–300
+// sessions long, not because of where the curve starts; the fix for the first
+// purchase feeling thin is the Werte screen's meters, which say what a stat is
+// out of what the tree holds.
+const VAL_RING_POW = 1.7;
 // Cost grows SUB-linearly with the ring (ring^0.9). Deep nodes are still much
 // dearer per point than shallow ones, but the curve never runs away the way a
 // per-ring exponential does across twenty rings.
@@ -195,6 +246,14 @@ const THORN_VALUE = 0.10;      // reflected fraction each cache grants (five exi
 // grant exactly 1 wherever they're planted — half a skeleton is not a thing —
 // so a deep one simply costs more.
 const COUNT_STATS = { chainLightning: 1, countMeteor: 1 };
+
+// Stats that do NOT ride the ring curve, on an archetype or on a unique. Two
+// kinds, for the same underlying reason — the authored number IS the design, and
+// scaling it by depth would be scaling something that has no smaller version.
+// A hop is a whole body. A Dornenkrone is one of exactly five equal caches, and
+// the Werte screen says so in words ("je 10 %"); put them on the curve and the
+// five stop being equal and the sentence stops being true.
+const FIXED_STATS = { ...COUNT_STATS, thorns: 1 };
 
 // ---------------------------------------------------------------------------
 // Archetypes — the reusable node types. A branch is written as a short list of
@@ -238,18 +297,26 @@ const A = {
   // puts exactly 5 on the number that pops over a skeleton — on every page of
   // the book, at any depth of the tree, forever. Which stage a node feeds is the
   // one thing its number can't tell you, so these three keep a blurb.
-  dmgBaseFlat:{ stat: "flatBase",   theme: "might",   base: 1.5,   cost: 16, maxRank: 3, ringVal: 0.35,
+  dmgBaseFlat:{ stat: "flatBase",   theme: "might",   base: 1.5,   cost: 16, maxRank: 3,
                 title: "Kernschliff",   blurb: "Vertieft den Kern, aus dem jeder Zauber gerechnet wird — alles danach vervielfacht ihn." },
   dmgBasePct: { stat: "pctBase",    theme: "might",   base: 0.02,  cost: 22, maxRank: 3,
                 title: "Härtung",       blurb: "Wächst den Kern, bevor irgendein Faktor darauf greift." },
-  dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 2.5,   cost: 15, maxRank: 3, ringVal: 0.35,
+  dmgFlat:    { stat: "flatDmg",    theme: "might",   base: 2.5,   cost: 15, maxRank: 3,
                 title: "Schneide",      blurb: "Kommt ganz zuletzt obendrauf, nach allen Faktoren." },
   dmgPct:     { stat: "pctDmg",     theme: "might",   base: 0.025, cost: 22, maxRank: 3,
                 title: "Zorn" },
-  hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3, ringVal: 0.4,
+  hpFlat:     { stat: "flatHp",     theme: "vigor",   base: 24,    cost: 14, maxRank: 3,
                 title: "Zähigkeit" },
   hpPct:      { stat: "pctHp",      theme: "vigor",   base: 0.04,  cost: 20, maxRank: 3,
                 title: "Lebenskraft" },
+  // Panzerung — the one defensive stat that MULTIPLIES the pool instead of
+  // adding to it, which is why the blurb names the curve rather than the number:
+  // "+0,4 Rüstung" is meaningless on its own and the Werte screen is where the
+  // reduction it currently buys is actually read off (see stats.js). Supply is
+  // wide but confined to the three arms that already carry defence — Abwehr,
+  // Zähigkeit and Bannschild — so plate stays a direction a build commits to.
+  armor:      { stat: "armor",      theme: "armor",   base: 1.1,   cost: 24, maxRank: 3,
+                title: "Panzerung",     blurb: "Wehrt einen Anteil jedes gegnerischen Schlages ab. Je mehr du trägst, desto größer der Anteil — der Rückschlag eines falschen Zeichens bleibt davon unberührt." },
   critChance: { stat: "critChance", theme: "crit",    base: 0.02,  cost: 22, maxRank: 3,
                 title: "Präzision" },
   critMult:   { stat: "critMult",   theme: "crit",    base: 0.09,  cost: 24, maxRank: 3,
@@ -469,20 +536,24 @@ const ARMS = [
       tip: uq("meteor", "Himmelssturz", KEYSTONE_COST, { countMeteor: 3, aoeMeteor: 0.30 },
         "Nicht mehr ein Schauer, sondern ein Himmel, der herunterkommt.") }),
 
-  // ---- Guard: absorb, fail-protection, the arm that keeps a fragile build alive.
+  // ---- Guard: absorb, plate, fail-protection — the arm that keeps a fragile
+  // build alive. It is where the hero's ARMOUR is concentrated: Standhaftigkeit
+  // is now a plate branch end to end, and the prelude teaches it in the first
+  // few gold the arm costs, because a stat that answers the deep hall is no use
+  // to anyone who only meets it out at ring 15.
   { key: "gua", kind: "generic", theme: "guard", title: "Abwehr",
-    prelude: [A.hpFlat, A.shield, A.failProt, A.hpFlat],
+    prelude: [A.hpFlat, A.armor, A.failProt, A.shield],
     notable: uq("guard", "Wächterrune", NOTABLE_COST, { shieldChance: 0.08, shieldAmount: 15, shieldMax: 25 },
       "Eine Rune, die mitwacht, wenn du dich auf das Zeichnen konzentrierst."),
     branches: [
       { title: "Schildzauber", arch: [A.shield, A.shield, A.hpFlat],
         tip: uq("guard", "Ewiger Wall", KEYSTONE_COST, { shieldChance: 0.12, shieldAmount: 25, shieldMax: 60 },
           "Der Schild fällt nicht mehr ganz — er wird nur dünner.") },
-      { title: "Schutzzauber", arch: [A.failProt, A.hpFlat, A.haste],
+      { title: "Schutzzauber", arch: [A.failProt, A.armor, A.haste],
         tip: uq("guard", "Bannkreis", KEYSTONE_COST, { spellFailProt: 0.14 },
           "Ein misslungenes Zeichen kostet dich meist nur noch das Zeichen.") },
-      { title: "Standhaftigkeit", arch: [A.hpFlat, A.shield, A.hpPct],
-        tip: uq("guard", "Eisenwille", KEYSTONE_COST, { flatHp: 60, spellFailProt: 0.06, shieldMax: 30 },
+      { title: "Standhaftigkeit", arch: [A.armor, A.hpFlat, A.armor],
+        tip: uq("armor", "Eisenwille", KEYSTONE_COST, { armor: 9, flatHp: 60, spellFailProt: 0.06 },
           "Was dich treffen will, muss erst durch deinen Entschluss."),
         tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
           "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
@@ -490,15 +561,17 @@ const ARMS = [
 
   // ---- Bannschild: absorb built from spell power, so raw damage lifts it too.
   { key: "shi", kind: "spell", spell: "shield", theme: "shield", title: "Bannschild",
-    prelude: [A.hpFlat, A.hpFlat, A.shield, A.hpPct],
+    prelude: [A.hpFlat, A.armor, A.shield, A.hpPct],
     branches: [
       bRawPower(SPELL_LORE.shield),
       bSigil("shield", SPELL_LORE.shield),
       { title: "Wirkung", arch: [A.shield, A.shield, sigil("shield")],
         tip: uq("shield", "Unzerbrechlich", KEYSTONE_COST, { shieldChance: 0.15, shieldAmount: 30, shieldMax: 100 },
           "Der Bann hält, auch wenn du längst nicht mehr hinsiehst.") },
-      { title: "Bollwerk", arch: [A.hpFlat, A.hpPct, A.hpFlat],
-        tip: uq("vigor", "Steinhaut", KEYSTONE_COST, { flatHp: 90, pctHp: 0.08 },
+      // Steinhaut says out loud what it always described — knochen prallen AB —
+      // so it is a plate keystone now rather than a second pool of LP.
+      { title: "Bollwerk", arch: [A.armor, A.hpPct, A.hpFlat],
+        tip: uq("armor", "Steinhaut", KEYSTONE_COST, { armor: 11, flatHp: 60 },
           "Knochen prallen ab, wo sie früher eindrangen.") },
       { title: "Wehrhaftigkeit", arch: [A.failProt, A.haste, A.hpFlat],
         tip: uq("guard", "Bannwall", KEYSTONE_COST, { spellFailProt: 0.12, castHaste: 0.06 },
@@ -511,14 +584,14 @@ const ARMS = [
     notable: uq("vigor", "Eisenleib", NOTABLE_COST, { flatHp: 60, pctHp: 0.06 },
       "Ein Körper, der gelernt hat, im Gang zu stehen."),
     branches: [
-      { title: "Knochenbau", arch: [A.hpFlat, A.hpFlat, A.hpPct],
-        tip: uq("vigor", "Mark und Bein", KEYSTONE_COST, { flatHp: 102 },
+      { title: "Knochenbau", arch: [A.hpFlat, A.armor, A.hpPct],
+        tip: uq("vigor", "Mark und Bein", KEYSTONE_COST, { flatHp: 102, armor: 5 },
           "Du trägst mehr, als ein Mensch tragen sollte.") },
       { title: "Lebenskraft", arch: [A.hpPct, A.hpPct, A.hpFlat],
         tip: uq("vigor", "Zweites Herz", KEYSTONE_COST, { pctHp: 0.18 },
           "Ein zweiter Schlag hinter dem ersten, für den Fall der Fälle.") },
-      { title: "Beharrlichkeit", arch: [A.hpFlat, A.regen, A.hpPct],
-        tip: uq("vigor", "Unbeugsam", KEYSTONE_COST, { regen: 7.2, flatHp: 36 },
+      { title: "Beharrlichkeit", arch: [A.armor, A.regen, A.hpFlat],
+        tip: uq("vigor", "Unbeugsam", KEYSTONE_COST, { regen: 7.2, flatHp: 36, armor: 6 },
           "Du gehst weiter, weil Stehenbleiben nie zur Debatte stand."),
         tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
           "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
@@ -810,12 +883,32 @@ function relaxTree(pos, nodes, edges) {
   ids.forEach((id, i) => { pos[id].x = px[i]; pos[id].y = py[i]; });
 }
 
-// Stats the player counts in whole units — a node granting 2.6 LP would be
-// noise, and "+3 LP" is what a tooltip should be able to say.
+// Stats the player counts in whole units. A shield of 12,4 points is noise; an
+// extra lightning hop cannot be 0,7 of one.
+//
+// THE THREE FLAT POOLS ARE NO LONGER IN HERE, AND THAT IS A BALANCE CHANGE
+// RATHER THAN A FORMATTING ONE. flatBase, flatDmg and flatHp are the biggest
+// pools in the game and they are divided across 143, 223 and 410 ranks. Rounded
+// to a whole point with a floor of 1, most of those ranks landed ON the floor —
+// `tools/stat-supply.mjs` used to print a span of "1 … 1" for flatBase, i.e.
+// every Kernschliff node in the tree, ring 1 and ring 19 alike, granted exactly
+// the same amount. The ring curve existed and did nothing.
+//
+// That is what made the tree front-loaded, and front-loading is what made the
+// game stop being about stats: a quarter of the ranks, which is what ten percent
+// of the gold buys, held a third of the flat supply, so a modest build already
+// hit hard enough to clear camps that were meant to be a wall. Carried to a
+// TENTH instead, the same totals sit where they were authored to sit — the
+// shallow node grants 0,6 and the deep one 6 — and the tooltip prints both
+// honestly (treeNum has always had the decimal place; nothing else needed it
+// until now).
 const WHOLE_STATS = {
-  flatDmg: 1, flatBase: 1, flatHp: 1, shieldAmount: 1, shieldMax: 1,
+  shieldAmount: 1, shieldMax: 1,
   freezeFrost: 1, chainLightning: 1, countMeteor: 1,
 };
+// …and the pools carried to one decimal, floored where the tooltip's last place
+// is (0,1). `regen` was always one of these; the three flat pools joined it.
+const TENTH_STATS = { regen: 1, flatDmg: 1, flatBase: 1, flatHp: 1, armor: 1 };
 
 // What every rank of every node adds up to, per stat.
 function supplyOf(nodes) {
@@ -855,10 +948,23 @@ function supplyOf(nodes) {
 //
 // Every rounding here has a FLOOR, and the floor is the point: a thousand nodes
 // dividing these totals leaves the smallest of them holding very little, and
-// whatever it holds it still has to be a number the player can read. So a whole
-// stat never lands under +1, a rate never under 0,1/s, and a fraction never
-// under 0,001 — one tenth of a percent, which is exactly what the tooltip's last
-// decimal place can print (see treeNum). Nothing in the tree is ever nothing.
+// whatever it holds it still has to be a number the player can read. Nothing in
+// the tree is ever nothing.
+//
+// THE FLOOR IS SET BY THE TOOLTIP, NOT BY THE GAME. What matters is the smallest
+// figure `effectText` can print without it reading as a zero, and that differs
+// per stat because the wordings differ: a percentage stat is multiplied by 100
+// on its way to the page, so 0,001 shows as "0,1 %", while Rüstungsbruch prints
+// its raw number and needs 0,05 to reach "+0,1", and Frostdauer is carried in
+// milliseconds and divided by 1.000, so it needs 50 of them. STAT_FLOOR is those
+// exceptions; everything else takes the default for its rounding class.
+//
+// They started to bind when the ring curve became a power curve (see
+// VAL_RING_POW): the same total spread over a 150-fold range instead of a
+// 3-fold one leaves the shallowest nodes holding a hundredth of what they used
+// to, and two stats quietly began printing "+0". The smoke test's
+// "no node sells a zero" check is the guard, and it is what caught them.
+const STAT_FLOOR = { armorPen: 0.05, freezeFrost: 50 };
 function applyTreeTotals(nodes) {
   const raw = supplyOf(nodes);
   const scale = {};
@@ -870,9 +976,10 @@ function applyTreeTotals(nodes) {
     const effect = nodes[id].effect;
     for (const k in effect) {
       const v = effect[k] * scale[k];
-      effect[k] = WHOLE_STATS[k] ? Math.max(1, Math.round(v))
-        : k === "regen" ? Math.max(0.1, Math.round(v * 10) / 10)
-        : Math.max(0.001, Math.round(v * 1000) / 1000);
+      const floor = STAT_FLOOR[k];
+      effect[k] = WHOLE_STATS[k] ? Math.max(floor || 1, Math.round(v))
+        : TENTH_STATS[k] ? Math.max(floor || 0.1, Math.round(v * 10) / 10)
+        : Math.max(floor || 0.001, Math.round(v * 1000) / 1000);
     }
   }
   return scale;
@@ -905,21 +1012,34 @@ function applyTreeGold(nodes) {
   }
 }
 
+// What a node at this ring is worth, before applyTreeTotals turns weights into
+// game units. Used by ordinary archetypes AND by the uniques: a keystone is
+// authored as a weight relative to the ordinary nodes around it ("about eight
+// Schneide nodes"), so it has to ride the same ring curve they do or a ring-19
+// keystone would come out worth a fraction of the plain node next to it.
+function ringTier(ring, ringVal) {
+  return Math.pow(Math.max(1, ring), VAL_RING_POW * (ringVal == null ? 1 : ringVal));
+}
+
 // One archetype, resolved at a ring: weight scaled by the tier, cost by the ring.
 function archNode(arch, ring, path, maxRankOverride) {
-  // `ringVal` scales how fast this archetype grows with depth. The two flat
-  // DAMAGE pools use a gentler slope than everything else (see the A table):
-  // they are uncapped now, so their supply is what bounds the game instead of a
-  // ceiling, and a stat that both compounds with depth and never stops would
-  // put four digits over a skeleton by the time a deep arm is walked.
-  const tier = 1 + VAL_PER_RING * (arch.ringVal == null ? 1 : arch.ringVal) * (ring - 1);
+  // `ringVal` scales how fast this archetype grows with depth, and no archetype
+  // uses it at the moment: the three flat pools that once did were dampened only
+  // because whole-point rounding pinned them flat anyway (see WHOLE_STATS), and
+  // carrying them to a tenth made the dampener the thing holding the curve back.
+  // It is kept because it is the right knob for an archetype whose grain really
+  // does have to stay coarse.
+  const tier = ringTier(ring, arch.ringVal);
   let effect;
   if (arch.special === "shield") {
-    effect = {
-      shieldChance: Math.min(0.12, 0.05 + 0.004 * ring),
-      shieldAmount: 8 * tier,
-      shieldMax: 13 * tier,
-    };
+    // All three parts on the same ring curve. The chance used to be a hand-rolled
+    // `min(0.12, 0.05 + 0.004*ring)` while the two magnitudes rode the tier —
+    // harmless while the curve was nearly flat, and a real distortion once it
+    // is not, because applyTreeTotals then hands almost the whole shieldChance
+    // total to the keystones and rounds the ordinary Schildzauber nodes to
+    // nothing. Written as weights like everything else, the total lands where
+    // CONFIG.treeTotals puts it.
+    effect = { shieldChance: 0.05 * tier, shieldAmount: 8 * tier, shieldMax: 13 * tier };
   } else if (COUNT_STATS[arch.stat]) {
     effect = { [arch.stat]: 1 };
   } else {
@@ -930,11 +1050,15 @@ function archNode(arch, ring, path, maxRankOverride) {
     cost: ringWeight(arch.cost, ring), growth: arch.growth || RANK_GROWTH };
 }
 
-// A unique — its weight is authored outright, only its price knows about depth.
-// It rides the same second pass as an archetype, so a keystone keeps the weight
-// it was written with relative to the ordinary nodes around it.
+// A unique — a keystone, a notable, an unlock, a thorn cache. Its weight is
+// authored outright and then put on the SAME ring curve an archetype rides, for
+// the reason spelled out at ringTier: the authored figure says how a keystone
+// compares with the plain nodes beside it, and "beside it" is at ring 19.
 function uniqueNode(spec, ring, path) {
-  return { title: spec.title, theme: spec.theme, ring, path, effect: { ...spec.effect }, blurb: spec.blurb,
+  const tier = ringTier(ring);
+  const effect = {};
+  for (const k in spec.effect) effect[k] = spec.effect[k] * (FIXED_STATS[k] ? 1 : tier);
+  return { title: spec.title, theme: spec.theme, ring, path, effect, blurb: spec.blurb,
     unique: true, maxRank: 1, growth: 1, cost: ringWeight(spec.cost, ring) };
 }
 
@@ -1045,7 +1169,7 @@ const SPELL_PARAM_STATS = [
 function recomputeMods() {
   const sum = {
     flatDmg: 0, flatBase: 0, pctBase: 0, flatHp: 0, pctDmg: 0, pctHp: 0,
-    critChance: 0, critMult: 0, armorPen: 0,
+    critChance: 0, critMult: 0, armorPen: 0, armor: 0,
     leech: 0, regen: 0, walkMult: 0, coinMult: 0, castHaste: 0,
     shieldChance: 0, shieldAmount: 0, shieldMax: 0,
     thorns: 0, spellFailProt: 0,
@@ -1084,6 +1208,11 @@ function recomputeMods() {
     // curve is read (see armorReduction in combat.js). Shredding past what a body
     // wears simply leaves it unarmoured — armorReduction floors at zero.
     armorPen: sum.armorPen,
+    // The hero's own plate, in points. What share of a blow that turns aside is
+    // read through CONFIG.heroArmorK, in one place (heroArmorReduction in
+    // combat.js) — the points themselves are carried raw here so the ledger can
+    // show them against what the tree holds.
+    armor: sum.armor,
     spellsUnlocked: unlocked,
     spellPct,
     spellParam,
@@ -1158,15 +1287,16 @@ const STAT_FMT = {
   // The three damage stages read differently on purpose: "je Treffer" is the
   // one that lands verbatim on every body, and it must not be confusable with
   // the two that get multiplied on the way.
-  flatDmg:      (v) => `+${Math.round(v)} Schaden je Treffer`,
-  flatBase:     (v) => `+${Math.round(v)} Kernschaden`,
+  flatDmg:      (v) => `+${treeNum(v)} Schaden je Treffer`,
+  flatBase:     (v) => `+${treeNum(v)} Kernschaden`,
   pctBase:      (v) => `+${treePct(v)} Kernschaden`,
-  flatHp:       (v) => `+${Math.round(v)} LP`,
+  flatHp:       (v) => `+${treeNum(v)} LP`,
   pctDmg:       (v) => `+${treePct(v)} Schaden`,
   pctHp:        (v) => `+${treePct(v)} LP`,
   critChance:   (v) => `+${treePct(v)} Krit-Chance`,
   critMult:     (v) => `+${treePct(v)} Krit-Schaden`,
   armorPen:     (v) => `+${treeNum(v)} Rüstungsbruch`,
+  armor:        (v) => `+${treeNum(v)} Rüstung`,
   leech:        (v) => `${treePct(v)} Lebensraub`,
   // Per-spell nodes — worded so the page they lift is named in the effect line.
   dmgFireball:  (v) => `+${treePct(v)} Feuerball-Schaden`,

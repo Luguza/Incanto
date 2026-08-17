@@ -228,6 +228,29 @@ function svHeroTab() {
       label: "Prozentualer LP-Zuschlag", value: svPlusPct(der.pctHp || 0), color: TREE_THEMES.vigor.color,
       ...svOf("pctHp", der.pctHp || 0, (v) => svPlusPct(v)),
     }),
+    // Two rows for one stat, and both are needed. The points are what the tree
+    // grants and what a meter can be drawn against; the MINDERUNG is the only
+    // form of it that means anything at the moment a body swings, and it is not
+    // linear in the points, so a player reading "+38 Rüstung" has no way to
+    // arrive at "a third of every blow" without this line. `heroArmorReduction`
+    // is re-read from combat.js rather than re-derived, so this cannot drift.
+    svRow({
+      label: "Rüstung", value: svNum(m.armor, 1) + " Punkte", color: TREE_THEMES.armor.color,
+      ...svOf("armor", m.armor, (v) => svNum(v, 1)),
+    }),
+    svRow({
+      label: "Schadensminderung", value: svPct(heroArmorReduction()), tone: "gold",
+      color: TREE_THEMES.armor.color,
+      note: m.armor > 0
+        ? `von jedem gegnerischen Schlag — ein Treffer über ${svNum(100)} kostet dich noch ` +
+          `<b>${svNum(Math.max(1, Math.round(100 * (1 - heroArmorReduction()))))}</b>. ` +
+          `Deine Lebenspunkte wiegen damit effektiv ` +
+          `${svNum(state.heroMaxHP / Math.max(1e-9, 1 - heroArmorReduction()), 0)}. ` +
+          `Der Rückschlag eines falschen Zeichens bleibt ungemindert.` +
+          (heroArmorReduction() >= CONFIG.heroArmorMaxReduction - 1e-9
+            ? ` Mehr als ${svPct(CONFIG.heroArmorMaxReduction)} lässt sich nicht abwehren.` : "")
+        : "noch kein Panzerungszeichen gesetzt — Schläge treffen dich in voller Höhe",
+    }),
     svRow({
       label: "Regeneration", value: svNum(m.regen, 1) + " LP/s", color: TREE_THEMES.sustain.color,
       ...svOf("regen", m.regen, (v) => svNum(v, 1) + " LP/s",

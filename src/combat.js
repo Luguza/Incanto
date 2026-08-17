@@ -1,7 +1,8 @@
 "use strict";
 // ==============================================================================
 // combat.js — rune matching + spell resolution. Owns: handleRuneClick,
-// onShapeComplete, hitPlayer, hitEnemy, armorReduction, TAP_TRACE_MS.
+// onShapeComplete, hitPlayer, enemyHitPlayer, hitEnemy, armorReduction,
+// heroArmorReduction, TAP_TRACE_MS.
 // ==============================================================================
 
 // ---------------------------------------------------------------------------
@@ -133,6 +134,37 @@ function healHero(n) {
   state.heroHP = Math.min(state.heroMaxHP, state.heroHP + n);
 }
 
+// The share of an incoming blow the hero's own plate turns aside. Same curve the
+// bodies wear (see armorReduction below), read from the other side of the swing,
+// and for the same reason: damage in this hall trickles in small integers at one
+// end of the corridor and lands in three-digit strokes at the other, so only a
+// FRACTION means the same thing at both ends. CONFIG.heroArmorK sets how many
+// points buy how much, and the cap keeps three tenths of every blow arriving.
+function heroArmorReduction() {
+  const armor = state.mods && state.mods.armor > 0 ? state.mods.armor : 0;
+  if (armor <= 0) return 0;
+  return Math.min(CONFIG.heroArmorMaxReduction, armor / (armor + CONFIG.heroArmorK));
+}
+
+// What one enemy blow actually costs, plate included — the figure that leaves
+// the HP bar and the figure that pops over the hero, which have to be the same
+// number or the mitigation is invisible.
+//
+// It lives HERE and not inside hitPlayer on purpose. hitPlayer is also how the
+// rune circle's backfire reaches the hero, and armour must not touch that: a
+// wrong match is the one moment in the game that is purely the player's answer,
+// so nothing bought in the forge may soften it (see CONFIG.heroArmorK). Every
+// caller that is a BODY hitting the hero goes through this; the backfire calls
+// hitPlayer directly.
+//
+// Floored at 1 for the same reason a spell hit on an armoured body is: plate
+// makes a blow small, never nothing.
+function enemyHitPlayer(raw) {
+  const dealt = Math.max(1, Math.round(raw * (1 - heroArmorReduction())));
+  hitPlayer(dealt);
+  return dealt;
+}
+
 function hitPlayer(n) {
   // A Ward shield soaks damage before the HP pool does.
   if (state.heroShield > 0) {
@@ -210,4 +242,5 @@ function hitEnemy(enemy, n, at = performance.now()) {
   return dealt;
 }
 
-window.Incanto.combat = { handleRuneClick, onShapeComplete, hitPlayer, hitEnemy, armorReduction, healHero, doomed, livingEnemies, frontEnemy };
+window.Incanto.combat = { handleRuneClick, onShapeComplete, hitPlayer, enemyHitPlayer, hitEnemy,
+  armorReduction, heroArmorReduction, healHero, doomed, livingEnemies, frontEnemy };

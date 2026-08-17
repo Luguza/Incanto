@@ -108,6 +108,13 @@ const data = await page.evaluate(({ shares, overrides }) => {
     return 1 - Math.min(CONFIG.armorMaxReduction, eff / (eff + CONFIG.armorK));
   };
 
+  // …and the same curve on the hero's side of the swing (combat.heroArmorReduction).
+  // Read from the game rather than re-derived, so the tool cannot quietly report
+  // a pressure the hall does not actually apply. The backfire from a wrong match
+  // is not modelled here at all, which is also where armour does not reach — the
+  // two omissions happen to agree.
+  const heroTakes = () => 1 - Incanto.combat.heroArmorReduction();
+
   // Build the camp exactly as the plan describes it: rank by rank, lane by lane,
   // each body carrying its variant's own numbers. HP comes from the game's own
   // spawn rule rather than from `hpMult`, because a splitting body ignores that
@@ -163,7 +170,7 @@ const data = await page.evaluate(({ shares, overrides }) => {
 
   // One camp, ticked. Returns the HP the hero has left and how long it took;
   // hp <= 0 means the corridor ended here.
-  function fightCamp(bodies, hp, maxHp, dps, regen) {
+  function fightCamp(bodies, hp, maxHp, dps, regen, soak) {
     const alive = bodies.slice();
     const engagedAt = new Map();
     let t = 0, nextCast = TRACE_MS + Incanto.spells.castChargeMs();
@@ -207,7 +214,10 @@ const data = await page.evaluate(({ shares, overrides }) => {
         }
         let due = engagedAt.get(b);
         while (t >= due) {
-          if (b.role !== "summoner" && b.role !== "healer") hp -= b.dmg;
+          // Floored at 1 the way enemyHitPlayer floors it: plate makes a blow
+          // small, never nothing, and at this hall's cadences that floor is a
+          // real part of what a swarm costs.
+          if (b.role !== "summoner" && b.role !== "healer") hp -= Math.max(1, Math.round(b.dmg * soak));
           due += b.interval;
         }
         engagedAt.set(b, due);
@@ -264,11 +274,12 @@ const data = await page.evaluate(({ shares, overrides }) => {
       hit = Math.max(hit, spellPower(s.id));
     }
     const maxHp = state.heroMaxHP, regen = state.mods.regen || 0;
+    const soak = heroTakes();
     let hp = maxHp, camps = 0, firstCampHp = null, ms = 0;
     const chapters = [];
     for (let i = 0; i < ENCOUNTER_PLAN.length; i++) {
       const before = hp;
-      const r = fightCamp(campBodies(i), hp, maxHp, hit, regen);
+      const r = fightCamp(campBodies(i), hp, maxHp, hit, regen, soak);
       ms += r.ms;
       if (firstCampHp === null) firstCampHp = Math.max(0, Math.round(r.hp));
       const ch = ENCOUNTER_PLAN[i].chapter;
@@ -283,13 +294,16 @@ const data = await page.evaluate(({ shares, overrides }) => {
     }
     rows.push({
       budget, hp: maxHp, hit: Math.round(hit), regen: Math.round(regen * 10) / 10,
+      soak: Math.round((1 - soak) * 100),
       camps, chapter: ENCOUNTER_PLAN[Math.min(camps, ENCOUNTER_PLAN.length - 1)].chapter + 1,
       firstCampHp, mins: Math.round(ms / 60000), chapters: chapters.filter(Boolean),
       // The headline number: how long one plain skeleton, left alone with this
       // hero, would need to empty him. Seconds rather than blows, because a blow
       // is no longer a fixed bite — bodies swing on their own cadences now, and
-      // what a pool is worth is the TIME it buys under that pressure.
-      secs: Math.round(maxHp / skeletonDps(CONFIG)),
+      // what a pool is worth is the TIME it buys under that pressure. Armour is
+      // in it, because a pool and the plate over it are one quantity as far as
+      // "how long do I last" is concerned.
+      secs: Math.round(maxHp / (skeletonDps(CONFIG) * soak)),
     });
   }
   return { rows, total: ENCOUNTER_PLAN.length, baseDmg: CONFIG.enemyBaseDmg, baseHp: CONFIG.heroBaseHP };
@@ -300,11 +314,12 @@ server.close();
 
 const pad = (s, n) => String(s).padStart(n);
 console.log(`\nenemyBaseDmg ${data.baseDmg} · heroBaseHP ${data.baseHp} · ${data.total} camps in the hall\n`);
-console.log("   gold     LP   Treffer  Regen   Skelettsekunden   Camp 1 endet mit   geschafft   Kapitel   ~min");
-console.log("  ".padEnd(100, "─"));
+console.log("   gold     LP   Treffer  Regen  Rüstung   Skelettsekunden   Camp 1 endet mit   geschafft   Kapitel   ~min");
+console.log("  ".padEnd(110, "─"));
 for (const r of data.rows) {
   console.log(
     "  " + pad(r.budget, 6) + pad(r.hp, 7) + pad(r.hit, 10) + pad(r.regen, 7) +
+    pad(r.soak + " %", 9) +
     pad(r.secs + " s", 18) + pad(r.firstCampHp + " LP", 19) +
     pad(r.camps + "/" + data.total, 12) + pad(r.chapter, 10) + pad(r.mins, 7)
   );
