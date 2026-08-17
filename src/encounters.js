@@ -313,15 +313,23 @@ const PACKS = {
 // chapter or two short of where he'd like to be. Which chapter that is, is the
 // design intent recorded below.
 //
-// THE POOLS BELOW ARE OWED A PASS. They were set against the damage curve as it
-// stood before the tree was repriced from one total (CONFIG.treeGold /
-// treeTotals) and the stat ceilings were removed. Under the new curve a
-// Feuerball hit runs ~199 at a quarter of the tree and ~749 at nearly all of it
-// — the endgame hero is some 4.6× harder-hitting than the one these HP pools
-// were sized for, so the last chapters land softer than the table claims and the
-// door is reachable earlier than the ~95% it is written for. `node
-// tools/stat-supply.mjs` prints that curve against tree completion, which is the
-// figure to re-tune the deep variants against.
+// THE POOLS BELOW HAVE HAD THAT PASS, and it was a large one. The whole
+// bestiary was re-baked against a much wider power curve: pressure per second
+// now climbs ×13 from chapter 2 to the door and HP pools ×4,2 again on top of
+// the tiers' own climb (see the ramp note in CONFIG.enemyTypes). The second of
+// those is the important one here, and it is what this table had been quietly
+// missing. A camp's damage only exists for as long as its bodies do — the hero
+// reliably gets a cast off before anything reaches him — so a chapter whose
+// bodies die to one cast costs nothing whatever its `dmgMult` says. That is
+// exactly what chapters 3 through 12 had become for any grown build.
+//
+// Measured with `node tools/attrition.mjs` after the pass: a build at 10 % of
+// treeGold is ground down in chapter 6, at 30 % in chapter 13, at 60 % four
+// camps short of the door, and at 90 % it walks out with the last chapter having
+// taken most of what it had. The percentages below are still the design intent
+// and the middle of the corridor still runs ahead of them — chapters 9 to 12 are
+// built on healers, summoners and ranged ranks, none of which that tool models,
+// so read those rows as its floor rather than as the fight.
 //
 //     chapter                 camps      metres       the hero it is written for
 //     ----------------------  ---------  -----------  ---------------------------

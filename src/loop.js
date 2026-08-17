@@ -341,7 +341,11 @@ function updateEnemies(now, dt) {
 // and stepping BOTH ways separates same-width numbers that would still overlap
 // side by side. By lane rather than at random, so a given body always pops in
 // the same place and the stream reads as several attackers rather than noise.
-function popHeroDmgFloat(value, lane) {
+// `blunted` is set when the hero's own plate bit into the blow, and pops the
+// number in steel instead of red — the same convention the enemy side already
+// uses (CONFIG.colors.dmgFloat.armored), so "that number is smaller than it
+// should be" is legible on whichever body armour is being worn.
+function popHeroDmgFloat(value, lane, blunted) {
   if (!scene || state.screen !== "combat") return;   // nobody is watching a background fight
   const step = Math.max(0, Math.min(CONFIG.enemyLanes - 1, Number(lane) || 0));
   // The hero stands close to the left edge, so the back lane's step has to give
@@ -351,7 +355,7 @@ function popHeroDmgFloat(value, lane) {
   const halfW = 4 * String(Math.max(0, Math.round(value))).length;
   spawnDmgFloat({
     value,
-    color: CONFIG.colors.dmgFloat.hero,
+    color: blunted ? CONFIG.colors.dmgFloat.armored : CONFIG.colors.dmgFloat.hero,
     x: Math.max(halfW + 1, scene.wizard.x + SHEET.wizardIdle.w / 2 - step * 6),
     y: scene.wizard.y - 4 - step * 4,
   });
@@ -360,14 +364,17 @@ function popHeroDmgFloat(value, lane) {
 // A body's swing connecting with the hero: the damage, the forward jab, the
 // number over his head, and whatever Dornen sends back the other way.
 function enemyMeleeStrike(now, e) {
-  hitPlayer(e.dmg);
+  const dealt = enemyHitPlayer(e.dmg);  // e.dmg is the swing; `dealt` is what got through the plate
   e.attackAnimAt = now;                 // fire the forward-jab animation
   // Pop the damage number over the hero, in sync with the body's jab. Both pops
   // below are for the combat screen only — off-screen (background) combat has no
   // one to show the numbers to, and they'd pile up unseen.
   const onScreen = scene && state.screen === "combat";
-  popHeroDmgFloat(e.dmg, e.lane);
-  // Thorns: reflect a slice of the blow back onto the attacker.
+  popHeroDmgFloat(dealt, e.lane, dealt < e.dmg);
+  // Thorns: reflect a slice of the blow back onto the attacker — of the SWING,
+  // not of what survived the hero's armour. What Dornen sends back is a property
+  // of how hard the body hit, and taxing it through the plate as well would make
+  // the two defensive stats quietly cancel each other out.
   if (state.mods.thorns > 0) {
     // Reflected through the same funnel as a spell, so an armoured body
     // shrugs part of it off too (hitEnemy returns what actually landed).
@@ -430,8 +437,10 @@ function updateEnemyShots(now) {
   for (const s of shots) {
     if (!s.hit && now >= s.landAt) {
       s.hit = true;
-      hitPlayer(s.dmg);
-      popHeroDmgFloat(s.dmg, s.lane);
+      // Through the plate, exactly like a melee swing: a bolt is a body's blow
+      // that happened to travel, and armour has no opinion about the distance.
+      const dealt = enemyHitPlayer(s.dmg);
+      popHeroDmgFloat(dealt, s.lane, dealt < s.dmg);
     }
     if (now < s.landAt + CONFIG.enemyShotFadeMs) keep.push(s);
   }

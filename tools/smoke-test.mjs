@@ -1349,6 +1349,70 @@ try {
   check(roles.mended, "a healer puts HP back on the wounded body in front of it");
   check(roles.summoned > 0, `a summoner calls in bodies of its own (${roles.summoned})`);
 
+  //     THE HERO'S OWN PLATE (CONFIG.heroArmorK, combat.enemyHitPlayer). Armour
+  //     turns aside a share of every blow a BODY lands — melee swing and bolt
+  //     alike, since a bolt is only a blow that travelled — and turns aside
+  //     nothing at all of the backfire from a wrong match. That exemption is the
+  //     part worth guarding: it is the one moment in the game that is purely the
+  //     player's answer, and a defensive stat quietly softening it would make the
+  //     forge pay for the quiz.
+  const plate = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    startRun();
+    state.mods.regen = 0;
+    state.mods.thorns = 0;                 // reflected damage would kill the body mid-measure
+    state.packIndex = window.Incanto.encounters.ENCOUNTER_PLAN.length;
+
+    // One body, parked in reach, measured over a fixed window with and without
+    // plate. Same body, same window, so the only difference is the armour.
+    const runFor = async (armor) => {
+      state.mods.armor = armor;
+      state.heroMaxHP = state.heroHP = 10 ** 7;
+      state.heroShield = 0;
+      state.enemies = [];
+      const b = spawnEnemy(performance.now(), 2, CONFIG.enemyStandoffTiles, "skeleton");
+      b.maxHP = b.hp = 10 ** 7;            // it must survive to keep swinging
+      // A HEAVY blow on purpose. A plain skeleton lands 3, and half of 3 rounds
+      // to 2, not 1,5 — mitigation is applied to a whole number of points and
+      // floored at one, so at the hall's smallest hits the rounding is a bigger
+      // effect than the armour. That is true of the game as well as of this test;
+      // what is being measured here is the curve, so it is measured where the
+      // curve is what decides the answer.
+      b.dmg = 240;
+      const before = state.heroHP;
+      await settle(4000);
+      return { lost: before - state.heroHP, dmg: b.dmg };
+    };
+    const bare = await runFor(0);
+    const plated = await runFor(CONFIG.heroArmorK);   // exactly half the curve: A/(A+K) = 0,5
+
+    // The backfire, through the same two heroes. hitPlayer is what the rune
+    // circle calls, and it must not know about armour.
+    const backfire = (armor) => {
+      state.mods.armor = armor;
+      state.heroMaxHP = state.heroHP = 10 ** 7;
+      state.heroShield = 0;
+      const before = state.heroHP;
+      hitPlayer(Math.max(1, Math.round(state.heroMaxHP * CONFIG.wrongPenaltyFraction)));
+      return before - state.heroHP;
+    };
+    return {
+      bare: bare.lost, plated: plated.lost, blow: bare.dmg,
+      bareBackfire: backfire(0), platedBackfire: backfire(CONFIG.heroArmorK * 4),
+      capped: Incanto.combat.heroArmorReduction(),
+      cap: CONFIG.heroArmorMaxReduction,
+    };
+  });
+  check(plate.bare > 0 && plate.plated > 0 &&
+    Math.abs(plate.plated / plate.bare - 0.5) < 0.12,
+    `armour turns aside its share of what a body lands (${plate.bare} bare vs ${plate.plated} plated, ` +
+    `over the same window)`);
+  check(plate.bareBackfire === plate.platedBackfire && plate.bareBackfire > 0,
+    `…and none of the backfire from a wrong match (${plate.platedBackfire} either way)`);
+  check(plate.capped <= plate.cap + 1e-9 && plate.capped > 0,
+    `no amount of plate makes the hero immune (${Math.round(plate.capped * 100)}% at four times K, ` +
+    `capped at ${Math.round(plate.cap * 100)}%)`);
+
   //     THE MOB LOOKS FOR A WAY ROUND (see pathfind.js). A lane is a strict queue
   //     and only its front body reaches melee, so a column of six in one lane used
   //     to come at the hero in single file with three lanes of open floor beside

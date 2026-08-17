@@ -79,14 +79,23 @@ const data = await page.evaluate((shares) => {
   // A stat the player counts in whole units cannot total less than the number of
   // ranks granting it: every one of them has to print at least +1. Below that
   // floor the target is unreachable and the actual total runs away from it.
-  const floor = {};
+  //
+  // Which stats those are is read off the NODES — every value granted is an
+  // integer — rather than off the finished total. Asking `Number.isInteger` of
+  // the total flagged coneFrost, whose target is a fraction that happens to come
+  // to exactly 1,00, and told the reader its thirteen ranks each had to print a
+  // whole "+1 Kegelweite". They print percentages.
+  const whole = {};
   for (const id in N) {
     if (id === "root") continue;
     for (const k in N[id].effect) {
-      if (Number.isInteger(TREE_SUPPLY[k]) || ["flatHp", "flatDmg", "flatBase", "shieldAmount", "shieldMax", "freezeFrost"].includes(k)) {
-        floor[k] = (floor[k] || 0) + N[id].maxRank;
-      }
+      if (whole[k] !== false) whole[k] = Number.isInteger(N[id].effect[k]);
     }
+  }
+  const floor = {};
+  for (const id in N) {
+    if (id === "root") continue;
+    for (const k in N[id].effect) if (whole[k]) floor[k] = (floor[k] || 0) + N[id].maxRank;
   }
   let allRanks = 0, cheapest = Infinity;
   for (const id in N) {

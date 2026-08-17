@@ -18,12 +18,30 @@ const CONFIG = {
   // arrives on every body.
   //
   // Nothing about it is capped, and nothing about any other stat is either (see
-  // the note where the caps used to live, below). On the cheapest-first curve a
-  // Feuerball hit runs ~58 at 1.000 gold spent, ~88 at 3.000, ~133 at 10.000 and
-  // ~330 at 30.000, and keeps climbing from there. Four-digit numbers therefore
-  // do appear on a deeply invested tree — the old "never four digits" rule was
-  // a consequence of the ceilings, and it went with them. Run
-  // tools/stat-supply.mjs to see the whole curve.
+  // the note where the caps used to live, below).
+  //
+  // THE SPREAD IS THE DESIGN. A bare hero's Feuerball hits for 16 and a walked-
+  // out one for ~2.150 — a hundredfold — and the pool runs 112 LP to ~2.550 with
+  // about half of every blow turned aside on top (see heroArmorK). That range is
+  // deliberately enormous, because it is the whole answer to a game that had
+  // stopped being about the tree: the spread used to be thirty-fold, a quarter
+  // of the tree already carried a third of it, and past a fairly shallow
+  // threshold every camp in the corridor fell to whoever could match pairs
+  // quickly. Skill still decides how fast the casts come; STATS decide how far
+  // down the hall those casts get you, and the two are supposed to multiply.
+  //
+  // Both ends moved to get there. The floor came down (heroBaseDmg 24 → 16), the
+  // ceiling went up (the totals below), and — the part that actually did the
+  // work — the tree's value curve was made a power curve so its supply sits in
+  // the OUTER rings rather than the first few hundred gold (see VAL_RING_POW in
+  // skilltree.js). The bestiary was re-baked against the same span: a body's
+  // depth ramp now reaches ×13 in pressure per second and its HP pools ~×4 more
+  // again by the door, so the hall keeps pace instead of falling behind.
+  //
+  // Four- and five-digit numbers therefore do appear on a deeply invested tree.
+  // The old "never four digits" rule was a consequence of the stat ceilings and
+  // went with them. Run tools/stat-supply.mjs for the whole curve and
+  // tools/attrition.mjs for what it buys in camps.
   //
   // NUMBER SCALE. Every damage and HP figure in the game is carried at ×8 the
   // scale it reads at naturally, for one reason: a PERCENTAGE needs resolution
@@ -31,16 +49,12 @@ const CONFIG = {
   // his fifth lightning hop for 0.77, so a 33% armour reduction rounded to 0%
   // or 50% and a +4% damage node moved nothing at all — four ranks of it left
   // heroDmg at 3. At ×8 the smallest routine hit is ~6 and every percentage in
-  // the game lands within a few points of its advertised value.
-  //
-  // The scale-up is paid for by COMPRESSING growth rather than sliding the whole
-  // window up (see caps): a damage number must never reach four digits, and the
-  // old spread already ran 0.77 → 778, wider than the three-digit space itself.
-  // So the floor came up ×8 and the ceiling stayed put — the hero now starts at
-  // 24 damage and tops out near 102 instead of starting at 3 and topping out at
-  // 50, and the largest number the game can pop is still ~816.
+  // the game lands within a few points of its advertised value. That is also why
+  // the hero's own armour is a fraction rather than a subtraction, and why the
+  // floor came down to 16 rather than further: below about a dozen, a spell's
+  // own dmgMult starts rounding the small pages into each other again.
   heroBaseHP: 112,
-  heroBaseDmg: 24,
+  heroBaseDmg: 16,
   dmgPerLevel: 2,
   hpPerLevel: 25,
   dmgUpgradeBaseCost: 30,
@@ -229,21 +243,37 @@ const CONFIG = {
   // tree (see encounters.js) — you get there by killing faster, not by tanking.
   //
   // BUT A BLOW MUST STAY A BLOW, and that is what `dmgMult` is for. The hero's
-  // pool runs 112 LP bare to ~1.450 walked-out — thirteenfold. If a body's blow
-  // did not climb with it, one number would have to threaten both heroes at
-  // once, and no number can: the 48 that made a skeleton lethal at camp 1 was
-  // also, by camp 120, less than a grown hero regenerates between swings. That
-  // is exactly what used to happen. `node tools/attrition.mjs` traced a 90 %
-  // build down the whole plan and found chapters 7 through 14 costing it ZERO
-  // LP — the far hall was not a grind, it was a queue.
+  // pool runs 112 LP bare to ~2.550 walked-out, with about half of every blow
+  // turned aside on top of that (see heroArmorK) — some fifty-fold in what it
+  // takes to empty him. If a body's blow did not climb with it, one number would
+  // have to threaten both heroes at once, and no number can: the 48 that made a
+  // skeleton lethal at camp 1 was also, by camp 120, less than a grown hero
+  // regenerates between swings. That is exactly what used to happen.
   //
   // So a body's PRESSURE climbs with DEPTH, at roughly the rate the pool it is
-  // spending does: ×1 for the bone of chapter 2, ×5 by the time it reaches the
+  // spending does: ×1 for the bone of chapter 2, ×13 by the time it reaches the
   // door, geometrically across the chapters in between (a body's factor is its
-  // authored weight × 5^((chapter-2)/14) — the weights inside a tier are
+  // authored weight × 13^((chapter-2)/14) — the weights inside a tier are
   // untouched, so an ogre still leans harder than its escort). A body therefore
   // takes a roughly constant BITE out of whatever pool is carrying it, and the
   // grind reads the same at both ends of the hall.
+  //
+  // ITS HP RAMPS TOO, AND HARDER — `hpMult` carries the same geometric ladder at
+  // ×4,2 over the ×13 the bestiary's own tiers already climb, so a chapter-16
+  // body is some seventy-five times the pool a plain skeleton is. That second
+  // ramp is the one that answers the complaint the whole rebalance came from:
+  // the hero gets a cast off before anything can reach him, so a camp that dies
+  // to one or two casts never lands a blow at all, and no amount of per-second
+  // pressure on paper matters if the bodies carrying it are already dust. HP is
+  // what buys a camp the seconds in which its damage exists. Read the two ramps
+  // as one thing: what a chapter costs is its bodies' pressure times how long
+  // they survive to apply it.
+  //
+  // BOTH RAMPS ARE BAKED, NOT COMPUTED. The numbers in the table below already
+  // carry them, which is why the chapter each variant is introduced in is worth
+  // knowing when you edit one. `tools/` has no script for it — re-deriving a
+  // ramp means re-deriving it from the ORIGINAL authored weights, or the factors
+  // compound silently.
   //
   // THAT RAMP IS PER SECOND, NOT PER BLOW. `dmgMult` is what ONE blow carries,
   // and one blow is the ramp cut into the body's own `attackMs` — so a heavy on
@@ -278,12 +308,12 @@ const CONFIG = {
     // Bleached, small and quick — the first thing that reaches the hero before
     // he expected it. Dies to anything; there are simply a lot of them.
     { id: "runner", name: "KNOCHENLÄUFER", sprite: "skelet",
-      hpMult: 0.55, dmgMult: 0.25, attackMs: 800, armor: 0,
+      hpMult: 0.61, dmgMult: 0.27, attackMs: 800, armor: 0,
       scale: 0.85, walkMult: 1.8, filter: "sepia(0.9) saturate(1.9) brightness(1.12)" },
     // Steel-blue bone: the skeleton family's answer to a grown hero — plated,
     // slow, and not worth a fireball on its own.
     { id: "warden", name: "KNOCHENWACHE", sprite: "skelet",
-      hpMult: 2.2, dmgMult: 1, attackMs: 1500, armor: 9,
+      hpMult: 4.51, dmgMult: 1.61, attackMs: 1500, armor: 9,
       scale: 1.15, walkMult: 0.75, filter: "sepia(1) saturate(1.8) hue-rotate(175deg) brightness(0.95)" },
 
     // --- Schleim. What the hall opens with, ahead of the bone, and the one
@@ -296,9 +326,9 @@ const CONFIG = {
     //
     // Their HP is NOT set here: a splitting variant walks in on the top rung of
     // `slimeTiers` (60) whatever its `hpMult` says, and every hit it survives
-    // hands it down that ladder. So a fresh hero — 24 damage, one Feuerball, no
-    // tree — walks the whole of it every time: 60 into two 40s, each 40 into two
-    // 20s, and the 20s die to a single cast. `hpMult` is left on both entries
+    // hands it down that ladder. So a fresh hero — 16 damage, one Feuerball, no
+    // tree — walks the whole of it every time: 60 into two 36s, each 36 into two
+    // 14s, and the 14s die to a single cast. `hpMult` is left on both entries
     // because everything else in the table carries one, but it is dead weight on
     // these two and moving it changes nothing.
     // Nothing later in the hall ever sends a slime, which is the point of them.
@@ -337,85 +367,85 @@ const CONFIG = {
 
     // --- Goblins. Small, fast, in numbers: the swarm chapter.
     { id: "goblin", name: "KOBOLD", sprite: "goblin",
-      hpMult: 0.5, dmgMult: 0.25, attackMs: 900, armor: 0, scale: 1, walkMult: 1.7 },
+      hpMult: 0.61, dmgMult: 0.29, attackMs: 900, armor: 0, scale: 1, walkMult: 1.7 },
     { id: "goblinRed", name: "BLUTKOBOLD", sprite: "goblin",
-      hpMult: 0.8, dmgMult: 0.5, attackMs: 900, armor: 0, scale: 1.1, walkMult: 1.8,
+      hpMult: 0.98, dmgMult: 0.57, attackMs: 900, armor: 0, scale: 1.1, walkMult: 1.8,
       filter: "sepia(1) saturate(3.4) hue-rotate(300deg)" },
     { id: "goblinIce", name: "FROSTKOBOLD", sprite: "goblin",
-      hpMult: 0.9, dmgMult: 0.33, attackMs: 1000, armor: 4, scale: 1.05, walkMult: 1.4,
+      hpMult: 1.1, dmgMult: 0.38, attackMs: 1000, armor: 4, scale: 1.05, walkMult: 1.4,
       filter: "sepia(1) saturate(2.4) hue-rotate(180deg) brightness(1.1)" },
 
     // --- Imps. The hall's first RANGED bodies: they never close, so the front
     // rank stops being the whole fight.
     { id: "imp", name: "FEUERIMP", sprite: "imp", role: "ranged",
-      hpMult: 0.7, dmgMult: 0.25, attackMs: 1200, armor: 0, scale: 1, walkMult: 1.2,
+      hpMult: 1.05, dmgMult: 0.33, attackMs: 1200, armor: 0, scale: 1, walkMult: 1.2,
       standoff: 6.5, range: 7.5, shot: { rgb: "242, 168, 58", ms: 420 } },
     { id: "impFrost", name: "EISIMP", sprite: "imp", role: "ranged",
-      hpMult: 0.95, dmgMult: 0.33, attackMs: 1300, armor: 2, scale: 1, walkMult: 1.1,
+      hpMult: 1.43, dmgMult: 0.43, attackMs: 1300, armor: 2, scale: 1, walkMult: 1.1,
       standoff: 7, range: 8, shot: { rgb: "121, 216, 238", ms: 420 },
       filter: "hue-rotate(195deg) saturate(1.3) brightness(1.1)" },
     { id: "impVoid", name: "SCHATTENIMP", sprite: "imp", role: "ranged",
-      hpMult: 1.2, dmgMult: 0.75, attackMs: 1400, armor: 3, scale: 1.1, walkMult: 1.1,
+      hpMult: 2.46, dmgMult: 1.21, attackMs: 1400, armor: 3, scale: 1.1, walkMult: 1.1,
       standoff: 7.5, range: 8.5, shot: { rgb: "192, 140, 255", ms: 380 },
       filter: "hue-rotate(265deg) saturate(0.9) brightness(0.8)" },
 
     // --- The rotting ranks. Slow, heavy, and the first real HP walls.
     { id: "zombie", name: "ZOMBIE", sprite: "zombie",
-      hpMult: 2.6, dmgMult: 0.92, attackMs: 1900, armor: 0, scale: 1.1, walkMult: 0.55 },
+      hpMult: 4.34, dmgMult: 1.29, attackMs: 1900, armor: 0, scale: 1.1, walkMult: 0.55 },
     { id: "muddy", name: "SCHLAMMLING", sprite: "muddy",
-      hpMult: 2.2, dmgMult: 0.75, attackMs: 1900, armor: 6, scale: 1.1, walkMult: 0.5 },
+      hpMult: 3.67, dmgMult: 1.06, attackMs: 1900, armor: 6, scale: 1.1, walkMult: 0.5 },
     { id: "swampy", name: "SUMPFLING", sprite: "swampy",
-      hpMult: 2.4, dmgMult: 0.83, attackMs: 1800, armor: 4, scale: 1.1, walkMult: 0.6 },
+      hpMult: 4.01, dmgMult: 1.17, attackMs: 1800, armor: 4, scale: 1.1, walkMult: 0.6 },
     { id: "iceZombie", name: "EISZOMBIE", sprite: "iceZombie",
-      hpMult: 3.0, dmgMult: 1.67, attackMs: 2000, armor: 5, scale: 1.15, walkMult: 0.45 },
+      hpMult: 8.36, dmgMult: 3.3, attackMs: 2000, armor: 5, scale: 1.15, walkMult: 0.45 },
 
     // --- Orcs. The armour chapters: nothing here dies to a hero who skipped
     // his damage nodes, and the masks are where penetration starts to pay.
     { id: "orc", name: "ORKKRIEGER", sprite: "orcWarrior",
-      hpMult: 2.0, dmgMult: 0.83, attackMs: 1400, armor: 8, scale: 1, walkMult: 0.8 },
+      hpMult: 2.72, dmgMult: 1.02, attackMs: 1400, armor: 8, scale: 1, walkMult: 0.8 },
     { id: "orcBlack", name: "SCHWARZORK", sprite: "orcWarrior",
-      hpMult: 2.6, dmgMult: 0.92, attackMs: 1400, armor: 11, scale: 1.1, walkMult: 0.75,
+      hpMult: 3.54, dmgMult: 1.13, attackMs: 1400, armor: 11, scale: 1.1, walkMult: 0.75,
       filter: "brightness(0.55) saturate(0.6)" },
     { id: "orcIron", name: "EISENORK", sprite: "orcWarrior",
-      hpMult: 3.0, dmgMult: 1.83, attackMs: 1600, armor: 12, scale: 1.1, walkMult: 0.65,
+      hpMult: 7.55, dmgMult: 3.38, attackMs: 1600, armor: 12, scale: 1.1, walkMult: 0.65,
       filter: "sepia(1) saturate(1.6) hue-rotate(180deg)" },
     { id: "maskedOrc", name: "MASKENORK", sprite: "maskedOrc",
-      hpMult: 3.0, dmgMult: 1.92, attackMs: 1600, armor: 13, scale: 1.1, walkMult: 0.7 },
+      hpMult: 7.55, dmgMult: 3.55, attackMs: 1600, armor: 13, scale: 1.1, walkMult: 0.7 },
     { id: "maskedOrcRed", name: "BLUTMASKE", sprite: "maskedOrc",
-      hpMult: 3.4, dmgMult: 2.25, attackMs: 1300, armor: 12, scale: 1.15, walkMult: 0.85,
+      hpMult: 8.55, dmgMult: 4.16, attackMs: 1300, armor: 12, scale: 1.15, walkMult: 0.85,
       filter: "sepia(1) saturate(3.4) hue-rotate(300deg)" },
 
     { id: "maskedOrcBone", name: "KNOCHENMASKE", sprite: "maskedOrc",
-      hpMult: 3.6, dmgMult: 3.75, attackMs: 1600, armor: 15, scale: 1.2, walkMult: 0.65,
+      hpMult: 15.12, dmgMult: 9.75, attackMs: 1600, armor: 15, scale: 1.2, walkMult: 0.65,
       filter: "saturate(0.15) brightness(1.35)" },
 
     // --- Shamans. HEALERS: they mend the body in front of them faster than a
     // small spell can chew it down, so the hall starts asking for real damage
     // (or for the player to kill the back rank first).
     { id: "shaman", name: "ORKSCHAMANE", sprite: "orcShaman", role: "healer",
-      hpMult: 1.6, dmgMult: 0.42, attackMs: 1500, armor: 2, scale: 1, walkMult: 0.9,
+      hpMult: 2.96, dmgMult: 0.63, attackMs: 1500, armor: 2, scale: 1, walkMult: 0.9,
       standoff: 8, heal: { frac: 0.16, everyMs: 3200, firstMs: 1800, radius: 7 } },
     { id: "shamanElder", name: "ÄLTESTER", sprite: "orcShaman", role: "healer",
-      hpMult: 2.4, dmgMult: 0.5, attackMs: 1500, armor: 5, scale: 1.1, walkMult: 0.85,
+      hpMult: 4.44, dmgMult: 0.75, attackMs: 1500, armor: 5, scale: 1.1, walkMult: 0.85,
       standoff: 8.5, heal: { frac: 0.26, everyMs: 2600, firstMs: 1500, radius: 9 },
       filter: "hue-rotate(270deg) saturate(1.2)" },
 
     { id: "shamanBlood", name: "BLUTSCHAMANE", sprite: "orcShaman", role: "healer",
-      hpMult: 2.0, dmgMult: 1.42, attackMs: 1500, armor: 4, scale: 1.05, walkMult: 0.9,
+      hpMult: 8.4, dmgMult: 3.69, attackMs: 1500, armor: 4, scale: 1.05, walkMult: 0.9,
       standoff: 8, heal: { frac: 0.2, everyMs: 2200, firstMs: 1400, radius: 8 },
       filter: "sepia(1) saturate(3.4) hue-rotate(300deg)" },
 
     // --- Wogols. The heavier ranged rank: they out-range the imps and hurt.
     { id: "wogol", name: "WOGOL", sprite: "wogol", role: "ranged",
-      hpMult: 1.3, dmgMult: 0.75, attackMs: 1400, armor: 3, scale: 1, walkMult: 0.9,
+      hpMult: 2.66, dmgMult: 1.21, attackMs: 1400, armor: 3, scale: 1, walkMult: 0.9,
       standoff: 7.5, range: 8.5, shot: { rgb: "154, 143, 240", ms: 380 } },
     { id: "wogolPale", name: "BLEICHER WOGOL", sprite: "wogol", role: "ranged",
-      hpMult: 1.7, dmgMult: 1, attackMs: 1400, armor: 5, scale: 1.05, walkMult: 0.9,
+      hpMult: 3.48, dmgMult: 1.61, attackMs: 1400, armor: 5, scale: 1.05, walkMult: 0.9,
       standoff: 8, range: 9, shot: { rgb: "234, 252, 255", ms: 340 },
       filter: "hue-rotate(185deg) saturate(0.8) brightness(1.25)" },
 
     { id: "wogolVoid", name: "SCHATTENWOGOL", sprite: "wogol", role: "ranged",
-      hpMult: 2.0, dmgMult: 2.08, attackMs: 1400, armor: 6, scale: 1.1, walkMult: 0.85,
+      hpMult: 6.18, dmgMult: 4.41, attackMs: 1400, armor: 6, scale: 1.1, walkMult: 0.85,
       standoff: 8.5, range: 9.5, shot: { rgb: "192, 140, 255", ms: 320 },
       filter: "hue-rotate(265deg) saturate(1.1) brightness(0.85)" },
 
@@ -424,17 +454,17 @@ const CONFIG = {
     // wrong order. `max` is the lifetime budget, so a stalled fight can't grow
     // without bound.
     { id: "necromancer", name: "NEKROMANT", sprite: "necromancer", role: "summoner",
-      hpMult: 2.0, dmgMult: 0.5, attackMs: 1600, armor: 3, scale: 1, walkMult: 0.85,
+      hpMult: 4.54, dmgMult: 0.86, attackMs: 1600, armor: 3, scale: 1, walkMult: 0.85,
       standoff: 8.5,
       summon: { type: "skeleton", count: 2, everyMs: 5200, firstMs: 2600, max: 8 } },
     { id: "necroLord", name: "KNOCHENFÜRST", sprite: "necromancer", role: "summoner",
-      hpMult: 3.2, dmgMult: 0.75, attackMs: 1600, armor: 6, scale: 1.15, walkMult: 0.8,
+      hpMult: 7.27, dmgMult: 1.29, attackMs: 1600, armor: 6, scale: 1.15, walkMult: 0.8,
       standoff: 9,
       summon: { type: "runner", count: 3, everyMs: 4200, firstMs: 2200, max: 12 },
       filter: "hue-rotate(140deg) saturate(1.3)" },
 
     { id: "necroPale", name: "BLEICHER NEKROMANT", sprite: "necromancer", role: "summoner",
-      hpMult: 2.6, dmgMult: 0.83, attackMs: 1600, armor: 4, scale: 1.05, walkMult: 0.85,
+      hpMult: 7.25, dmgMult: 1.64, attackMs: 1600, armor: 4, scale: 1.05, walkMult: 0.85,
       standoff: 8.5,
       summon: { type: "carrion", count: 4, everyMs: 3800, firstMs: 2000, max: 16 },
       filter: "hue-rotate(235deg) saturate(0.7) brightness(1.3)" },
@@ -442,35 +472,35 @@ const CONFIG = {
     // --- Chorts. Elite melee: fast AND heavy, the first bodies that punish
     // standing still.
     { id: "chort", name: "CHORT", sprite: "chort",
-      hpMult: 2.8, dmgMult: 2.42, attackMs: 1000, armor: 4, scale: 1, walkMult: 1.3 },
+      hpMult: 8.65, dmgMult: 5.13, attackMs: 1000, armor: 4, scale: 1, walkMult: 1.3 },
     { id: "chortAsh", name: "ASCHECHORT", sprite: "chort",
-      hpMult: 3.6, dmgMult: 2.92, attackMs: 1000, armor: 7, scale: 1.1, walkMult: 1.25,
+      hpMult: 11.12, dmgMult: 6.19, attackMs: 1000, armor: 7, scale: 1.1, walkMult: 1.25,
       filter: "brightness(0.6) saturate(0.35)" },
 
     { id: "chortFrost", name: "FROSTCHORT", sprite: "chort",
-      hpMult: 3.2, dmgMult: 2.92, attackMs: 1000, armor: 6, scale: 1.05, walkMult: 1.35,
+      hpMult: 10.95, dmgMult: 6.62, attackMs: 1000, armor: 6, scale: 1.05, walkMult: 1.35,
       filter: "hue-rotate(185deg) saturate(1.2) brightness(1.1)" },
 
     // --- Carrion. Summoned fodder, never authored into a pack on its own.
     { id: "carrion", name: "KADAVERLING", sprite: "tinyZombie",
-      hpMult: 0.35, dmgMult: 0.58, attackMs: 800, armor: 0, scale: 1, walkMult: 2.0 },
+      hpMult: 0.79, dmgMult: 1, attackMs: 800, armor: 0, scale: 1, walkMult: 2.0 },
 
     // --- The heavies. One of these is a whole camp's worth of HP.
     { id: "ogre", name: "OGER", sprite: "ogre",
-      hpMult: 6.5, dmgMult: 4.92, attackMs: 2400, armor: 10, scale: 1, walkMult: 0.5 },
+      hpMult: 22.24, dmgMult: 11.16, attackMs: 2400, armor: 10, scale: 1, walkMult: 0.5 },
     { id: "ogreFrost", name: "FROSTOGER", sprite: "ogre",
-      hpMult: 8, dmgMult: 5.17, attackMs: 2400, armor: 12, scale: 1.05, walkMult: 0.45,
+      hpMult: 27.37, dmgMult: 11.73, attackMs: 2400, armor: 12, scale: 1.05, walkMult: 0.45,
       filter: "hue-rotate(175deg) saturate(1.1) brightness(1.1)" },
     { id: "ogreBlack", name: "SCHWARZOGER", sprite: "ogre",
-      hpMult: 9, dmgMult: 6.67, attackMs: 2500, armor: 14, scale: 1.05, walkMult: 0.45,
+      hpMult: 34.12, dmgMult: 16.2, attackMs: 2500, armor: 14, scale: 1.05, walkMult: 0.45,
       filter: "brightness(0.5) saturate(0.5)" },
     { id: "bigZombie", name: "FLEISCHBERG", sprite: "bigZombie", role: "summoner",
-      hpMult: 8, dmgMult: 4.92, attackMs: 2600, armor: 5, scale: 1, walkMult: 0.4,
+      hpMult: 30.33, dmgMult: 11.95, attackMs: 2600, armor: 5, scale: 1, walkMult: 0.4,
       standoff: 2.4, range: 4.6,
       summon: { type: "carrion", count: 2, everyMs: 6000, firstMs: 3000, max: 8 } },
 
     { id: "pestBerg", name: "PESTBERG", sprite: "bigZombie", role: "summoner",
-      hpMult: 9.5, dmgMult: 5.08, attackMs: 2600, armor: 7, scale: 1.05, walkMult: 0.4,
+      hpMult: 36.01, dmgMult: 12.34, attackMs: 2600, armor: 7, scale: 1.05, walkMult: 0.4,
       standoff: 2.4, range: 4.6,
       summon: { type: "carrion", count: 3, everyMs: 5000, firstMs: 2600, max: 12 },
       filter: "sepia(1) saturate(2.2) hue-rotate(80deg)" },
@@ -478,12 +508,12 @@ const CONFIG = {
     // --- The gate. The last two chapters, and nothing else in the hall reads
     // like them: they fill the corridor's whole height.
     { id: "bigDemon", name: "GROSSER DÄMON", sprite: "bigDemon",
-      hpMult: 12, dmgMult: 9.92, attackMs: 2600, armor: 10, scale: 1, walkMult: 0.6 },
+      hpMult: 50.4, dmgMult: 25.79, attackMs: 2600, armor: 10, scale: 1, walkMult: 0.6 },
     { id: "demonAsh", name: "ASCHETEUFEL", sprite: "bigDemon",
-      hpMult: 13, dmgMult: 10.83, attackMs: 2600, armor: 11, scale: 1, walkMult: 0.6,
+      hpMult: 54.6, dmgMult: 28.16, attackMs: 2600, armor: 11, scale: 1, walkMult: 0.6,
       filter: "brightness(0.62) saturate(0.3)" },
     { id: "demonLord", name: "DÄMONENFÜRST", sprite: "bigDemon", role: "summoner",
-      hpMult: 18, dmgMult: 13.17, attackMs: 2800, armor: 12, scale: 1.1, walkMult: 0.55,
+      hpMult: 75.6, dmgMult: 34.24, attackMs: 2800, armor: 12, scale: 1.1, walkMult: 0.55,
       standoff: 2.6, range: 5,
       summon: { type: "chort", count: 1, everyMs: 7000, firstMs: 4000, max: 6 },
       filter: "hue-rotate(265deg) saturate(1.3) brightness(1.1)" },
@@ -492,7 +522,7 @@ const CONFIG = {
   // SPLITTING, AND THE SIZE LADDER IT WALKS DOWN (variants with `split: true` —
   // today that is the two slimes). A slime is not a body you wear down. It is
   // THREE SIZES, and hitting one turns it into two of the size below at FULL HP:
-  // 60 becomes two 40s, each 40 becomes two 20s, and a 20 is the bottom —
+  // 60 becomes two 36s, each 36 becomes two 14s, and a 14 is the bottom —
   // nothing smaller to become, so it just takes the hit like any other body and
   // dies when its bar runs out.
   //
@@ -510,7 +540,7 @@ const CONFIG = {
   //
   // IT MAKES HP, ON PURPOSE, AND THAT IS THE WHOLE CHANGE. The old ladder halved
   // what the hit left behind, which is arithmetically tidy and meant the
-  // mechanic almost never fired: a fresh hero's 24 damage on a 44 HP slime left
+  // mechanic almost never fired: a fresh hero's damage on a 44 HP slime left
   // 20, and 20 is two 10s, so one camp showed one split and the rest died before
   // they could divide — and a hero with a tree behind him never saw a split at
   // all, because everything he touched died on the first hit. Dividing at full
@@ -538,9 +568,17 @@ const CONFIG = {
   // The rungs are written bottom-up: index 0 is the floor, the last is what a
   // slime walks in on (see progression.spawnHP — a splitting variant's `hpMult`
   // has no say, this ladder is the whole of what it is worth).
+  // THE BOTTOM RUNG IS TIED TO `heroBaseDmg` AND HAS TO STAY TIED TO IT. Only
+  // the floor's HP decides how long the prologue takes: every rung above it
+  // divides on any hit whatever the hit was worth, so the ONLY body in the
+  // chapter that has to be chewed down is the smallest one. At 14 against a
+  // fresh hero's 16 it dies to a single cast — which is what keeps a big slime
+  // at seven casts (1 split, 2 splits, 4 kills) rather than eleven. Lower
+  // `heroBaseDmg` again and this comes down with it, or the opening minute of a
+  // first-ever run doubles in length without anything else about it changing.
   slimeTiers: [
-    { hp: 20, scale: 1,   dmgMult: 0.35, prefix: "KLEINER " },
-    { hp: 40, scale: 1.3, dmgMult: 0.6,  prefix: "" },
+    { hp: 14, scale: 1,   dmgMult: 0.35, prefix: "KLEINER " },
+    { hp: 36, scale: 1.3, dmgMult: 0.6,  prefix: "" },
     { hp: 60, scale: 1.6, dmgMult: 1,    prefix: "GROSSER " },   // what one walks in on
   ],
   // THE GOO A SLIME LEAVES BEHIND. Two things put marks on the floor and both
@@ -580,10 +618,48 @@ const CONFIG = {
   //
   // The useful identity: armour A multiplies a body's EFFECTIVE HP by
   // (1 + A/armorK). With armorK 10 the brute's armour 5 turns aside a third of
-  // every hit — its 20 HP take 30 damage to chew through — and the cap means no
-  // amount of armour ever makes a body immune.
+  // every hit — its 160 HP take 240 damage to chew through — and the cap means
+  // no amount of armour ever makes a body immune.
   armorK: 10,
   armorMaxReduction: 0.75,
+  // ===========================================================================
+  // THE HERO'S OWN ARMOUR (mods.armor, granted by the tree — see skilltree.js
+  // A.armor). Same curve as the bodies wear, read the other way round:
+  //
+  //   reduction = min(heroArmorMaxReduction, armor / (armor + heroArmorK))
+  //
+  // WHY THE HERO NEEDED ONE AT ALL. Depth in this hall is bought in pressure per
+  // second (see the ramp note above `enemyTypes`), and that ramp climbs steeply
+  // enough now that a pool alone cannot answer it: LP is additive and the ramp
+  // is geometric, so past a certain chapter every further point of LP buys a
+  // smaller share of one blow than the last did. Armour is the stat that scales
+  // the OTHER side of that division — it multiplies whatever pool you are
+  // carrying instead of adding to it, which is exactly the shape the deep hall
+  // asks for. The useful identity, same as the bodies': armour A is worth
+  // (1 + A/heroArmorK) times your effective LP.
+  //
+  // A FRACTION, NOT A SUBTRACTION, and here the reason is even plainer than it
+  // is for the bodies: damage in this hall TRICKLES. A plain skeleton lands 4,
+  // a slime fragment 1, and a gate demon a hundred and change — any flat
+  // deduction that means something against the demon deletes the skeleton
+  // entirely, and one that is fair against the skeleton is invisible against the
+  // demon. A share holds its meaning at both ends.
+  //
+  // WHAT IT DOES NOT COVER: the backfire from a wrong match
+  // (`wrongPenaltyFraction`). Plate is worn against bodies, not against your own
+  // miscast — and mechanically that penalty is the one place in the game where
+  // the player's ANSWER is the whole of what happens, so nothing bought in the
+  // forge may soften it. See hitPlayer in combat.js, which is why the mitigation
+  // lives at the enemy's end of the blow rather than inside hitPlayer.
+  //
+  // K is set against the supply: the tree holds `treeTotals.armor` points, and a
+  // build at 90 % of the gold carries ~61 of them, which lands at 47 % — very
+  // nearly the extra pressure the last chapters gained when the bestiary's ramp
+  // was steepened. A build that skips armour entirely feels that steepening at
+  // full strength, which is the point of it being a stat rather than a global
+  // number.
+  heroArmorK: 70,
+  heroArmorMaxReduction: 0.7,   // three tenths of every blow always arrives
   wrongPenaltyFraction: 0.15, // a wrong match backfires for this fraction of the hero's MAX HP
   enemyDeathMs: 600,         // how long a skeleton dissolves for, once the blow has landed on it
   // DESIGNED ENCOUNTERS. Skeletons don't trickle in on a timer — the hall is a
@@ -874,29 +950,59 @@ const CONFIG = {
     // this stat is ever worth", because now that is what they are.
     //
     // — damage, in the three stages it is built in (see skilltree.js)
-    flatBase: 150,        // ① +150 Kernschaden, before any factor
-    pctBase: 0.4,         // ① +40 % on that core
-    pctDmg: 0.6,          // ② ×1,6 all told
-    flatDmg: 250,         // ③ +250 on every single body hit, after everything
-    // …which lands an endgame Feuerball around 700 per body: a skeleton (80 LP)
-    // and a brute (160) both die to one, which is what an endgame ought to feel
-    // like. The two flat stages cannot go much below this: they are counted in
-    // whole points, and 143 / 231 ranks of the tree grant them, so a smaller
-    // total would only mean every one of those nodes printing "+1".
+    flatBase: 340,        // ① +340 Kernschaden, before any factor
+    pctBase: 0.5,         // ① +50 % on that core
+    pctDmg: 1.2,          // ② ×2,2 all told
+    flatDmg: 800,         // ③ +800 on every single body hit, after everything
+    //
+    // THESE FOUR ARE THE TOP OF THE POWER CURVE, AND THE CURVE'S SPREAD IS THE
+    // POINT. A run used to be settled by whether the player could match pairs:
+    // past a fairly shallow damage threshold every camp in the hall fell to a
+    // good matcher, and the tree stopped being a reason to keep playing. That
+    // threshold was low because the SPREAD was small — a bare hero hit for 24
+    // and a finished one for 749, thirty-fold, and a quarter of the tree already
+    // carried a third of the flat supply. The answer is on both ends: the floor
+    // came down (heroBaseDmg 24 → 16, and the tree's value curve is a power
+    // curve now, so the supply sits in the outer rings — see VAL_RING_POW in
+    // skilltree.js), and these totals came up.
+    //
+    // WHAT THEY BUY, measured (tools/stat-supply.mjs, a cheapest-first build):
+    //
+    //     gold spent   tree walked   Feuerball   LP     Rüstung
+    //        2.000          4 %           20      119     1 %
+    //        8.000          8 %           58      130     1 %
+    //       40.000         24 %          257      400     7 %
+    //      120.000         51 %          879    1.183    22 %
+    //      240.000         79 %        1.630    2.133    38 %
+    //      360.000         97 %        2.162    2.558    47 %
+    //
+    // — and tools/attrition.mjs walks each of those down the hall: 3 camps, 5,
+    // 28, 61, 78, and the last one out of the door at 82. Move any figure here
+    // and re-read BOTH tools; the two ends of this table are the two ends of the
+    // game, and the middle of it is the whole difficulty curve.
     // — the hero
-    flatHp: 600,          // with pctHp: ~1.240 LP at the end, ~25 skeleton blows
-    pctHp: 1,
+    flatHp: 1200,         // with pctHp: ~2.550 LP at the end
+    pctHp: 1.2,
+    // ARMOUR — the defensive counterpart to the bestiary's per-second ramp (see
+    // heroArmorK above for the curve and why it is a fraction). 90 points in the
+    // tree, of which a build at 90 % of the gold carries ~61: about 47 % of every
+    // blow turned aside, i.e. very nearly double the effective pool. Sized to
+    // answer the extra pressure the deep chapters gained, so the far hall is
+    // survivable BY A BUILD THAT WENT AND GOT IT rather than by everyone — the
+    // supply is confined to Abwehr, Zähigkeit and Bannschild, so skipping it is
+    // a real choice with a real cost.
+    armor: 90,
     critChance: 0.6,      // 60 % — and it is a probability, so it could not be more
     critMult: 1.5,        // a crit lands at ×3,0
     armorPen: 5,          // exactly the brute's plate: commit fully and it is gone
     leech: 0.4,
-    regen: 25,            // LP/s — ~2 % of the endgame pool per second
+    regen: 45,            // LP/s — ~1,8 % of the endgame pool per second
     castHaste: 1.2,       // as a rate: 420 ms ÷ 2,2 ≈ 190 ms
     walkMult: 1,          // pace 0,057 px/ms, still under the march's own 0,12
     coinMult: 2.5,
     shieldChance: 0.5,
-    shieldAmount: 350,
-    shieldMax: 800,       // a banked shield worth about half the endgame pool
+    shieldAmount: 480,
+    shieldMax: 1100,      // a banked shield worth about half the endgame pool
     spellFailProt: 0.6,
     thorns: 0.5,          // five Dornenkronen, 10 % each — the one already-exact total
     // — per page of the book: a page's own sigils are worth ~+50 % to it
