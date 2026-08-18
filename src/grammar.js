@@ -47,7 +47,10 @@
 //
 //   { k: "pick",  q, word?, hint?, a, d: [3 wrong] }        → choose
 //   { k: "write", q, word?, hint?, a, accept?: [] }         → type
-//   { k: "pair",  leftLabel, rightLabel, pairs: [[l, r]] }  → match
+//   { k: "pair",  leftLabel, rightLabel, lang?, pairs: [[l, r]] } → match
+//        `lang` is two of "it"/"de", one per column, and it defaults to both
+//        Italian. Say it when a column holds German — which column is which is
+//        not something a checker can tell by looking at "rot".
 //   { k: "gap",   it, de, a, d?: [3 wrong] }                → fill-choose / fill-type
 //   { k: "build", it, de, extra?: [] }                      → arrange
 //   { k: "para",  verb, blanks? }                           → conj-table
@@ -260,7 +263,7 @@ const GRAMMAR_LECTURES = [
         ["il padre", "i padri"], ["la madre", "le madri"], ["la notte", "le notti"],
         ["il mese", "i mesi"], ["la chiave", "le chiavi"],
       ] },
-      { k: "pair", leftLabel: "deutsch", rightLabel: "italienisch", pairs: [
+      { k: "pair", leftLabel: "deutsch", rightLabel: "italienisch", lang: ["de", "it"], pairs: [
         ["der Hund", "il cane"], ["die Nacht", "la notte"], ["das Meer", "il mare"],
         ["der Schlüssel", "la chiave"], ["die Sonne", "il sole"],
       ] },
@@ -460,6 +463,309 @@ const GRAMMAR_LECTURES = [
       { k: "write", q: "Mit Artikel:", word: "die Hand", a: "la mano", strict: true },
       { k: "write", q: "Plural von", word: "il problema", a: "i problemi", strict: true },
       { k: "build", it: "Le città italiane sono belle", de: "Die italienischen Städte sind schön", extra: ["la", "bello"] },
+    ],
+  },
+
+  // ===========================================================================
+  // Unit 2 — Adjektive
+  // ===========================================================================
+  {
+    id: "adj-o", unit: "adj",
+    title: "Adjektive auf -o",
+    subtitle: "Vier Formen, und das Nomen wählt sie",
+    teaches: ["nero", "nera", "neri", "nere"],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Ein italienisches Adjektiv richtet sich nach dem Nomen, zu dem es gehört — nach dessen Geschlecht und dessen Zahl. Die größte Gruppe endet im Wörterbuch auf -o und hat vier Formen." },
+        { t: "table", head: ["", "Singular", "Plural"], rows: [
+          ["männlich", "piccolo", "piccoli"],
+          ["weiblich", "piccola", "piccole"],
+        ] },
+        { t: "p", de: "Es sind dieselben Endungen wie beim Nomen. Wer die Mehrzahl kann, kann das hier schon." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Entscheidend ist das Nomen, nicht das Adjektiv. Das Adjektiv hat kein eigenes Geschlecht — es leiht sich das seines Nomens." },
+        { t: "ex", it: "il libro nuovo", de: "das neue Buch" },
+        { t: "ex", it: "la casa nuova", de: "das neue Haus" },
+        { t: "ex", it: "i libri nuovi", de: "die neuen Bücher" },
+        { t: "ex", it: "le case nuove", de: "die neuen Häuser" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Der häufigste Fehler ist, die Wörterbuchform stehen zu lassen. Sie ist nur eine von vieren und nicht die Grundform, sondern die männliche Einzahl." },
+        { t: "bad", wrong: "la casa nuovo", right: "la casa nuova" },
+        { t: "bad", wrong: "le scarpe nero", right: "le scarpe nere" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Gehören zu einem Adjektiv mehrere Nomen und ist eines davon männlich, steht die männliche Mehrzahl. Ein einziges männliches Wort genügt." },
+        { t: "ex", it: "Il ragazzo e la ragazza sono italiani", de: "Der Junge und das Mädchen sind Italiener" },
+        { t: "ex", it: "La madre e la figlia sono italiane", de: "Die Mutter und die Tochter sind Italienerinnen" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Zwei Schreibregeln laufen mit, dieselben wie beim Nomen: -io hat im Plural nur ein i, und -ca und -ga schieben ein h ein, damit der harte Klang bleibt." },
+        { t: "ex", it: "i libri vecchi", de: "die alten Bücher" },
+        { t: "ex", it: "le mele bianche", de: "die weißen Äpfel" },
+        { t: "rule", de: "Vier Endungen: -o, -a, -i, -e. Welche gilt, sagt das Nomen." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "Welche Form passt?", word: "la casa ___", a: "nuova", d: ["nuovo", "nuovi", "nuove"] },
+      { k: "pick", q: "Welche Form passt?", word: "i libri ___", a: "nuovi", d: ["nuovo", "nuova", "nuove"] },
+      { k: "pick", q: "Welche Form passt?", word: "le scarpe ___", a: "nere", d: ["nero", "nera", "neri"] },
+      { k: "pick", q: "Welche Form passt?", word: "il gatto ___", a: "piccolo", d: ["piccola", "piccoli", "piccole"] },
+      { k: "pair", leftLabel: "Nomen", rightLabel: "Adjektiv", pairs: [
+        ["il libro", "nuovo"], ["la casa", "nuova"], ["i gatti", "piccoli"],
+        ["le sedie", "vecchie"], ["gli occhi", "neri"],
+      ] },
+      { k: "gap", it: "Io ho una casa nuova", de: "Ich habe ein neues Haus", a: "nuova", d: ["nuovo", "nuovi", "nuove"] },
+      { k: "gap", it: "Noi mangiamo le mele rosse", de: "Wir essen die roten Äpfel", a: "rosse", d: ["rosso", "rossa", "rossi"] },
+      { k: "write", q: "Wie heißt „die alten Stühle“?", a: "le sedie vecchie", strict: true },
+      { k: "write", q: "Wie heißt „das kleine Buch“?", a: "il libro piccolo", strict: true },
+      { k: "write", q: "Wie heißt „die schwarzen Katzen“?", a: "i gatti neri", strict: true },
+      { k: "build", it: "La casa è piccola", de: "Das Haus ist klein", extra: ["piccolo", "il"] },
+      { k: "build", it: "I libri sono vecchi", de: "Die Bücher sind alt", extra: ["vecchio", "le"] },
+    ],
+  },
+
+  {
+    id: "adj-e", unit: "adj",
+    title: "Adjektive auf -e",
+    subtitle: "Nur zwei Formen — und kein Hinweis aufs Geschlecht",
+    teaches: [],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Die zweite Gruppe endet auf -e und hat nur zwei Formen: eine für beide Geschlechter im Singular, eine für beide im Plural." },
+        { t: "table", head: ["", "Singular", "Plural"], rows: [
+          ["männlich", "grande", "grandi"],
+          ["weiblich", "grande", "grandi"],
+        ] },
+        { t: "rule", de: "-e im Singular, -i im Plural. Das Geschlecht spielt keine Rolle." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Das ist weniger zu lernen als bei den Adjektiven auf -o — es bedeutet aber auch, dass sie über das Nomen nichts verraten." },
+        { t: "ex", it: "il libro grande", de: "das große Buch" },
+        { t: "ex", it: "la casa grande", de: "das große Haus" },
+        { t: "ex", it: "i libri grandi", de: "die großen Bücher" },
+        { t: "ex", it: "le case grandi", de: "die großen Häuser" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Es sind viele der alltäglichsten Eigenschaftswörter:" },
+        { t: "list", items: [
+          "grande, giovane, forte, veloce",
+          "felice, triste, gentile",
+          "facile, difficile, importante, interessante",
+          "verde, marrone, arancione",
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "Der Fehler, der hier passiert, ist der umgekehrte zu vorhin: statt der Endung des Nomens zu folgen, wird eine erfunden, die es bei dieser Gruppe gar nicht gibt." },
+        { t: "bad", wrong: "la casa granda", right: "la casa grande" },
+        { t: "bad", wrong: "le case grande", right: "le case grandi" },
+      ] },
+      { blocks: [
+        { t: "p", de: "In einer Aufzählung können beide Gruppen nebeneinander stehen, und dann sieht man den Unterschied am deutlichsten:" },
+        { t: "ex", it: "le case grandi e nuove", de: "die großen und neuen Häuser" },
+        { t: "ex", it: "i ragazzi giovani e simpatici", de: "die jungen und sympathischen Jungen" },
+        { t: "rule", de: "Ein Adjektiv auf -e hat zwei Formen, eines auf -o hat vier. Mehr Unterschied ist da nicht." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "Welche Form passt?", word: "la casa ___", a: "grande", d: ["granda", "grandi", "grando"] },
+      { k: "pick", q: "Welche Form passt?", word: "i libri ___", a: "grandi", d: ["grande", "granda", "grandu"] },
+      { k: "pick", q: "Welche Form passt?", word: "le ragazze ___", a: "felici", d: ["felice", "felica", "felico"] },
+      { k: "pick", q: "Welche Form passt?", word: "il cane ___", a: "veloce", d: ["veloci", "veloco", "veloca"] },
+      { k: "pair", leftLabel: "Nomen", rightLabel: "Adjektiv", pairs: [
+        ["la casa", "grande"], ["i cani", "veloci"], ["il fiore", "verde"],
+        ["le donne", "gentili"], ["i ragazzi", "forti"],
+      ] },
+      { k: "gap", it: "Io ho un cane veloce", de: "Ich habe einen schnellen Hund", a: "veloce", d: ["veloci", "veloco", "veloca"] },
+      { k: "gap", it: "Noi siamo molto felici", de: "Wir sind sehr glücklich", a: "felici", d: ["felice", "felica", "felico"] },
+      { k: "write", q: "Wie heißt „die großen Häuser“?", a: "le case grandi", strict: true },
+      { k: "write", q: "Wie heißt „die grünen Blumen“?", a: "i fiori verdi", strict: true },
+      { k: "write", q: "Wie heißt „der starke Junge“?", a: "il ragazzo forte", strict: true },
+      { k: "build", it: "La lezione è difficile", de: "Die Lektion ist schwierig", extra: ["difficili", "il"] },
+      { k: "build", it: "I ragazzi sono giovani", de: "Die Jungen sind jung", extra: ["giovane", "le"] },
+    ],
+  },
+
+  {
+    id: "adj-pos", unit: "adj",
+    title: "Wo das Adjektiv steht",
+    subtitle: "Meistens hinter dem Nomen",
+    teaches: ["buon", "bel"],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Im Deutschen steht das Adjektiv vor dem Nomen. Im Italienischen dahinter — das ist die Grundstellung, und für die meisten Adjektive die einzige." },
+        { t: "ex", it: "una casa grande", de: "ein großes Haus" },
+        { t: "ex", it: "un libro nuovo", de: "ein neues Buch" },
+        { t: "ex", it: "un ragazzo simpatico", de: "ein sympathischer Junge" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Drei Sorten stehen IMMER hinten, ohne Ausnahme: Farben, Herkunft und Form." },
+        { t: "ex", it: "una mela rossa", de: "ein roter Apfel" },
+        { t: "ex", it: "un ragazzo italiano", de: "ein italienischer Junge" },
+        { t: "bad", wrong: "una rossa mela", right: "una mela rossa" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Eine kleine Gruppe sehr häufiger Adjektive stellt sich dagegen gewohnheitsmäßig davor: bello, buono, grande, piccolo, nuovo, vecchio, giovane." },
+        { t: "ex", it: "una piccola città", de: "eine kleine Stadt" },
+        { t: "ex", it: "una buona idea", de: "eine gute Idee" },
+        { t: "p", de: "Hinten stehen dürfen sie auch — es ist eine Gewohnheit, keine Regel." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Zwei aus dieser Gruppe kürzen sich vor dem Nomen, genau wie die Artikel es tun. Aus buono wird buon, aus bello wird bel." },
+        { t: "table", head: ["nach dem Nomen", "vor dem Nomen"], rows: [
+          ["un caffè buono", "un buon caffè"],
+          ["un libro bello", "un bel libro"],
+        ] },
+        { t: "p", de: "Weiblich bleiben sie, wie sie sind: una buona idea, una bella casa." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Merke dir die Grundstellung und diese eine Handvoll. Alles andere geht hinter das Nomen und ist damit erledigt." },
+        { t: "rule", de: "Adjektiv hinter das Nomen. Farbe, Herkunft und Form immer. Nur ein paar sehr häufige stellen sich davor." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "Was ist richtig?", a: "una mela rossa", d: ["una rossa mela", "una mela rosso", "un mela rossa"] },
+      { k: "pick", q: "Was ist richtig?", a: "un ragazzo italiano", d: ["un italiano ragazzo", "un ragazzo italiana", "una ragazzo italiano"] },
+      { k: "pick", q: "Was ist richtig?", a: "un buon caffè", d: ["un buono caffè", "un caffè buon", "una buon caffè"] },
+      { k: "pick", q: "Was ist richtig?", a: "una bella casa", d: ["una bello casa", "una casa bello", "un bella casa"] },
+      { k: "pair", leftLabel: "deutsch", rightLabel: "italienisch", lang: ["de", "it"], pairs: [
+        ["ein neues Buch", "un libro nuovo"], ["eine rote Blume", "un fiore rosso"],
+        ["ein guter Wein", "un buon vino"], ["eine kleine Stadt", "una piccola città"],
+        ["ein italienischer Junge", "un ragazzo italiano"],
+      ] },
+      { k: "gap", it: "Io compro una mela rossa", de: "Ich kaufe einen roten Apfel", a: "rossa", d: ["rosso", "rosse", "rossi"] },
+      { k: "gap", it: "Tu sei un ragazzo italiano", de: "Du bist ein italienischer Junge", a: "italiano", d: ["italiana", "italiani", "italiane"] },
+      { k: "write", q: "Wie heißt „ein neues Haus“?", a: "una casa nuova", strict: true },
+      { k: "write", q: "Wie heißt „ein guter Kaffee“?", a: "un buon caffè", accept: ["un caffè buono"], strict: true },
+      { k: "write", q: "Wie heißt „eine grüne Pflanze“?", a: "una pianta verde", strict: true },
+      { k: "build", it: "Io compro un libro nuovo", de: "Ich kaufe ein neues Buch", extra: ["nuova", "nuovi"] },
+      { k: "build", it: "Lei ha una casa piccola", de: "Sie hat ein kleines Haus", extra: ["piccolo", "piccoli"] },
+    ],
+  },
+
+  {
+    id: "adj-color", unit: "adj",
+    title: "Farben",
+    subtitle: "Adjektive wie alle anderen — bis auf drei",
+    teaches: ["nero", "nera", "neri", "nere"],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Farben sind gewöhnliche Adjektive: sie stehen hinter dem Nomen und richten sich nach ihm. Die meisten enden auf -o und haben deshalb vier Formen." },
+        { t: "table", head: ["", "Singular", "Plural"], rows: [
+          ["männlich", "rosso", "rossi"],
+          ["weiblich", "rossa", "rosse"],
+        ] },
+        { t: "ex", it: "il vino rosso", de: "der Rotwein" },
+        { t: "ex", it: "le scarpe rosse", de: "die roten Schuhe" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Nach diesem Muster gehen rosso, nero, bianco, giallo und grigio." },
+        { t: "ex", it: "il gatto nero", de: "die schwarze Katze" },
+        { t: "ex", it: "la casa bianca", de: "das weiße Haus" },
+        { t: "ex", it: "i fiori gialli", de: "die gelben Blumen" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Verde, marrone und arancione enden auf -e und haben darum nur zwei Formen." },
+        { t: "ex", it: "il fiore verde", de: "die grüne Blume" },
+        { t: "ex", it: "i fiori verdi", de: "die grünen Blumen" },
+        { t: "ex", it: "le scarpe marroni", de: "die braunen Schuhe" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Und zwei ändern sich überhaupt nie: blu und rosa. Sie sehen in jeder Stellung gleich aus, männlich wie weiblich, Einzahl wie Mehrzahl." },
+        { t: "ex", it: "la porta blu", de: "die blaue Tür" },
+        { t: "ex", it: "le porte blu", de: "die blauen Türen" },
+        { t: "bad", wrong: "le porte blue", right: "le porte blu" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Damit sind die Farben des Spiels vollständig:" },
+        { t: "table", head: ["Farbe", "deutsch", "Formen"], rows: [
+          ["rosso", "rot", "vier"],
+          ["nero", "schwarz", "vier"],
+          ["bianco", "weiß", "vier"],
+          ["giallo", "gelb", "vier"],
+          ["grigio", "grau", "vier"],
+          ["verde", "grün", "zwei"],
+          ["marrone", "braun", "zwei"],
+          ["blu", "blau", "eine"],
+          ["rosa", "rosa", "eine"],
+        ] },
+        { t: "rule", de: "Farbe hinter das Nomen. -o vier Formen, -e zwei, blu und rosa keine." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "Welche Form passt?", word: "il vino ___", a: "rosso", d: ["rossa", "rossi", "rosse"] },
+      { k: "pick", q: "Welche Form passt?", word: "le scarpe ___", a: "nere", d: ["nero", "nera", "neri"] },
+      { k: "pick", q: "Welche Form passt?", word: "i fiori ___", a: "verdi", d: ["verde", "verda", "verdo"] },
+      { k: "pick", q: "Welche Form passt?", word: "le porte ___", a: "blu", d: ["blue", "blui", "blua"] },
+      { k: "pair", leftLabel: "deutsch", rightLabel: "italienisch", lang: ["de", "it"], pairs: [
+        ["rot", "rosso"], ["grün", "verde"], ["schwarz", "nero"],
+        ["weiß", "bianco"], ["gelb", "giallo"],
+      ] },
+      { k: "gap", it: "Io bevo il vino rosso", de: "Ich trinke den Rotwein", a: "rosso", d: ["rossa", "rossi", "rosse"] },
+      { k: "gap", it: "Lei compra le scarpe nere", de: "Sie kauft die schwarzen Schuhe", a: "nere", d: ["nero", "nera", "neri"] },
+      { k: "write", q: "Wie heißt „der weiße Teller“?", a: "il piatto bianco", strict: true },
+      { k: "write", q: "Wie heißt „die grünen Pflanzen“?", a: "le piante verdi", strict: true },
+      { k: "write", q: "Wie heißt „die blauen Türen“?", a: "le porte blu", strict: true },
+      { k: "build", it: "Il gatto è nero", de: "Die Katze ist schwarz", extra: ["nera", "neri"] },
+      { k: "build", it: "Le mele sono rosse", de: "Die Äpfel sind rot", extra: ["rosso", "rossa"] },
+    ],
+  },
+
+  {
+    id: "adj-quant", unit: "adj",
+    title: "molto, poco, troppo",
+    subtitle: "Wörter mit zwei Jobs",
+    teaches: [],
+    pages: [
+      { blocks: [
+        { t: "p", de: "molto, poco und troppo machen zweierlei, und wovon das abhängt, ist leicht zu sehen: es kommt darauf an, was hinter ihnen steht." },
+        { t: "table", head: ["vor einem Nomen", "vor Adjektiv oder Verb"], rows: [
+          ["Adjektiv — es passt sich an", "Adverb — es bleibt, wie es ist"],
+          ["molta acqua", "molto stanco"],
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "Vor einem Nomen heißt molto „viel“ oder „viele“ und richtet sich nach dem Nomen wie jedes Adjektiv auf -o." },
+        { t: "ex", it: "molta acqua", de: "viel Wasser" },
+        { t: "ex", it: "molti amici", de: "viele Freunde" },
+        { t: "ex", it: "molte case", de: "viele Häuser" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Vor einem Adjektiv heißt es „sehr“ — und dann ändert es sich nicht mehr, egal wen es beschreibt." },
+        { t: "ex", it: "Io sono molto stanco", de: "Ich bin sehr müde" },
+        { t: "ex", it: "Lei è molto stanca", de: "Sie ist sehr müde" },
+        { t: "bad", wrong: "Lei è molta stanca", right: "Lei è molto stanca" },
+      ] },
+      { blocks: [
+        { t: "p", de: "poco (wenig) und troppo (zu viel) machen es genauso." },
+        { t: "ex", it: "poco tempo", de: "wenig Zeit" },
+        { t: "ex", it: "troppi problemi", de: "zu viele Probleme" },
+        { t: "ex", it: "troppo caro", de: "zu teuer" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Hinter einem Verb steht molto ebenfalls unverändert und heißt dort „viel“ oder „sehr“." },
+        { t: "ex", it: "Io lavoro molto", de: "Ich arbeite viel" },
+        { t: "rule", de: "Vor einem Nomen passt es sich an. Vor einem Adjektiv oder hinter einem Verb bleibt es molto." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "Welche Form passt?", word: "Io bevo ___ acqua", a: "molta", d: ["molto", "molti", "molte"] },
+      { k: "pick", q: "Welche Form passt?", word: "Io sono ___ stanco", a: "molto", d: ["molta", "molti", "molte"] },
+      { k: "pick", q: "Welche Form passt?", word: "Io ho ___ problemi", a: "troppi", d: ["troppo", "troppa", "troppe"] },
+      { k: "pick", q: "Welche Form passt?", word: "Io ho ___ tempo", a: "poco", d: ["poca", "pochi", "poche"] },
+      { k: "pair", leftLabel: "italienisch", rightLabel: "deutsch", lang: ["it", "de"], pairs: [
+        ["molta acqua", "viel Wasser"], ["molto stanco", "sehr müde"],
+        ["poco tempo", "wenig Zeit"], ["troppo caro", "zu teuer"],
+        ["troppe cose", "zu viele Sachen"],
+      ] },
+      { k: "gap", it: "Io bevo molta acqua", de: "Ich trinke viel Wasser", a: "molta", d: ["molto", "molti", "molte"] },
+      { k: "gap", it: "Il vino è molto caro", de: "Der Wein ist sehr teuer", a: "molto", d: ["molta", "molti", "molte"] },
+      { k: "gap", it: "Noi abbiamo poco tempo", de: "Wir haben wenig Zeit", a: "poco", d: ["poca", "pochi", "poche"] },
+      { k: "write", q: "Wie heißt „zu viele Probleme“?", a: "troppi problemi", strict: true },
+      { k: "write", q: "Wie heißt „wenig Milch“?", a: "poco latte", strict: true },
+      { k: "build", it: "Io ho molti amici", de: "Ich habe viele Freunde", extra: ["molto", "molta"] },
+      { k: "build", it: "La pizza è troppo calda", de: "Die Pizza ist zu heiß", extra: ["troppa", "troppe"] },
     ],
   },
 

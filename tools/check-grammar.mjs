@@ -199,12 +199,20 @@ for (const lec of GRAMMAR_LECTURES) {
       // player can be marked wrong on for a correct pairing.
       if (new Set(lefts).size !== lefts.length) errors.push(`${dw}: the left column repeats a tile`);
       if (new Set(rights).size !== rights.length) errors.push(`${dw}: the right column repeats a tile`);
+      // WHICH COLUMN IS ITALIAN IS DECLARED, NOT GUESSED. It was guessed once —
+      // "does it look like a lowercase Italian word?" — and that reads a German
+      // "rot" or "zu teuer" as Italian and rejects it, while quietly letting
+      // every capitalised German noun through unchecked. The spec says.
+      const lang = Array.isArray(d.lang) ? d.lang : ["it", "it"];
+      if (lang.length !== 2 || lang.some((x) => x !== "it" && x !== "de")) {
+        errors.push(`${dw}: \`lang\` must be two of "it"/"de", one per column`);
+      }
       for (const [l, r] of d.pairs) {
-        // Either column may be the German side; hold whichever looks Italian.
-        checkText(`${dw} left tile`, l);
-        checkText(`${dw} right tile`, r);
-        if (/^[a-zà-ù'’ ]+$/.test(String(l))) checkItalian(`${dw} left tile`, l, teaches);
-        if (/^[a-zà-ù'’ ]+$/.test(String(r))) checkItalian(`${dw} right tile`, r, teaches);
+        [l, r].forEach((tile, col) => {
+          const side = col ? "right" : "left";
+          if (lang[col] === "it") checkItalian(`${dw} ${side} tile`, tile, teaches);
+          else checkText(`${dw} ${side} tile`, tile);
+        });
       }
     }
 
