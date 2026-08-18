@@ -32,8 +32,9 @@
 //     explanation the learner has to decode first has explained nothing.
 //   • Italian words come from WORD_POOL, or are inflections of one, or are
 //     listed in the lecture's own `teaches` — which is for the forms the
-//     lecture itself introduces (articles, pronouns, participles). Nothing is
-//     smuggled in that the game never teaches.
+//     lecture itself introduces (articles, pronouns, participles) — and for the
+//     handful of proper names a lecture genuinely needs. Nothing is smuggled in
+//     that the game never teaches.
 //   • A lecture holds exactly CONFIG.grammar.drillCount drills, and they climb:
 //     recognition first (pick, pair), production last (write, build, para).
 //   • No raw `<` or `&` in any authored string — it is interpolated into the
@@ -766,6 +767,663 @@ const GRAMMAR_LECTURES = [
       { k: "write", q: "Wie heißt „wenig Milch“?", a: "poco latte", strict: true },
       { k: "build", it: "Io ho molti amici", de: "Ich habe viele Freunde", extra: ["molto", "molta"] },
       { k: "build", it: "La pizza è troppo calda", de: "Die Pizza ist zu heiß", extra: ["troppa", "troppe"] },
+    ],
+  },
+
+  // ===========================================================================
+  // Unit 3 — Verben: Präsens
+  //
+  // The order is not alphabetical and not by frequency: essere and avere come
+  // first because everything later leans on them, the three regular classes
+  // come next as one system with three cells' difference between them, and the
+  // irregulars come after — by which point a learner has a pattern to measure
+  // them against instead of six unrelated words per verb.
+  // ===========================================================================
+  {
+    id: "v-essere", unit: "praes",
+    title: "essere — sein",
+    subtitle: "Das häufigste Verb, und das unregelmäßigste",
+    teaches: [],
+    pages: [
+      { blocks: [
+        { t: "p", de: "essere heißt „sein“. Es ist das meistgebrauchte Verb des Italienischen und zugleich das unregelmäßigste — von der Grundform essere ist in den sechs Formen fast nichts mehr übrig." },
+        { t: "table", head: ["Person", "Form", "deutsch"], rows: [
+          ["io", "sono", "ich bin"],
+          ["tu", "sei", "du bist"],
+          ["lui / lei", "è", "er / sie ist"],
+          ["noi", "siamo", "wir sind"],
+          ["voi", "siete", "ihr seid"],
+          ["loro", "sono", "sie sind"],
+        ] },
+        { t: "p", de: "Es gibt nichts abzuleiten. Diese sechs Wörter lernt man auswendig — und dann hat man sie für immer." },
+      ] },
+      { blocks: [
+        { t: "p", de: "io und loro haben dieselbe Form: sono. Welche gemeint ist, sagt der Zusammenhang, und wenn er es nicht sagt, setzt man das Pronomen davor." },
+        { t: "ex", it: "Io sono italiano", de: "Ich bin Italiener" },
+        { t: "ex", it: "Loro sono italiani", de: "Sie sind Italiener" },
+      ] },
+      { blocks: [
+        { t: "p", de: "è trägt einen Akzent, und der ist keine Zierde: ohne ihn ist e ein anderes Wort — nämlich „und“." },
+        { t: "ex", it: "Il padre è grande", de: "Der Vater ist groß" },
+        { t: "ex", it: "il padre e la madre", de: "der Vater und die Mutter" },
+        { t: "bad", wrong: "Lui e italiano", right: "Lui è italiano" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Wofür man essere braucht: wer oder was jemand ist, woher er kommt, wie etwas beschaffen ist." },
+        { t: "ex", it: "Io sono studente", de: "Ich bin Student", note: "Beruf, ohne Artikel" },
+        { t: "ex", it: "Noi siamo italiani", de: "Wir sind Italiener" },
+        { t: "ex", it: "La casa è grande", de: "Das Haus ist groß" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Und ein Hinweis, der später wichtig wird: was mit essere verbunden ist, richtet sich nach dem Subjekt. Ein Adjektiv hinter essere hat also dessen Geschlecht und Zahl." },
+        { t: "ex", it: "Lei è stanca", de: "Sie ist müde" },
+        { t: "ex", it: "Loro sono stanchi", de: "Sie sind müde" },
+        { t: "rule", de: "sono · sei · è · siamo · siete · sono. Sechs Wörter, keine Regel." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "essere:", word: "io ___", a: "sono", d: ["sei", "è", "siamo"] },
+      { k: "pick", q: "essere:", word: "tu ___", a: "sei", d: ["sono", "è", "siete"] },
+      { k: "pick", q: "essere:", word: "noi ___", a: "siamo", d: ["siete", "sono", "sei"] },
+      { k: "pick", q: "essere:", word: "voi ___", a: "siete", d: ["siamo", "sono", "sei"] },
+      { k: "pair", leftLabel: "Person", rightLabel: "Form", pairs: [
+        ["io", "sono"], ["tu", "sei"], ["lui", "è"], ["noi", "siamo"], ["voi", "siete"],
+      ] },
+      { k: "gap", it: "Io sono italiano", de: "Ich bin Italiener", a: "sono", d: ["sei", "è", "siamo"] },
+      { k: "gap", it: "Noi siamo molto stanchi", de: "Wir sind sehr müde", a: "siamo", d: ["sono", "siete", "sei"] },
+      { k: "write", q: "essere — die Form für", word: "voi", a: "siete" },
+      { k: "write", q: "essere — die Form für", word: "loro", a: "sono" },
+      { k: "para", verb: { it: "essere", de: "sein", group: "irr", forms: ["sono", "sei", "è", "siamo", "siete", "sono"] }, blanks: 3 },
+      { k: "para", verb: { it: "essere", de: "sein", group: "irr", forms: ["sono", "sei", "è", "siamo", "siete", "sono"] } },
+      { k: "build", it: "Noi siamo a casa", de: "Wir sind zu Hause", extra: ["sono", "siete"] },
+    ],
+  },
+
+  {
+    id: "v-avere", unit: "praes",
+    title: "avere — haben",
+    subtitle: "Und die Dinge, die man auf Italienisch „hat“",
+    teaches: [],
+    pages: [
+      { blocks: [
+        { t: "p", de: "avere heißt „haben“ und ist das zweite Verb, an dem später alles hängt. Auch es ist unregelmäßig, aber sein Muster ist leichter zu sehen als das von essere." },
+        { t: "table", head: ["Person", "Form", "deutsch"], rows: [
+          ["io", "ho", "ich habe"],
+          ["tu", "hai", "du hast"],
+          ["lui / lei", "ha", "er / sie hat"],
+          ["noi", "abbiamo", "wir haben"],
+          ["voi", "avete", "ihr habt"],
+          ["loro", "hanno", "sie haben"],
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "Das h wird nie gesprochen. Es steht nur da, um ho von o („oder“) und ha von a („zu, nach“) zu unterscheiden — geschrieben, nicht gehört." },
+        { t: "bad", wrong: "Io o un libro", right: "Io ho un libro" },
+        { t: "p", de: "Genau drei Formen tragen es: ho, hai, ha und hanno. abbiamo und avete nicht." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Der normale Gebrauch ist der deutsche: etwas besitzen." },
+        { t: "ex", it: "Io ho un cane", de: "Ich habe einen Hund" },
+        { t: "ex", it: "Lei ha due figli", de: "Sie hat zwei Kinder" },
+        { t: "ex", it: "Noi abbiamo una casa grande", de: "Wir haben ein großes Haus" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Daneben steht avere dort, wo das Deutsche „sein“ sagt — bei Zuständen des Körpers und beim Alter." },
+        { t: "table", head: ["italienisch", "deutsch"], rows: [
+          ["avere fame", "Hunger haben"],
+          ["avere sete", "Durst haben"],
+          ["avere sonno", "müde sein"],
+          ["avere freddo", "frieren"],
+          ["avere caldo", "es warm haben"],
+        ] },
+        { t: "ex", it: "Io ho fame", de: "Ich habe Hunger" },
+        { t: "ex", it: "Io ho freddo", de: "Mir ist kalt" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Auch das Alter wird „gehabt“, nicht „gewesen“:" },
+        { t: "ex", it: "Io ho dieci anni", de: "Ich bin zehn Jahre alt" },
+        { t: "bad", wrong: "Io sono dieci anni", right: "Io ho dieci anni" },
+        { t: "rule", de: "ho · hai · ha · abbiamo · avete · hanno. Hunger, Durst, Kälte und Jahre hat man auf Italienisch." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "avere:", word: "io ___", a: "ho", d: ["hai", "ha", "abbiamo"] },
+      { k: "pick", q: "avere:", word: "loro ___", a: "hanno", d: ["ha", "abbiamo", "avete"] },
+      { k: "pick", q: "avere:", word: "noi ___", a: "abbiamo", d: ["avete", "hanno", "ho"] },
+      { k: "pick", q: "Was heißt „Ich habe Hunger“?", a: "Io ho fame", d: ["Io sono fame", "Io ho fama", "Io ha fame"] },
+      { k: "pair", leftLabel: "Person", rightLabel: "Form", pairs: [
+        ["io", "ho"], ["tu", "hai"], ["lui", "ha"], ["noi", "abbiamo"], ["voi", "avete"],
+      ] },
+      { k: "gap", it: "Io ho un cane", de: "Ich habe einen Hund", a: "ho", d: ["hai", "ha", "abbiamo"] },
+      { k: "gap", it: "Loro hanno molti amici", de: "Sie haben viele Freunde", a: "hanno", d: ["ha", "abbiamo", "avete"] },
+      { k: "write", q: "avere — die Form für", word: "voi", a: "avete" },
+      { k: "write", q: "avere — die Form für", word: "tu", a: "hai" },
+      { k: "para", verb: { it: "avere", de: "haben", group: "irr", forms: ["ho", "hai", "ha", "abbiamo", "avete", "hanno"] }, blanks: 3 },
+      { k: "para", verb: { it: "avere", de: "haben", group: "irr", forms: ["ho", "hai", "ha", "abbiamo", "avete", "hanno"] } },
+      { k: "build", it: "Io ho molta fame", de: "Ich habe großen Hunger", extra: ["sono", "molto"] },
+    ],
+  },
+
+  {
+    id: "v-are", unit: "praes",
+    title: "Verben auf -are",
+    subtitle: "Die größte Gruppe, und die regelmäßigste",
+    teaches: [],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Ein regelmäßiges Verb wird nicht auswendig gelernt, sondern gebaut: von der Grundform die letzten drei Buchstaben abschneiden, und an den Rest die Endung der Person hängen." },
+        { t: "p", de: "parlare ohne -are ist parl-. Darauf kommen die sechs Endungen:" },
+        { t: "table", head: ["Person", "Endung", "parlare"], rows: [
+          ["io", "-o", "parlo"],
+          ["tu", "-i", "parli"],
+          ["lui / lei", "-a", "parla"],
+          ["noi", "-iamo", "parliamo"],
+          ["voi", "-ate", "parlate"],
+          ["loro", "-ano", "parlano"],
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "Weil die Endung die Person schon nennt, lässt Italienisch das Pronomen meistens weg. Beides ist richtig, das kürzere ist das normalere." },
+        { t: "ex", it: "Io parlo italiano", de: "Ich spreche Italienisch" },
+        { t: "ex", it: "Parlo italiano", de: "Ich spreche Italienisch" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Zwei Schreibregeln halten den Klang fest. Verben auf -care und -gare schieben ein h ein, sobald die Endung mit i beginnt — sonst würde aus dem harten k ein tsch." },
+        { t: "ex", it: "tu giochi", de: "du spielst" },
+        { t: "ex", it: "noi giochiamo", de: "wir spielen" },
+        { t: "bad", wrong: "tu gioci", right: "tu giochi" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Und Verben auf -iare haben nie zwei i hintereinander: das i des Stammes verschwindet, wenn die Endung eines mitbringt." },
+        { t: "ex", it: "tu mangi", de: "du isst" },
+        { t: "ex", it: "noi mangiamo", de: "wir essen" },
+        { t: "bad", wrong: "tu mangii", right: "tu mangi" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Es ist die mit Abstand größte Gruppe. Fast jedes neue Verb, das dir begegnet, gehört dazu:" },
+        { t: "list", items: [
+          "parlare, lavorare, studiare, abitare",
+          "comprare, pagare, cucinare, guardare",
+          "aspettare, arrivare, camminare, pensare",
+        ] },
+        { t: "rule", de: "-o · -i · -a · -iamo · -ate · -ano, an den Stamm gehängt." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "parlare:", word: "io ___", a: "parlo", d: ["parli", "parla", "parliamo"] },
+      { k: "pick", q: "lavorare:", word: "noi ___", a: "lavoriamo", d: ["lavorate", "lavorano", "lavoro"] },
+      { k: "pick", q: "giocare:", word: "tu ___", a: "giochi", d: ["gioci", "gioca", "giochiamo"] },
+      { k: "pick", q: "mangiare:", word: "tu ___", a: "mangi", d: ["mangii", "mangia", "mangiamo"] },
+      { k: "pair", leftLabel: "Person", rightLabel: "parlare", pairs: [
+        ["io", "parlo"], ["tu", "parli"], ["lui", "parla"], ["noi", "parliamo"], ["voi", "parlate"],
+      ] },
+      { k: "gap", it: "Io parlo italiano", de: "Ich spreche Italienisch", a: "parlo", d: ["parli", "parla", "parlano"] },
+      { k: "gap", it: "Noi mangiamo la pizza", de: "Wir essen die Pizza", a: "mangiamo", d: ["mangio", "mangiate", "mangiano"] },
+      { k: "write", q: "parlare — die Form für", word: "loro", a: "parlano" },
+      { k: "write", q: "comprare — die Form für", word: "voi", a: "comprate" },
+      { k: "para", verb: { it: "parlare", de: "sprechen", group: "are" }, blanks: 3 },
+      { k: "para", verb: { it: "giocare", de: "spielen", group: "are" } },
+      { k: "build", it: "Io lavoro molto", de: "Ich arbeite viel", extra: ["lavora", "lavori"] },
+    ],
+  },
+
+  {
+    id: "v-ere", unit: "praes",
+    title: "Verben auf -ere",
+    subtitle: "Fast dieselben Endungen",
+    teaches: [],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Die zweite Gruppe wird genauso gebaut: -ere abschneiden, Endung anhängen. leggere ohne -ere ist legg-." },
+        { t: "table", head: ["Person", "Endung", "leggere"], rows: [
+          ["io", "-o", "leggo"],
+          ["tu", "-i", "leggi"],
+          ["lui / lei", "-e", "legge"],
+          ["noi", "-iamo", "leggiamo"],
+          ["voi", "-ete", "leggete"],
+          ["loro", "-ono", "leggono"],
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "Nebeneinandergelegt sieht man, wie wenig sich ändert: drei von sechs Endungen sind dieselben wie bei -are." },
+        { t: "table", head: ["Person", "-are", "-ere"], rows: [
+          ["io", "-o", "-o"],
+          ["tu", "-i", "-i"],
+          ["lui / lei", "-a", "-e"],
+          ["noi", "-iamo", "-iamo"],
+          ["voi", "-ate", "-ete"],
+          ["loro", "-ano", "-ono"],
+        ] },
+        { t: "p", de: "Drei Zeilen unterscheiden sich, und in allen dreien ist es dasselbe: aus a wird e oder o." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Anders als bei -are wird hier nichts nachgeschrieben, um den Klang zu halten. Das g von leggere klingt in leggo hart und in leggi weich — geschrieben wird beides gleich." },
+        { t: "ex", it: "io leggo", de: "ich lese" },
+        { t: "ex", it: "tu leggi", de: "du liest" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Die Gruppe ist kleiner als die auf -are, enthält aber viele Alltagsverben:" },
+        { t: "list", items: [
+          "leggere, scrivere, vedere, prendere",
+          "correre, vivere, chiudere, mettere",
+          "credere, ripetere, perdere",
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "Ein Hinweis für später: gerade in dieser Gruppe sind viele Verben zwar im Präsens regelmäßig, in der Vergangenheit aber nicht. Das Präsens hier kannst du ohne Sorge bauen." },
+        { t: "rule", de: "-o · -i · -e · -iamo · -ete · -ono." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "leggere:", word: "io ___", a: "leggo", d: ["leggi", "legge", "leggiamo"] },
+      { k: "pick", q: "scrivere:", word: "voi ___", a: "scrivete", d: ["scrivate", "scrivono", "scriviamo"] },
+      { k: "pick", q: "vedere:", word: "lui ___", a: "vede", d: ["veda", "vedi", "vedono"] },
+      { k: "pick", q: "prendere:", word: "loro ___", a: "prendono", d: ["prendano", "prende", "prendete"] },
+      { k: "pair", leftLabel: "Person", rightLabel: "leggere", pairs: [
+        ["io", "leggo"], ["tu", "leggi"], ["lui", "legge"], ["noi", "leggiamo"], ["voi", "leggete"],
+      ] },
+      { k: "gap", it: "Io leggo un libro", de: "Ich lese ein Buch", a: "leggo", d: ["leggi", "legge", "leggono"] },
+      { k: "gap", it: "Tu vedi il mare", de: "Du siehst das Meer", a: "vedi", d: ["vedo", "vede", "vedete"] },
+      { k: "write", q: "vivere — die Form für", word: "noi", a: "viviamo" },
+      { k: "write", q: "correre — die Form für", word: "loro", a: "corrono" },
+      { k: "para", verb: { it: "leggere", de: "lesen", group: "ere" }, blanks: 3 },
+      { k: "para", verb: { it: "scrivere", de: "schreiben", group: "ere" } },
+      { k: "build", it: "Noi leggiamo molti libri", de: "Wir lesen viele Bücher", extra: ["leggo", "legge"] },
+    ],
+  },
+
+  {
+    id: "v-ire", unit: "praes",
+    title: "Verben auf -ire",
+    subtitle: "Und damit das ganze System",
+    teaches: [],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Die dritte Gruppe, und die letzte. dormire ohne -ire ist dorm-." },
+        { t: "table", head: ["Person", "Endung", "dormire"], rows: [
+          ["io", "-o", "dormo"],
+          ["tu", "-i", "dormi"],
+          ["lui / lei", "-e", "dorme"],
+          ["noi", "-iamo", "dormiamo"],
+          ["voi", "-ite", "dormite"],
+          ["loro", "-ono", "dormono"],
+        ] },
+        { t: "p", de: "Von -ere unterscheidet sie sich in genau einer Zeile: voi." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Damit steht das ganze Präsens der regelmäßigen Verben auf einer Seite:" },
+        { t: "table", head: ["Person", "-are", "-ere", "-ire"], rows: [
+          ["io", "-o", "-o", "-o"],
+          ["tu", "-i", "-i", "-i"],
+          ["lui / lei", "-a", "-e", "-e"],
+          ["noi", "-iamo", "-iamo", "-iamo"],
+          ["voi", "-ate", "-ete", "-ite"],
+          ["loro", "-ano", "-ono", "-ono"],
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "Sieh dir an, wie wenig darin wirklich verschieden ist. io, tu und noi sind in allen drei Gruppen gleich. Nur drei Zeilen — lui, voi und loro — tragen überhaupt einen Unterschied, und -are trägt ihn allein." },
+        { t: "rule", de: "io, tu und noi sind immer gleich. Nur lui, voi und loro verraten die Gruppe." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Die Gruppe ist die kleinste der drei:" },
+        { t: "list", items: ["dormire, sentire, aprire, partire, servire"] },
+        { t: "ex", it: "Io dormo bene", de: "Ich schlafe gut" },
+        { t: "ex", it: "Voi aprite la porta", de: "Ihr öffnet die Tür" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Eine Warnung zum Schluss: bei -ire gibt es eine zweite, größere Gruppe, die sich anders verhält — sie schiebt eine Silbe ein. Das ist die nächste Lektion." },
+        { t: "ex", it: "io capisco", de: "ich verstehe", note: "nicht capo" },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "dormire:", word: "io ___", a: "dormo", d: ["dormi", "dorme", "dormiamo"] },
+      { k: "pick", q: "aprire:", word: "voi ___", a: "aprite", d: ["aprete", "aprate", "aprono"] },
+      { k: "pick", q: "partire:", word: "loro ___", a: "partono", d: ["partano", "parte", "partite"] },
+      { k: "pick", q: "sentire:", word: "noi ___", a: "sentiamo", d: ["sentite", "sentono", "sento"] },
+      { k: "pair", leftLabel: "Person", rightLabel: "dormire", pairs: [
+        ["io", "dormo"], ["tu", "dormi"], ["lui", "dorme"], ["noi", "dormiamo"], ["voi", "dormite"],
+      ] },
+      { k: "gap", it: "Io dormo molto bene", de: "Ich schlafe sehr gut", a: "dormo", d: ["dormi", "dorme", "dormono"] },
+      { k: "gap", it: "Voi aprite la porta", de: "Ihr öffnet die Tür", a: "aprite", d: ["aprete", "apriamo", "aprono"] },
+      { k: "write", q: "sentire — die Form für", word: "lui", a: "sente" },
+      { k: "write", q: "partire — die Form für", word: "noi", a: "partiamo" },
+      { k: "para", verb: { it: "dormire", de: "schlafen", group: "ire" }, blanks: 3 },
+      { k: "para", verb: { it: "aprire", de: "öffnen", group: "ire" } },
+      { k: "build", it: "Loro partono domani", de: "Sie fahren morgen ab", extra: ["parte", "partite"] },
+    ],
+  },
+
+  {
+    id: "v-isc", unit: "praes",
+    title: "Die -isc-Verben",
+    subtitle: "capire, finire, preferire, pulire",
+    teaches: ["spedire"],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Eine große Gruppe der -ire-Verben schiebt zwischen Stamm und Endung eine Silbe ein: -isc-. Die Endungen selbst bleiben dieselben wie in der vorigen Lektion." },
+        { t: "table", head: ["Person", "capire", ""], rows: [
+          ["io", "capisco", "ich verstehe"],
+          ["tu", "capisci", "du verstehst"],
+          ["lui / lei", "capisce", "er / sie versteht"],
+          ["noi", "capiamo", "wir verstehen"],
+          ["voi", "capite", "ihr versteht"],
+          ["loro", "capiscono", "sie verstehen"],
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "Sieh dir an, WO die Silbe steht. noi und voi haben sie nicht — sie sind genau die Formen, die ein gewöhnliches -ire-Verb auch hätte. Alle vier anderen tragen sie." },
+        { t: "table", head: ["mit -isc-", "ohne"], rows: [
+          ["io, tu, lui / lei, loro", "noi, voi"],
+        ] },
+        { t: "rule", de: "Vier Formen mit -isc-, zwei ohne. Die zwei ohne sind noi und voi." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Der häufigste Fehler ist, die Silbe wegzulassen — capire sieht schließlich aus wie dormire." },
+        { t: "bad", wrong: "io capo", right: "io capisco" },
+        { t: "bad", wrong: "loro finono", right: "loro finiscono" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Und der zweite: sie dort einzusetzen, wo sie nicht hingehört." },
+        { t: "bad", wrong: "noi capisciamo", right: "noi capiamo" },
+        { t: "ex", it: "Noi capiamo tutto", de: "Wir verstehen alles" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Der Grundform sieht man nicht an, ob ein -ire-Verb dazugehört. Das muss man pro Verb lernen — auf A1 ist die Liste aber kurz:" },
+        { t: "list", items: ["capire — verstehen", "finire — beenden", "preferire — bevorzugen", "pulire — putzen", "spedire — verschicken"] },
+        { t: "p", de: "Vier gewöhnliche -ire-Verben stehen dem gegenüber: dormire, sentire, aprire, partire. Zusammen sind das neun Wörter, und damit hast du die ganze Gruppe." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "capire:", word: "io ___", a: "capisco", d: ["capo", "capio", "capisce"] },
+      { k: "pick", q: "capire:", word: "noi ___", a: "capiamo", d: ["capisciamo", "capiscono", "capisce"] },
+      { k: "pick", q: "finire:", word: "loro ___", a: "finiscono", d: ["finono", "finiscano", "finite"] },
+      { k: "pick", q: "preferire:", word: "tu ___", a: "preferisci", d: ["preferi", "preferisce", "preferite"] },
+      { k: "pair", leftLabel: "Person", rightLabel: "capire", pairs: [
+        ["io", "capisco"], ["tu", "capisci"], ["lui", "capisce"], ["noi", "capiamo"], ["voi", "capite"],
+      ] },
+      { k: "gap", it: "Io capisco l'italiano", de: "Ich verstehe Italienisch", a: "capisco", d: ["capisci", "capisce", "capiamo"] },
+      { k: "gap", it: "Noi finiamo il lavoro", de: "Wir beenden die Arbeit", a: "finiamo", d: ["finisciamo", "finiscono", "finite"] },
+      { k: "write", q: "capire — die Form für", word: "loro", a: "capiscono" },
+      { k: "write", q: "pulire — die Form für", word: "tu", a: "pulisci" },
+      { k: "para", verb: { it: "capire", de: "verstehen", group: "isc" }, blanks: 3 },
+      { k: "para", verb: { it: "finire", de: "beenden", group: "isc" } },
+      { k: "build", it: "Io preferisco il vino rosso", de: "Ich bevorzuge den Rotwein", extra: ["preferisce", "preferite"] },
+    ],
+  },
+
+  {
+    id: "v-irr1", unit: "praes",
+    title: "Unregelmäßig I",
+    subtitle: "andare · fare · stare · dare",
+    teaches: [],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Vier Verben, die man täglich braucht und die sich nicht bauen lassen. Der Trost: sie sind einander ähnlich, und wer eines kann, erkennt die anderen drei wieder." },
+        { t: "table", head: ["Person", "andare", "deutsch"], rows: [
+          ["io", "vado", "ich gehe"],
+          ["tu", "vai", "du gehst"],
+          ["lui / lei", "va", "er / sie geht"],
+          ["noi", "andiamo", "wir gehen"],
+          ["voi", "andate", "ihr geht"],
+          ["loro", "vanno", "sie gehen"],
+        ] },
+        { t: "p", de: "andare hat zwei Stämme: vad-/va- im Singular und bei loro, and- bei noi und voi." },
+      ] },
+      { blocks: [
+        { t: "table", head: ["Person", "fare", "deutsch"], rows: [
+          ["io", "faccio", "ich mache"],
+          ["tu", "fai", "du machst"],
+          ["lui / lei", "fa", "er / sie macht"],
+          ["noi", "facciamo", "wir machen"],
+          ["voi", "fate", "ihr macht"],
+          ["loro", "fanno", "sie machen"],
+        ] },
+        { t: "ex", it: "Lui fa il caffè", de: "Er macht den Kaffee" },
+      ] },
+      { blocks: [
+        { t: "table", head: ["Person", "stare", "dare"], rows: [
+          ["io", "sto", "do"],
+          ["tu", "stai", "dai"],
+          ["lui / lei", "sta", "dà"],
+          ["noi", "stiamo", "diamo"],
+          ["voi", "state", "date"],
+          ["loro", "stanno", "danno"],
+        ] },
+        { t: "p", de: "Diese beiden sind fast dasselbe Verb mit verschiedenem Anfang." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Und jetzt das Muster, das alle vier teilen. Leg die loro-Formen nebeneinander:" },
+        { t: "table", head: ["Verb", "loro"], rows: [
+          ["andare", "vanno"], ["fare", "fanno"], ["stare", "stanno"], ["dare", "danno"],
+        ] },
+        { t: "p", de: "Alle vier enden auf -anno. Auch tu ist überall gleich gebaut: vai, fai, stai, dai. Es sind vier Verben, aber nicht vierundzwanzig Formen." },
+      ] },
+      { blocks: [
+        { t: "p", de: "stare heißt wörtlich „sich befinden“ und ist das Verb, mit dem man nach dem Befinden fragt — nicht essere." },
+        { t: "ex", it: "Come stai?", de: "Wie geht es dir?" },
+        { t: "ex", it: "Sto bene", de: "Mir geht es gut" },
+        { t: "rule", de: "Vier Verben, ein Muster: kurzer Singular, regelmäßige noi- und voi-Form, loro auf -anno." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "andare:", word: "io ___", a: "vado", d: ["ando", "vai", "andiamo"] },
+      { k: "pick", q: "fare:", word: "noi ___", a: "facciamo", d: ["famo", "fanno", "fate"] },
+      { k: "pick", q: "stare:", word: "tu ___", a: "stai", d: ["sti", "sta", "state"] },
+      { k: "pick", q: "dare:", word: "loro ___", a: "danno", d: ["dano", "dà", "date"] },
+      { k: "pair", leftLabel: "Person", rightLabel: "andare", pairs: [
+        ["io", "vado"], ["tu", "vai"], ["lui", "va"], ["noi", "andiamo"], ["voi", "andate"],
+      ] },
+      { k: "pair", leftLabel: "Verb", rightLabel: "die io-Form", pairs: [
+        ["andare", "vado"], ["fare", "faccio"], ["stare", "sto"], ["dare", "do"], ["essere", "sono"],
+      ] },
+      { k: "gap", it: "Io vado a casa", de: "Ich gehe nach Hause", a: "vado", d: ["vai", "va", "andiamo"] },
+      { k: "gap", it: "Lui fa il caffè", de: "Er macht den Kaffee", a: "fa", d: ["fai", "faccio", "fanno"] },
+      { k: "write", q: "fare — die Form für", word: "io", a: "faccio" },
+      { k: "write", q: "andare — die Form für", word: "loro", a: "vanno" },
+      { k: "para", verb: { it: "andare", de: "gehen", group: "irr", forms: ["vado", "vai", "va", "andiamo", "andate", "vanno"] } },
+      { k: "para", verb: { it: "fare", de: "machen", group: "irr", forms: ["faccio", "fai", "fa", "facciamo", "fate", "fanno"] }, blanks: 3 },
+    ],
+  },
+
+  {
+    id: "v-irr2", unit: "praes",
+    title: "Unregelmäßig II",
+    subtitle: "venire · uscire · dire · bere",
+    teaches: [],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Vier weitere, die man ständig braucht. Sie sind unregelmäßig, aber nicht willkürlich — jedes verändert genau eine Sache, und immer dieselbe Sache in denselben Formen." },
+        { t: "table", head: ["Person", "venire", "deutsch"], rows: [
+          ["io", "vengo", "ich komme"],
+          ["tu", "vieni", "du kommst"],
+          ["lui / lei", "viene", "er / sie kommt"],
+          ["noi", "veniamo", "wir kommen"],
+          ["voi", "venite", "ihr kommt"],
+          ["loro", "vengono", "sie kommen"],
+        ] },
+        { t: "p", de: "noi und voi sind völlig regelmäßig. Alles andere schiebt ein g ein oder bricht das e zu ie auf." },
+      ] },
+      { blocks: [
+        { t: "table", head: ["Person", "uscire", "deutsch"], rows: [
+          ["io", "esco", "ich gehe hinaus"],
+          ["tu", "esci", "du gehst hinaus"],
+          ["lui / lei", "esce", "er / sie geht hinaus"],
+          ["noi", "usciamo", "wir gehen hinaus"],
+          ["voi", "uscite", "ihr geht hinaus"],
+          ["loro", "escono", "sie gehen hinaus"],
+        ] },
+        { t: "p", de: "Wieder dasselbe Bild: noi und voi behalten das u der Grundform, die vier anderen machen ein e daraus." },
+      ] },
+      { blocks: [
+        { t: "table", head: ["Person", "dire", "bere"], rows: [
+          ["io", "dico", "bevo"],
+          ["tu", "dici", "bevi"],
+          ["lui / lei", "dice", "beve"],
+          ["noi", "diciamo", "beviamo"],
+          ["voi", "dite", "bevete"],
+          ["loro", "dicono", "bevono"],
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "dire und bere sind eigentlich gar nicht unregelmäßig. Sie sind Kurzformen längerer Wörter, und die Formen werden vom langen Stamm gebaut: dic- und bev-." },
+        { t: "p", de: "Wer das einmal sieht, konjugiert bere wie ein gewöhnliches Verb auf -ere: bevo, bevi, beve, beviamo, bevete, bevono. Nur die Grundform ist kurz." },
+        { t: "ex", it: "Io bevo il caffè", de: "Ich trinke den Kaffee" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Eine einzige Form fällt trotzdem aus der Reihe, und die merkt man sich einzeln:" },
+        { t: "ex", it: "voi dite", de: "ihr sagt", note: "nicht dicete" },
+        { t: "rule", de: "noi und voi bleiben nah an der Grundform. Was sich ändert, ändert sich in den vier anderen." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "venire:", word: "io ___", a: "vengo", d: ["venio", "vieni", "veniamo"] },
+      { k: "pick", q: "uscire:", word: "noi ___", a: "usciamo", d: ["esciamo", "escono", "uscite"] },
+      { k: "pick", q: "dire:", word: "voi ___", a: "dite", d: ["dicete", "dicono", "diciamo"] },
+      { k: "pick", q: "bere:", word: "lui ___", a: "beve", d: ["bee", "bevi", "bevono"] },
+      { k: "pair", leftLabel: "Person", rightLabel: "venire", pairs: [
+        ["io", "vengo"], ["tu", "vieni"], ["lui", "viene"], ["noi", "veniamo"], ["voi", "venite"],
+      ] },
+      { k: "pair", leftLabel: "Verb", rightLabel: "die io-Form", pairs: [
+        ["venire", "vengo"], ["uscire", "esco"], ["dire", "dico"], ["bere", "bevo"], ["fare", "faccio"],
+      ] },
+      { k: "gap", it: "Io bevo il caffè", de: "Ich trinke den Kaffee", a: "bevo", d: ["bevi", "beve", "bevono"] },
+      { k: "gap", it: "Noi usciamo insieme", de: "Wir gehen zusammen hinaus", a: "usciamo", d: ["esciamo", "escono", "uscite"] },
+      { k: "write", q: "dire — die Form für", word: "loro", a: "dicono" },
+      { k: "write", q: "venire — die Form für", word: "loro", a: "vengono" },
+      { k: "para", verb: { it: "dire", de: "sagen", group: "irr", forms: ["dico", "dici", "dice", "diciamo", "dite", "dicono"] } },
+      { k: "para", verb: { it: "bere", de: "trinken", group: "irr", forms: ["bevo", "bevi", "beve", "beviamo", "bevete", "bevono"] }, blanks: 3 },
+    ],
+  },
+
+  {
+    id: "v-modal", unit: "praes",
+    title: "Modalverben",
+    subtitle: "potere · volere · dovere",
+    teaches: [],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Drei Verben, die selten allein stehen: sie bringen ein zweites Verb mit, und das zweite bleibt in der Grundform. Genau wie im Deutschen — „ich will essen“, nicht „ich will esse“." },
+        { t: "ex", it: "Io voglio mangiare", de: "Ich will essen" },
+        { t: "ex", it: "Tu puoi parlare", de: "Du kannst sprechen" },
+        { t: "ex", it: "Noi dobbiamo lavorare", de: "Wir müssen arbeiten" },
+        { t: "bad", wrong: "Io voglio mangio", right: "Io voglio mangiare" },
+      ] },
+      { blocks: [
+        { t: "table", head: ["Person", "potere", "können"], rows: [
+          ["io", "posso", "ich kann"],
+          ["tu", "puoi", "du kannst"],
+          ["lui / lei", "può", "er / sie kann"],
+          ["noi", "possiamo", "wir können"],
+          ["voi", "potete", "ihr könnt"],
+          ["loro", "possono", "sie können"],
+        ] },
+      ] },
+      { blocks: [
+        { t: "table", head: ["Person", "volere", "dovere"], rows: [
+          ["io", "voglio", "devo"],
+          ["tu", "vuoi", "devi"],
+          ["lui / lei", "vuole", "deve"],
+          ["noi", "vogliamo", "dobbiamo"],
+          ["voi", "volete", "dovete"],
+          ["loro", "vogliono", "devono"],
+        ] },
+        { t: "p", de: "Auch hier gilt die Regel aus der letzten Lektion: voi ist regelmäßig (potete, volete, dovete), und noi liegt nah daran." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Was die drei bedeuten:" },
+        { t: "table", head: ["Verb", "deutsch", "Beispiel"], rows: [
+          ["potere", "können, dürfen", "Posso entrare?"],
+          ["volere", "wollen", "Voglio un caffè"],
+          ["dovere", "müssen", "Devo lavorare"],
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "volere kann auch allein stehen, mit einem Nomen dahinter statt eines Verbs. Die beiden anderen tun das selten." },
+        { t: "ex", it: "Io voglio un caffè", de: "Ich will einen Kaffee" },
+        { t: "rule", de: "Modalverb konjugiert, zweites Verb in der Grundform." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "potere:", word: "io ___", a: "posso", d: ["poso", "puoi", "potiamo"] },
+      { k: "pick", q: "volere:", word: "loro ___", a: "vogliono", d: ["volono", "vuole", "volete"] },
+      { k: "pick", q: "dovere:", word: "noi ___", a: "dobbiamo", d: ["doviamo", "devono", "dovete"] },
+      { k: "pick", q: "Was ist richtig?", a: "Io voglio mangiare", d: ["Io voglio mangio", "Io voglio mangiando", "Io vuole mangiare"] },
+      { k: "pair", leftLabel: "Person", rightLabel: "volere", pairs: [
+        ["io", "voglio"], ["tu", "vuoi"], ["lui", "vuole"], ["noi", "vogliamo"], ["voi", "volete"],
+      ] },
+      { k: "pair", leftLabel: "Verb", rightLabel: "deutsch", lang: ["it", "de"], pairs: [
+        ["potere", "können"], ["volere", "wollen"], ["dovere", "müssen"],
+        ["sapere", "wissen"], ["fare", "machen"],
+      ] },
+      { k: "gap", it: "Io voglio un caffè", de: "Ich will einen Kaffee", a: "voglio", d: ["vuoi", "vuole", "vogliamo"] },
+      { k: "gap", it: "Noi dobbiamo lavorare molto", de: "Wir müssen viel arbeiten", a: "dobbiamo", d: ["devo", "devono", "dovete"] },
+      { k: "write", q: "potere — die Form für", word: "lui", a: "può" },
+      { k: "write", q: "dovere — die Form für", word: "io", a: "devo" },
+      { k: "para", verb: { it: "potere", de: "können", group: "irr", forms: ["posso", "puoi", "può", "possiamo", "potete", "possono"] } },
+      { k: "build", it: "Tu puoi aprire la porta", de: "Du kannst die Tür öffnen", extra: ["apri", "apre"] },
+    ],
+  },
+
+  {
+    id: "v-refl", unit: "praes",
+    title: "Reflexive Verben",
+    subtitle: "Wenn das Verb ein Pronomen mitbringt",
+    // Two names, because a lecture on "what are you called" cannot be written
+    // without anyone being called anything.
+    teaches: ["chiamarsi", "vi", "anna", "marco"],
+    pages: [
+      { blocks: [
+        { t: "p", de: "Manche Verben tragen in der Grundform ein -si am Ende: svegliarsi, chiamarsi. Dieses -si ist kein Teil der Endung, sondern ein eigenes kleines Wort — und sobald das Verb konjugiert wird, tritt es davor und ändert sich mit der Person." },
+        { t: "table", head: ["Person", "Pronomen", "svegliarsi"], rows: [
+          ["io", "mi", "mi sveglio"],
+          ["tu", "ti", "ti svegli"],
+          ["lui / lei", "si", "si sveglia"],
+          ["noi", "ci", "ci svegliamo"],
+          ["voi", "vi", "vi svegliate"],
+          ["loro", "si", "si svegliano"],
+        ] },
+      ] },
+      { blocks: [
+        { t: "p", de: "Das Verb selbst ist dabei völlig gewöhnlich. Streich das Pronomen weg, und übrig bleibt ein regelmäßiges Verb auf -are: sveglio, svegli, sveglia, svegliamo, svegliate, svegliano." },
+        { t: "p", de: "Neu ist also nur die kleine Spalte davor — sechs Wörter, von denen zwei gleich sind." },
+        { t: "rule", de: "mi · ti · si · ci · vi · si. Das Pronomen steht VOR dem Verb." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Wörtlich sagt ein reflexives Verb, dass jemand etwas mit sich selbst tut. chiamarsi ist das bekannteste Beispiel: „sich rufen“ — also heißen." },
+        { t: "ex", it: "Io mi chiamo Anna", de: "Ich heiße Anna" },
+        { t: "ex", it: "Tu come ti chiami?", de: "Wie heißt du?" },
+        { t: "ex", it: "Lui si chiama Marco", de: "Er heißt Marco" },
+      ] },
+      { blocks: [
+        { t: "p", de: "Ohne das Pronomen bekommt derselbe Satz eine andere Bedeutung — das Verb tut dann etwas an jemand anderem." },
+        { t: "bad", wrong: "Io chiamo Anna", right: "Io mi chiamo Anna" },
+        { t: "p", de: "Der erste Satz ist nicht falsch gebaut. Er heißt nur „Ich rufe Anna“, und das ist etwas ganz anderes." },
+      ] },
+      { blocks: [
+        { t: "p", de: "Die Stellung ist fest: erst das Pronomen, dann das Verb. Auch die Verneinung ändert daran nichts — non steht vor beiden." },
+        { t: "ex", it: "Io non mi sveglio", de: "Ich wache nicht auf" },
+        { t: "rule", de: "Pronomen der Person, dann das ganz normale Verb." },
+      ] },
+    ],
+    drills: [
+      { k: "pick", q: "svegliarsi:", word: "io ___ sveglio", a: "mi", d: ["ti", "si", "ci"] },
+      { k: "pick", q: "svegliarsi:", word: "noi ___ svegliamo", a: "ci", d: ["mi", "vi", "si"] },
+      { k: "pick", q: "chiamarsi:", word: "lui ___ chiama", a: "si", d: ["mi", "ti", "vi"] },
+      { k: "pick", q: "Was ist richtig?", a: "Io mi chiamo Anna", d: ["Io chiamo mi Anna", "Io si chiamo Anna", "Io mi chiama Anna"] },
+      { k: "pair", leftLabel: "Person", rightLabel: "Pronomen", lang: ["it", "it"], pairs: [
+        ["io", "mi"], ["tu", "ti"], ["lui", "si"], ["noi", "ci"], ["voi", "vi"],
+      ] },
+      { k: "pair", leftLabel: "Person", rightLabel: "svegliarsi", pairs: [
+        ["io", "mi sveglio"], ["tu", "ti svegli"], ["lui", "si sveglia"],
+        ["noi", "ci svegliamo"], ["voi", "vi svegliate"],
+      ] },
+      { k: "gap", it: "Io mi chiamo Anna", de: "Ich heiße Anna", a: "mi", d: ["ti", "si", "ci"] },
+      { k: "gap", it: "Noi ci svegliamo presto", de: "Wir wachen früh auf", a: "ci", d: ["mi", "vi", "si"] },
+      { k: "write", q: "svegliarsi — die ganze Form für", word: "tu", a: "ti svegli", strict: true },
+      { k: "write", q: "chiamarsi — die ganze Form für", word: "loro", a: "si chiamano", strict: true },
+      { k: "build", it: "Io mi sveglio presto", de: "Ich wache früh auf", extra: ["si", "ti"] },
+      { k: "build", it: "Lui si chiama Marco", de: "Er heißt Marco", extra: ["mi", "ci"] },
     ],
   },
 
