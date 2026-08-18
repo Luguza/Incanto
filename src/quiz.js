@@ -302,6 +302,7 @@ function buildQuiz() {
   state.quizIndex = 0;
   state.quizCorrect = 0;
   state.quizGoldEarned = 0;
+  state.quizGemsEarned = 0;
   state.quizResults = [];
   resetQuizInput();
 }
@@ -323,6 +324,8 @@ function resetQuizInput() {
 }
 
 function goToQuiz() {
+  state.quizMode = "vocab";
+  state.quizLecture = null;
   buildQuiz();
   state.screen = "quiz";
   state._structuralDirty = true;
@@ -356,9 +359,17 @@ function settleQuiz(correct) {
   noteConjResult(q, correct);
   if (correct) {
     state.quizCorrect++;
-    const reward = quizReward(q);
-    state.gold += reward;
-    state.quizGoldEarned += reward;
+    // The one place the two economies part company. A lecture pays gems and
+    // never gold; the quiz pays gold and never gems (see CONFIG.grammar).
+    if (state.quizMode === "grammar") {
+      const gems = lectureReward();
+      state.gems += gems;
+      state.quizGemsEarned += gems;
+    } else {
+      const reward = quizReward(q);
+      state.gold += reward;
+      state.quizGoldEarned += reward;
+    }
     saveProgress();
   }
   state.quizAnsweredAt = performance.now();
@@ -423,8 +434,12 @@ function acceptedForms(target) {
   if (toks.length > 1 && ARTICLE_TOKENS.has(toks[0])) forms.add(toks.slice(1).join(" "));
   return forms;
 }
-function typedMatches(input, target) {
-  return acceptedForms(target).has(normAnswer(input));
+// `strict` turns the article tolerance off. It has to be switchable, because a
+// grammar drill can be ASKING for the article: "die Milch" -> "il latte" is a
+// question about gender, and accepting a bare "latte" for it would be marking
+// the one thing it tests as optional.
+function typedMatches(input, target, strict) {
+  return strict ? normAnswer(input) === normAnswer(target) : acceptedForms(target).has(normAnswer(input));
 }
 
 // --- exercise input handlers (called from inline on* attributes) ------------
@@ -442,7 +457,7 @@ function quizCheckType() {
   if (normAnswer(state.quizTyped) === "") return; // ignore empty submissions
   // A word can have more than one valid translation (`accept`); any counts.
   const accepted = q.accept && q.accept.length ? q.accept : [q.answer];
-  settleQuiz(accepted.some((a) => typedMatches(state.quizTyped, a)));
+  settleQuiz(accepted.some((a) => typedMatches(state.quizTyped, a, q.strict)));
 }
 // Fill-the-blank typing shares the exact same check as free typing, and so does
 // writing a single conjugated form (its `accept` list carries the pronoun
@@ -536,12 +551,19 @@ function advanceQuiz() {
   resetQuizInput();
   state.quizIndex++;
   if (state.quizIndex >= state.quizList.length) {
-    // A FULL session is what cashes the reward bank in. Walking away halfway
-    // leaves it standing, so the multiplier is never lost by getting
-    // interrupted — only by seeing the round through, which is the point.
-    state.rewardKills = 0;
-    saveProgress();
-    state.screen = "upgrade";
+    if (state.quizMode === "grammar") {
+      // A lecture banks nothing of the fight's doing — the reward multiplier is
+      // the vocab quiz's to spend, and grammar must not quietly drain it.
+      recordLectureClear();
+      state.screen = "lecturedone";
+    } else {
+      // A FULL session is what cashes the reward bank in. Walking away halfway
+      // leaves it standing, so the multiplier is never lost by getting
+      // interrupted — only by seeing the round through, which is the point.
+      state.rewardKills = 0;
+      saveProgress();
+      state.screen = "upgrade";
+    }
   }
   state._structuralDirty = true;
 }

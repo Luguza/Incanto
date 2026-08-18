@@ -569,3 +569,148 @@
   .tav-chip.flavour { color: var(--ink-3); border-color: var(--edge); font-weight: 600; }
   .tav-chip.flavour:active { color: var(--ink-2); }
 
+
+  /* ===========================================================================
+     The study phase's own screens — the Bücherei hub, the grammar shelf and a
+     lecture's scorecard.
+
+     They live here rather than in quiz.css because they are meta screens: they
+     are what you tap THROUGH, not what you sit in. The session itself — quiz or
+     lecture — is in quiz.css, on the frame both of them share.
+     =========================================================================== */
+  .study-screen, .lectures-screen, .lecdone-screen {
+    justify-content: flex-start; align-items: stretch;
+    background: radial-gradient(130% 75% at 50% 0%, #1a1425 0%, var(--bg) 58%);
+  }
+  @media (min-width: 760px) {
+    .study-frame, .lec-frame, .lecdone-frame {
+      border-left: 1px solid var(--edge-soft);
+      border-right: 1px solid var(--edge-soft);
+    }
+  }
+
+  /* --- The hub ------------------------------------------------------------ */
+  .study-top {
+    flex: 0 0 auto; display: flex; align-items: baseline; gap: 10px;
+    padding: 6px 0 14px;
+  }
+  .study-title {
+    margin: 0; font-family: var(--display-font); font-size: 24px; font-weight: 400;
+    letter-spacing: 0.5px; color: var(--ink);
+  }
+  .study-purse { margin-left: auto; display: flex; gap: 8px; font-size: 12.5px; font-weight: 700; }
+  .study-coin {
+    color: var(--gold); background: var(--gold-1); border: 1px solid var(--gold-2);
+    border-radius: var(--r-pill); padding: 3px 10px;
+  }
+  .study-gem {
+    color: var(--gem); background: var(--gem-1); border: 1px solid var(--gem-2);
+    border-radius: var(--r-pill); padding: 3px 10px;
+  }
+
+  .study-doors { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding-bottom: 16px; }
+
+  /* A door is a whole card, not a title with a button under it: the entire
+     panel is the tap target, because a thumb aiming at a phase should not have
+     to find the one row of it that is live. */
+  .study-door {
+    display: flex; flex-direction: column; gap: 6px; text-align: left;
+    padding: 16px 16px 14px; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--edge); border-radius: var(--r-3);
+    box-shadow: var(--shadow-1);
+    transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .study-door:active { transform: translateY(1px); border-color: var(--edge-hi); }
+  .door-head { display: flex; align-items: center; gap: 9px; }
+  .door-name {
+    font-family: var(--display-font); font-size: 19px; letter-spacing: 0.4px; color: var(--ink);
+  }
+  .door-blurb { font-size: 13px; line-height: 1.5; color: var(--ink-3); }
+  .door-foot {
+    margin-top: 2px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; color: var(--ink-4);
+  }
+  .study-history { align-self: center; margin-top: 4px; }
+
+  /* --- The shelf ----------------------------------------------------------- */
+  .lec-top {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 4px 0 12px;
+  }
+  .lec-back { flex: 0 0 auto; }
+  .lec-title {
+    flex: 1 1 auto; margin: 0; text-align: center;
+    font-family: var(--display-font); font-size: 21px; font-weight: 400; color: var(--ink);
+  }
+  .lec-purse {
+    flex: 0 0 auto; font-size: 12.5px; font-weight: 700; color: var(--gem);
+    background: var(--gem-1); border: 1px solid var(--gem-2);
+    border-radius: var(--r-pill); padding: 3px 10px;
+  }
+
+  .lec-list { flex: 1 1 auto; min-height: 0; padding-bottom: 16px; }
+  .lec-unit { margin-bottom: 20px; }
+  .lec-unit-title {
+    margin: 0 0 2px; font-size: 12px; font-weight: 700;
+    letter-spacing: 1.1px; text-transform: uppercase; color: var(--arcane-dim);
+  }
+  .lec-unit-blurb { margin: 0 0 9px; font-size: 12px; color: var(--ink-4); }
+  .lec-unit.empty { opacity: 0.45; }
+  .lec-soon {
+    margin: 0; padding: 10px 12px; font-size: 12.5px; font-style: italic; color: var(--ink-4);
+    background: var(--sunk); border: 1px dashed var(--edge); border-radius: var(--r-2);
+  }
+
+  .lec-row {
+    display: flex; align-items: center; gap: 11px; width: 100%;
+    margin-bottom: 7px; padding: 11px 13px; text-align: left; cursor: pointer;
+    background: var(--raised); border: 1px solid var(--edge); border-radius: var(--r-2);
+    transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .lec-row:active { transform: translateY(1px); border-color: var(--edge-hi); }
+  /* The mark keeps its width whether or not there is anything in it, so the
+     titles of a half-finished unit stay on one left edge. */
+  .lec-mark {
+    flex: 0 0 16px; text-align: center; font-size: 14px; font-weight: 700; color: var(--ink-4);
+  }
+  .lec-mark.pass { color: var(--good); }
+  .lec-mark.tried { color: var(--ink-4); }
+  .lec-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .lec-row-title { font-size: 14.5px; color: var(--ink); }
+  .lec-row-sub {
+    font-size: 11.5px; color: var(--ink-4);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .lec-best { flex: 0 0 auto; font-size: 12.5px; font-weight: 700; color: var(--ink-3); }
+  .lec-best.pass { color: var(--good); }
+  .lec-best.none { color: var(--ink-4); }
+
+  /* --- The scorecard -------------------------------------------------------- */
+  .lecdone-body {
+    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+    justify-content: center; text-align: center; gap: 4px;
+  }
+  .done-kicker {
+    margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 1.4px;
+    text-transform: uppercase; color: var(--ink-4);
+  }
+  .done-title {
+    margin: 2px 0 10px; font-family: var(--display-font); font-size: 26px; font-weight: 400;
+    letter-spacing: 0.5px; color: var(--ink);
+  }
+  .done-verdict {
+    margin: 0 auto 12px; padding: 5px 16px; border-radius: var(--r-pill);
+    font-size: 13px; font-weight: 700; letter-spacing: 0.4px;
+  }
+  .done-verdict.pass { color: var(--good-ink); background: var(--good-1); border: 1px solid var(--good-2); }
+  .done-verdict.fail { color: var(--ink-2); background: var(--sunk); border: 1px solid var(--edge); }
+  .done-score { margin: 0 0 6px; font-size: 15px; color: var(--ink-2); }
+  .done-score b { font-size: 21px; color: var(--ink); }
+  .done-gems { margin: 0; font-size: 16px; font-weight: 700; color: var(--gem); }
+  .done-bonus { margin: 6px 0 0; font-size: 13px; color: var(--gem-lt); }
+  .done-note {
+    margin: 18px auto 0; max-width: 32ch; font-size: 12px; line-height: 1.5; color: var(--ink-4);
+  }
+  .lecdone-foot {
+    flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; align-items: stretch;
+    padding: 12px 0 calc(env(safe-area-inset-bottom) + 12px);
+  }
+  .done-retry { align-self: center; }

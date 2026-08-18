@@ -43,11 +43,20 @@
   .qstep.right { background: var(--good); }
   .qstep.wrong { background: var(--bad); }
   .qstep.shown { background: var(--gold); }   /* solution revealed — resolved, unearned */
+  /* A lecture page is a step of the same bar with no verdict to give: narrower,
+     so the reading and the answering are visibly different halves of the run,
+     and quietly filled once it has been turned. */
+  .qstep.page  { flex: 0 0 14px; }
+  .qstep.read  { background: var(--edge-hi); }
 
   .quiz-meta {
     display: flex; align-items: center; gap: 9px;
     margin-top: 10px; min-height: 30px;
   }
+  /* The meta row is one line on a 360 px phone and stays one line: everything
+     in it is a fixed-width chip, so nothing wraps the counter onto a second row
+     and pushes the stage down between steps. */
+  .quiz-count, .quiz-purse, .quiz-mult { white-space: nowrap; }
   .quiz-count { font-size: 12.5px; color: var(--ink-4); letter-spacing: 0.3px; }
   .quiz-count b { color: var(--ink-2); font-weight: 700; }
   .quiz-purse {
@@ -67,6 +76,11 @@
     box-shadow: 0 0 12px rgba(242, 193, 78, 0.4);
   }
   .quiz-history-btn { margin-left: auto; }
+  /* The caption's right-hand half holds the lecture's name, which is longer than
+     a direction label; it truncates rather than wrapping the caption in two. */
+  .quiz-task .quiz-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The purse counts gems while a lecture runs. Same pill, other currency. */
+  .quiz-purse:has(.gem) { color: var(--gem); background: var(--gem-1); border-color: var(--gem-2); }
 
   /* --- Stage: the exercise itself, in whatever room is left ---
      The flexible spacers hold it a little above the true centre (where the eye
@@ -370,3 +384,89 @@
     border: 1px solid var(--gold-2); background: var(--gold-1);
     border-radius: var(--r-pill); padding: 1px 7px; line-height: 1.4;
   }
+
+  /* ===========================================================================
+     Lecture pages — the half of a lecture that is READ.
+
+     They sit inside the very same .quiz-frame the exercises do, on purpose: a
+     page and the drill that follows it are steps of one session, and giving the
+     reading its own chrome would make it look like a screen you could leave.
+     What does change is the alignment. The exercises are centred, because a
+     prompt and four options are a composition; prose is not, and centred body
+     text is unreadable past two lines.
+     =========================================================================== */
+  .lec-page { text-align: left; }
+  /* The exercises are held above the true centre by the stage's flex spacers,
+     which is right for a prompt and four options and wrong for prose: a page of
+     text that starts halfway down the screen has thrown away the half above it.
+     A page pins itself to the top and lets the stage scroll. */
+  .quiz-body:has(.lec-page)::before { flex: 0 0 0; }
+  .quiz-body:has(.lec-page)::after  { flex: 0 0 8px; }
+  .quiz-body:has(.lec-page) .quiz-stage { padding-top: 12px; }
+
+  .lec-p {
+    margin: 0 0 12px; font-size: 15px; line-height: 1.55; color: var(--ink-2);
+  }
+
+  /* An example: the Italian in the vocabulary's own gold, its gloss under it,
+     and an optional aside for the reason it is here at all. */
+  .lec-ex {
+    display: flex; flex-direction: column; gap: 1px;
+    margin: 0 0 8px; padding: 8px 12px;
+    background: var(--sunk); border-left: 2px solid var(--gold-3);
+    border-radius: 0 var(--r-1) var(--r-1) 0;
+  }
+  .lec-it { font-family: var(--display-font); font-size: 17px; color: var(--gold); }
+  .lec-de { font-size: 13px; color: var(--ink-3); }
+  .lec-note { font-size: 11.5px; color: var(--ink-4); font-style: italic; margin-top: 2px; }
+
+  /* The wrong form beside the right one. Grammar books all do this, and they do
+     it because the mistake is easier to unlearn when you have seen it named. */
+  .lec-bad {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    margin: 0 0 8px; padding: 7px 12px;
+    background: var(--bad-1); border: 1px solid var(--bad-2); border-radius: var(--r-1);
+    font-family: var(--display-font); font-size: 15px;
+  }
+  .lec-wrong { color: var(--bad); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+  .lec-arrow { color: var(--ink-4); font-size: 13px; }
+  .lec-right { color: var(--good); }
+
+  /* The takeaway, boxed so it can be found again by flicking back through. */
+  .lec-rule {
+    margin: 10px 0 12px; padding: 10px 13px;
+    background: var(--arcane-1); border: 1px solid var(--arcane-2);
+    border-radius: var(--r-1);
+    font-size: 14px; line-height: 1.5; color: var(--arcane-pale);
+  }
+
+  .lec-list { margin: 0 0 12px; padding-left: 20px; font-size: 14.5px; line-height: 1.6; color: var(--ink-2); }
+
+  /* A paradigm or a declension. Scrolls inside its own box rather than pushing
+     the page sideways — a five-column table and a 320px phone do not otherwise
+     agree. */
+  .lec-table-wrap { margin: 0 0 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .lec-table {
+    width: 100%; border-collapse: collapse; font-size: 13.5px;
+    background: var(--sunk); border-radius: var(--r-1); overflow: hidden;
+  }
+  .lec-table th {
+    padding: 7px 10px; text-align: left; white-space: nowrap;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+    color: var(--ink-4); background: var(--panel-lo);
+    border-bottom: 1px solid var(--edge-soft);
+  }
+  .lec-table td {
+    padding: 7px 10px; white-space: nowrap;
+    font-family: var(--display-font); font-size: 15px; color: var(--gold);
+    border-bottom: 1px solid var(--edge-soft);
+  }
+  /* The label column wraps; the Italian columns never do. That is what keeps a
+     three-column table on a 360 px screen without a sideways scroll, while a
+     genuinely wide one still scrolls rather than squashing the forms. */
+  .lec-table td.lec-th {
+    font-family: var(--ui-font); font-size: 12.5px; color: var(--ink-3);
+    white-space: normal; min-width: 9ch;
+  }
+  .lec-table th:first-child { white-space: normal; }
+  .lec-table tr:last-child td { border-bottom: none; }

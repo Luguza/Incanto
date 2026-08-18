@@ -65,6 +65,15 @@
     --gold-2:   rgba(242, 193, 78, 0.18);
     --gold-3:   rgba(242, 193, 78, 0.38);
 
+    /* The second currency. Deliberately neither gold nor arcane: gems have to be
+       tellable apart from coin at a glance, in a one-character glyph, in a
+       banner that otherwise reads identically. */
+    --gem:      #b98cff;
+    --gem-lt:   #d3b6ff;
+    --gem-1:    rgba(185, 140, 255, 0.10);
+    --gem-2:    rgba(185, 140, 255, 0.24);
+    --gem-3:    rgba(185, 140, 255, 0.42);
+
     --good:     #5ecf8f;
     --good-ink: #d6ffe6;
     --good-1:   rgba(94, 207, 143, 0.12);
@@ -178,8 +187,9 @@
     padding: calc(env(safe-area-inset-top) + 10px) 14px 0;
   }
 
-  /* Value written in coin. */
+  /* Value written in coin, and value written in gems. */
   .coin { color: var(--gold); }
+  .gem  { color: var(--gem); }
 
   /* ---------------------------------------------------------------------------
      Button primitives. One primary (gold, or arcane where the action is "move

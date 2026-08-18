@@ -122,6 +122,24 @@ const CONFIG = {
     promoteStreak: 1,  // correct answers at the top rung before the next one opens
     demoteStreak: 2,   // misses at the top rung before it steps back down
   },
+  // GRAMMAR LECTURES (see grammar.js + lecture.js). The other half of the study
+  // phase: a topic is EXPLAINED and then drilled, where the quiz only ever
+  // tests. A lecture is a handful of pages followed by `drillCount` exercises,
+  // and the exercises are the quiz's own — a drill is an ordinary question
+  // object, so nothing here re-implements an exercise type.
+  //
+  // Its payout is a SECOND currency on purpose. Gold is what the rune tree is
+  // balanced against (see treeGold), and a new source of it would move that
+  // balance without anybody deciding to; gems are earned, banked and shown, and
+  // for now they are spent on nothing at all. Gear is what they are for, and
+  // gear is not built yet — so this is the number that will price it later.
+  grammar: {
+    gemsPerCorrect: 3,
+    firstClearBonus: 25,  // once per lecture, the first time it is finished
+    repeatFactor: 0.4,    // what a re-taken lecture pays, so the easiest one isn't the best farm
+    passScore: 0.7,       // share of the drills right that counts as "bestanden"
+    drillCount: 12,       // what every lecture is authored to (tools/check-grammar.mjs holds them to it)
+  },
   // Fighting doesn't pay out gold — it charges the multiplier the quiz pays out
   // AT. Every skeleton slain lifts it, and the charge BANKS across runs
   // (state.rewardKills): dying doesn't burn it, starting a fresh run doesn't
