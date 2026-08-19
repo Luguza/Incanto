@@ -132,7 +132,10 @@ function renderNav() {
 // Map the internal screen name to the phase the nav highlights.
 const NAV_PHASE_FOR_SCREEN = {
   tavern: "tavern",
-  quiz: "study", history: "study",
+  // Everything the Bücherei leads to is the study phase: the hub, the vocab
+  // quiz, a grammar lecture, the lecture shelf and its scorecard.
+  study: "study", quiz: "study", history: "study",
+  lectures: "study", lecturedone: "study",
   // binding the book and reading the ledger are both part of the forge
   upgrade: "upgrade", bookorder: "upgrade", stats: "upgrade",
   combat: "combat",
@@ -148,6 +151,20 @@ function updateNav() {
   });
 }
 
+// The study phase has one rule, and three places follow it: an unfinished
+// session — a vocab quiz or a grammar lecture, they run on the same fields — is
+// RESUMED, never wiped, so hopping away and back never costs the player a
+// half-answered round. With nothing to resume you land wherever `fallback` says.
+function studyResumeOr(fallback) {
+  if (state.screen === "quiz") return;
+  if (state.quizList.length > 0 && state.quizIndex < state.quizList.length) {
+    state.screen = "quiz";
+    state._structuralDirty = true;
+    return;
+  }
+  fallback();
+}
+
 // Jump to a phase. Combat and study resume an in-progress session rather than
 // wiping it, so hopping away and back never costs the player their progress.
 function navTo(phase) {
@@ -157,14 +174,8 @@ function navTo(phase) {
     state.screen = "tavern";
     state._structuralDirty = true;
   } else if (phase === "study") {
-    if (state.screen === "quiz") return;
-    const quizInProgress = state.quizList.length > 0 && state.quizIndex < state.quizList.length;
-    if (quizInProgress) {
-      state.screen = "quiz";
-      state._structuralDirty = true;
-    } else {
-      goToQuiz();
-    }
+    if (state.screen === "study") return;
+    studyResumeOr(openStudyHub);
   } else if (phase === "upgrade") {
     if (state.screen === "upgrade") return;
     state.screen = "upgrade";
@@ -180,4 +191,4 @@ function navTo(phase) {
   }
 }
 
-window.Incanto.nav = { renderNav, updateNav, navTo, NAV_PHASE_FOR_SCREEN };
+window.Incanto.nav = { renderNav, updateNav, navTo, studyResumeOr, NAV_PHASE_FOR_SCREEN };

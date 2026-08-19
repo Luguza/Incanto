@@ -48,6 +48,14 @@ function freshState() {
       spellsUnlocked: {}, spellPct: {}, spellParam: {},
     },
     gold: 0,
+    // The second currency. Grammar lectures pay gems, the vocab quiz pays gold,
+    // and neither ever pays the other — the rune tree's whole balance is struck
+    // against `treeGold` (see config.js), so a second source of gold would move
+    // that balance without anyone deciding to. Nothing spends gems yet: gear is
+    // what they are for and gear is not built, so for now they only pile up.
+    gems: 0,
+    // Per lecture: { clears, passed, best, lastAt } (see lecture.js). Persisted.
+    lectures: {},
     // Designed packs walk in from the right as the hero passes their metre marks
     // (see encounters.js). An enemy: {id, maxHP, hp, dmg, slot, lane, pos, phase,
     // phaseAt, attackAt, attackAnimAt, deathAt, splitAt}. `pos` is in tiles to
@@ -109,7 +117,15 @@ function freshState() {
     // is which tab the Lernverlauf screen is showing and is pure UI.
     vocab: {},
     historyFilter: "seen",
-    // Post-death vocab quiz — a mixed Duolingo-style session
+    // Post-death vocab quiz — a mixed Duolingo-style session. The SAME session
+    // fields also run a grammar lecture (see lecture.js): the exercises are the
+    // quiz's own, so a lecture is a quizList like any other. `quizMode` says
+    // which it is, and it is the only thing that decides whether a right answer
+    // pays gold or gems.
+    quizMode: "vocab",       // "vocab" | "grammar"
+    quizLecture: null,       // which lecture is running, while one is
+    quizGemsEarned: 0,       // gems earned in this lecture
+    lectureLast: null,       // the finished lecture's scorecard, for the done screen
     quizList: [],
     quizIndex: 0,
     quizCorrect: 0,
@@ -198,6 +214,8 @@ function saveProgress() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       gold: state.gold,
+      gems: state.gems,
+      lectures: state.lectures,
       rewardKills: state.rewardKills,
       nodeRanks: state.nodeRanks,
       activeSpell: state.activeSpell,
@@ -246,7 +264,25 @@ function applySavedProgress() {
   let orphanedRanks = 0;
   if (data) {
     state.gold = asCount(data.gold);
+    state.gems = asCount(data.gems);
     state.rewardKills = asCount(data.rewardKills);
+    // The lecture record, pruned to the curriculum that currently exists — the
+    // same discipline nodeRanks and conjLevel get, for the same reason: a save
+    // must survive a lecture being renamed or dropped.
+    state.lectures = {};
+    if (data.lectures && typeof data.lectures === "object" &&
+        typeof GRAMMAR_LECTURES !== "undefined") {
+      for (const lec of GRAMMAR_LECTURES) {
+        const r = data.lectures[lec.id];
+        if (!r || typeof r !== "object") continue;
+        state.lectures[lec.id] = {
+          clears: asCount(r.clears),
+          passed: r.passed === true,
+          best: Number.isFinite(r.best) ? Math.min(1, Math.max(0, r.best)) : 0,
+          lastAt: Number.isFinite(r.lastAt) ? r.lastAt : 0,
+        };
+      }
+    }
     // The conjugation ladder, clamped to the rungs that currently exist — the
     // levels are CONFIG, and a save must survive one being added or removed.
     const rungs = (CONFIG.conjugation && CONFIG.conjugation.levels.length) || 1;

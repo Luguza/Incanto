@@ -20,7 +20,19 @@ const QUIZ_TITLE = {
   "conj-choose": "Verb konjugieren",
   "conj-type": "Verb konjugieren",
   "conj-table": "Verb konjugieren",
+  explain: "Lektion",
 };
+
+// What the exercise calls itself. A grammar drill may name its own topic
+// ("Artikel wählen") rather than fall back on the generic label for its type —
+// the type is how it is answered, not what it is about.
+function quizKindLabel(q) {
+  if (q.type === "explain") {
+    const lec = typeof lectureById === "function" ? lectureById(state.quizLecture) : null;
+    return lec ? lec.title : QUIZ_TITLE.explain;
+  }
+  return q.title || QUIZ_TITLE[q.type] || "";
+}
 
 function quizDirLabel(dir) {
   return dir === "it2de" ? "Italienisch → Deutsch" : "Deutsch → Italienisch";
@@ -30,6 +42,11 @@ function quizDirLabel(dir) {
 // the ladder and what that rung pays, so the player can see both that the
 // exercise got harder and why they'd want it to (see CONFIG.conjugation).
 function quizTaskAside(q) {
+  if (q.type === "explain") return `<span class="quiz-dir">Seite ${q.pageIndex + 1} / ${q.pageCount}</span>`;
+  if (q.grammar && state.quizMode === "grammar") {
+    const lec = typeof lectureById === "function" ? lectureById(state.quizLecture) : null;
+    return lec ? `<span class="quiz-dir">${lec.title}</span>` : "";
+  }
   if (q.dir) return `<span class="quiz-dir">${quizDirLabel(q.dir)}</span>`;
   if (q.level === undefined) return "";
   const levels = CONFIG.conjugation.levels;
@@ -44,9 +61,14 @@ function quizTaskAside(q) {
 // A learner can see how the round is going without counting, and the current
 // question has an unambiguous position in it.
 function renderQuizSteps() {
-  const cells = state.quizList.map((_, i) => {
+  const cells = state.quizList.map((q, i) => {
     const r = state.quizResults[i];
-    const cls = r ? `qstep ${r}` : i === state.quizIndex ? "qstep now" : "qstep";
+    // A lecture page is a step of the same bar, but it has no verdict to show —
+    // it is read, not answered. Turned pages mark themselves quietly so the bar
+    // still says where in the lecture you are without pretending you scored.
+    const page = q.type === "explain" ? " page" : "";
+    const cls = r ? `qstep ${r}` : i === state.quizIndex ? `qstep now${page}`
+      : i < state.quizIndex ? `qstep read${page}` : `qstep${page}`;
     return `<span class="${cls}"></span>`;
   }).join("");
   return `<div class="quiz-steps" role="progressbar" aria-label="Fortschritt"
@@ -66,6 +88,32 @@ function renderQuizMult() {
   return `<span class="quiz-mult${capped ? " capped" : ""}" title="${title}">${fmtMult(mult)}</span>`;
 }
 
+// The header's middle row. Vocabulary and grammar are counted the same way and
+// paid differently, so the row keeps its shape and swaps what it says: the quiz
+// shows the banked fight multiplier and the gold it is earning, a lecture shows
+// which lecture this is and the gems.
+function quizHeaderMeta() {
+  const n = state.quizList.length;
+  const at = state.quizIndex + 1;
+  if (state.quizMode === "grammar") {
+    // Three things, the same three the quiz's row carries. Which lecture this
+    // is belongs in the caption under the header, not up here — the row is
+    // 360 px wide on the phone this is played on, and a fourth item in it
+    // wrapped the step counter onto a second line.
+    return `<div class="quiz-meta">
+      <span class="quiz-count">Schritt <b>${at}</b> / ${n}</span>
+      <span class="quiz-purse" title="in dieser Lektion verdient"><span class="gem">◆</span> ${state.quizGemsEarned}</span>
+      <button class="ghost-btn quiz-history-btn" data-act="closeLecture">Verlassen</button>
+    </div>`;
+  }
+  return `<div class="quiz-meta">
+    <span class="quiz-count">Frage <b>${at}</b> / ${n}</span>
+    ${renderQuizMult()}
+    <span class="quiz-purse" title="in dieser Runde verdient"><span class="coin">◈</span> ${state.quizGoldEarned}</span>
+    <button class="ghost-btn quiz-history-btn" data-act="openHistory">Lernverlauf</button>
+  </div>`;
+}
+
 // The screen is a fixed three-part column: a header that never moves, a stage
 // that holds whatever the exercise needs, and a footer pinned to the bottom
 // edge. Anchoring the action bar is the point — the primary button sits in the
@@ -73,9 +121,15 @@ function renderQuizMult() {
 // question after question never makes the target move under the thumb.
 function renderQuizFull() {
   const q = state.quizList[state.quizIndex];
+  // Nothing left to ask. The router can only get here if a session was emptied
+  // without its screen being changed, and painting a half-built stage over the
+  // crash is worse than going back to where sessions are started from.
+  if (!q) { openStudyHub(); return; }
   let body;
   switch (q.type) {
-    case "choose":      body = renderChooseBody(q, `Was bedeutet <span class="quiz-word">${q.prompt}</span>?`); break;
+    case "explain":     body = renderExplainBody(q); break;
+    case "choose":      body = renderChooseBody(q, q.promptHtml
+                          || `<p class="quiz-prompt">Was bedeutet <span class="quiz-word">${q.prompt}</span>?</p>`); break;
     case "type":        body = renderTypeBody(q); break;
     case "match":       body = renderMatchBody(q); break;
     case "fill-choose": body = renderFillChooseBody(q); break;
@@ -92,16 +146,11 @@ function renderQuizFull() {
       <div class="frame quiz-frame">
         <header class="quiz-header">
           ${renderQuizSteps()}
-          <div class="quiz-meta">
-            <span class="quiz-count">Frage <b>${state.quizIndex + 1}</b> / ${state.quizList.length}</span>
-            ${renderQuizMult()}
-            <span class="quiz-purse" title="in dieser Runde verdient"><span class="coin">◈</span> ${state.quizGoldEarned}</span>
-            <button class="ghost-btn quiz-history-btn" data-act="openHistory">Lernverlauf</button>
-          </div>
+          ${quizHeaderMeta()}
         </header>
         <main class="quiz-body scroll-y">
           <div class="quiz-stage">
-            <div class="quiz-task"><span class="quiz-kind">${QUIZ_TITLE[q.type]}</span>${dir}</div>
+            <div class="quiz-task"><span class="quiz-kind">${quizKindLabel(q)}</span>${dir}</div>
             ${body}
           </div>
         </main>
@@ -144,14 +193,17 @@ function renderOptions(q) {
     .join("");
   return `<div class="quiz-opts">${optsHtml}</div>`;
 }
+// `promptHtml` is the WHOLE prompt block, not the text inside one paragraph —
+// a grammar drill's prompt is a line plus, often, a hint under it, and nesting
+// that inside a <p> would be invalid markup.
 function renderChooseBody(q, promptHtml) {
-  return `<p class="quiz-prompt">${promptHtml}</p>${renderOptions(q)}`;
+  return `${promptHtml}${renderOptions(q)}`;
 }
 
 function renderTypeBody(q) {
-  return `
-    <p class="quiz-prompt">Übersetze <span class="quiz-word">${q.prompt}</span></p>
-    ${renderTypeInput("quizCheckType")}`;
+  const prompt = q.promptHtml
+    || `<p class="quiz-prompt">Übersetze <span class="quiz-word">${q.prompt}</span></p>`;
+  return `${prompt}${renderTypeInput("quizCheckType")}`;
 }
 
 function renderFillTypeBody(q) {
@@ -325,27 +377,45 @@ const QUIZ_CUE = {
   "conj-match": "Tippe Person und Form an",
 };
 
+// What this session pays in, for the lines that have to name it. A revealed
+// answer earns nothing either way; only the currency in the sentence changes.
+function payMark() { return state.quizMode === "grammar" ? "◆" : "◈"; }
+function payNothing() { return state.quizMode === "grammar" ? "keine Edelsteine verdient" : "kein Gold verdient"; }
+
 // Bottom action bar, pinned to the foot of the frame. It always ends in the
 // same row — a primary button, or the cue that stands in for one — and grows
 // UPWARDS as the feedback banner appears, so nothing below the answer ever
 // shifts when a question settles.
 function renderQuizFoot(q) {
+  // A lecture page has nothing to check and nothing to reveal. It gets the one
+  // row the frame always ends in, and the same button the settled questions get
+  // — the page is a step of the session, so it advances the way a step does.
+  if (q.type === "explain") {
+    const last = q.pageIndex + 1 >= q.pageCount;
+    return `<footer class="quiz-foot">
+      <p class="quiz-cue">${last ? "Danach geht es an die Übungen" : "Lies, dann weiter"}</p>
+      <button class="btn-primary quiz-continue" data-act="advanceQuiz">${last ? "Zu den Übungen" : "Weiter"} →</button>
+    </footer>`;
+  }
   if (state.quizChecked) {
     const last = state.quizIndex + 1 >= state.quizList.length;
     let banner;
     if (state.quizWasCorrect) {
+      const gain = state.quizMode === "grammar"
+        ? `<span class="gem">◆</span> +${lectureReward()}`
+        : `<span class="coin">◈</span> +${quizReward(q)}`;
       banner = `<div class="quiz-feedback good"><span class="fb-mark">✓</span>
-        <span class="fb-text">Richtig</span><span class="fb-gain"><span class="coin">◈</span> +${quizReward(q)}</span></div>`;
+        <span class="fb-text">Richtig</span><span class="fb-gain">${gain}</span></div>`;
     } else if (q.type === "match" || q.type === "conj-match") {
       // match has no single answer string; it only pays out when self-solved
-      banner = `<div class="quiz-feedback reveal"><span class="fb-mark">◈</span>
-        <span class="fb-text">Paare aufgedeckt — kein Gold verdient</span></div>`;
+      banner = `<div class="quiz-feedback reveal"><span class="fb-mark">${payMark()}</span>
+        <span class="fb-text">Paare aufgedeckt — ${payNothing()}</span></div>`;
     } else if (q.type === "conj-table") {
       // A paradigm has six answers, and they're already standing in the table
       // itself — so the banner counts them rather than repeating them here.
       if (state.quizRevealed) {
-        banner = `<div class="quiz-feedback reveal"><span class="fb-mark">◈</span>
-          <span class="fb-text">Ganze Konjugation aufgedeckt — kein Gold verdient</span></div>`;
+        banner = `<div class="quiz-feedback reveal"><span class="fb-mark">${payMark()}</span>
+          <span class="fb-text">Ganze Konjugation aufgedeckt — ${payNothing()}</span></div>`;
       } else {
         const right = q.blanks.filter((i) => conjRowCorrect(q, i)).length;
         banner = `<div class="quiz-feedback bad"><span class="fb-mark">✕</span>
@@ -362,7 +432,8 @@ function renderQuizFoot(q) {
     // It rides in the button's own label rather than a line above it — the foot
     // bar keeps a fixed row count so the primary button never shifts.
     const label = last
-      ? (rewardMult() > 1 ? `Fertig &middot; ${fmtMult(rewardMult())} einlösen` : "Fertig")
+      ? (state.quizMode !== "grammar" && rewardMult() > 1
+          ? `Fertig &middot; ${fmtMult(rewardMult())} einlösen` : "Fertig")
       : "Weiter";
     return `<footer class="quiz-foot">${banner}
       <button class="btn-primary quiz-continue" data-act="advanceQuiz">${label} →</button>

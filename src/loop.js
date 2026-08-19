@@ -678,6 +678,24 @@ function render(now) {
       builtScreen = "quiz";
       state._structuralDirty = false;
     }
+  } else if (state.screen === "study") {
+    if (builtScreen !== "study" || state._structuralDirty) {
+      renderStudyHubFull();
+      builtScreen = "study";
+      state._structuralDirty = false;
+    }
+  } else if (state.screen === "lectures") {
+    if (builtScreen !== "lectures" || state._structuralDirty) {
+      renderLectureListFull();
+      builtScreen = "lectures";
+      state._structuralDirty = false;
+    }
+  } else if (state.screen === "lecturedone") {
+    if (builtScreen !== "lecturedone" || state._structuralDirty) {
+      renderLectureDoneFull();
+      builtScreen = "lecturedone";
+      state._structuralDirty = false;
+    }
   } else if (state.screen === "history") {
     if (builtScreen !== "history" || state._structuralDirty) {
       renderHistoryFull();

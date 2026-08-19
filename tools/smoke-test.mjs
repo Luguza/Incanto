@@ -824,6 +824,242 @@ try {
   check(kept.saved === 2 && kept.level === 2 && kept.streak === 1,
     "the rung the learner reached survives a reload (Stufe " + (kept.level + 1) + ")");
 
+  // ===========================================================================
+  // 8b-bis. GRAMMAR LECTURES (see grammar.js + lecture.js). A lecture explains a
+  //     topic and then drills it, on the quiz's own screen — the drills ARE quiz
+  //     question objects, expanded from compact specs by buildDrill. That is the
+  //     whole design, and it is also the whole risk: a spec the builder cannot
+  //     expand renders as a blank stage, for one drill, in one lecture, that
+  //     nobody may open for a month. So the first thing checked here is every
+  //     drill of every lecture, built AND rendered AND read back for its answer.
+  // ===========================================================================
+  const lecShelf = await page.evaluate(() => ({
+    units: Incanto.GRAMMAR_UNITS.length,
+    lectures: Incanto.GRAMMAR_LECTURES.length,
+    authored: Incanto.GRAMMAR_LECTURES.filter((l) => l.drills && l.drills.length).length,
+    want: CONFIG.grammar.drillCount,
+  }));
+  check(lecShelf.authored > 0 && lecShelf.units >= lecShelf.authored / 6,
+    `the shelf holds ${lecShelf.authored} authored lectures over ${lecShelf.units} units`);
+
+  // Every drill, through the real builder and the real renderer. "Reachable"
+  // means the correct answer is findable on the built page the way a thumb finds
+  // it — an option button, a bank tile, an input, a pair of columns — so a spec
+  // that expands into a question with no right answer on screen fails here
+  // rather than in front of a learner.
+  const lecDrills = await page.evaluate(() => {
+    const bad = [];
+    let built = 0;
+    const seenKinds = new Set();
+    for (const lec of Incanto.GRAMMAR_LECTURES) {
+      if (!lec.drills || !lec.drills.length) continue;
+      const session = Incanto.lecture.buildLectureSession(lec);
+      state.quizMode = "grammar";
+      state.quizLecture = lec.id;
+      state.quizList = session;
+      session.forEach((q, i) => {
+        state.quizIndex = i;
+        resetQuizInput();
+        let html = "";
+        try { renderQuizFull(); html = app.innerHTML; }
+        catch (e) { bad.push(`${lec.id} step ${i + 1} (${q.type}): threw ${e.message}`); return; }
+        built++;
+        seenKinds.add(q.type);
+        if (!document.querySelector(".quiz-stage")) { bad.push(`${lec.id} step ${i + 1}: no stage`); return; }
+        if (q.type === "explain") {
+          if (!document.querySelector(".lec-page") || !html.includes("advanceQuiz")) {
+            bad.push(`${lec.id} page ${q.pageIndex + 1}: page did not render or cannot be turned`);
+          }
+          return;
+        }
+        const texts = (sel) => [...document.querySelectorAll(sel)].map((e) => e.textContent.trim());
+        if (q.type === "choose" || q.type === "fill-choose") {
+          const opts = texts(".quiz-opt");
+          if (opts.length !== CONFIG.quizOptionCount) bad.push(`${lec.id} step ${i + 1}: ${opts.length} options on screen`);
+          if (!opts.includes(String(q.answer).trim())) bad.push(`${lec.id} step ${i + 1}: answer "${q.answer}" is not among the options on screen`);
+        } else if (q.type === "type" || q.type === "fill-type") {
+          if (!document.getElementById("quiz-input")) bad.push(`${lec.id} step ${i + 1}: no input to type into`);
+          if (!q.accept.includes(q.answer)) bad.push(`${lec.id} step ${i + 1}: the answer is not in its own accept list`);
+        } else if (q.type === "match") {
+          const tiles = texts(".match-tile");
+          for (const p of q.pairs) {
+            if (!tiles.includes(String(p.it).trim()) || !tiles.includes(String(p.de).trim())) {
+              bad.push(`${lec.id} step ${i + 1}: pair ${p.it}/${p.de} is not both on the board`);
+            }
+          }
+        } else if (q.type === "arrange") {
+          const bank = texts(".build-bank .tile");
+          for (const w of q.answer) if (!bank.includes(w)) bad.push(`${lec.id} step ${i + 1}: "${w}" is not in the bank`);
+        } else if (q.type === "conj-table") {
+          if (document.querySelectorAll(".conj-row").length !== 6) bad.push(`${lec.id} step ${i + 1}: not six rows`);
+        } else {
+          bad.push(`${lec.id} step ${i + 1}: unexpected question type "${q.type}"`);
+        }
+      });
+    }
+    state.quizMode = "vocab"; state.quizLecture = null; state.quizList = []; state.quizIndex = 0;
+    return { bad: bad.slice(0, 8), count: bad.length, built, kinds: [...seenKinds].sort() };
+  });
+  check(lecDrills.count === 0,
+    `every lecture step builds and renders with its answer reachable (${lecDrills.built} steps, kinds: ${lecDrills.kinds.join("/")})` +
+    (lecDrills.count ? ` — ${lecDrills.count}: ${lecDrills.bad.join("; ")}` : ""));
+
+  // The Bücherei is a hub now: the vocab quiz and the grammar shelf are two
+  // doors out of it, and everything behind either one is still the study phase
+  // as far as the bottom nav is concerned.
+  const studyHub = await page.evaluate(() => {
+    state.quizList = []; state.quizIndex = 0; state.screen = "upgrade";
+    navTo("study");
+    render(performance.now());
+    return {
+      screen: state.screen,
+      doors: [...document.querySelectorAll(".door-name")].map((e) => e.textContent),
+      phase: Incanto.nav.NAV_PHASE_FOR_SCREEN[state.screen],
+      allStudy: ["study", "quiz", "history", "lectures", "lecturedone"]
+        .every((sc) => Incanto.nav.NAV_PHASE_FOR_SCREEN[sc] === "study"),
+    };
+  });
+  check(studyHub.screen === "study" && studyHub.doors.length === 2,
+    "the Bücherei opens as a hub with two doors (" + studyHub.doors.join(", ") + ")");
+  check(studyHub.allStudy,
+    "every screen behind the Bücherei counts as the study phase in the nav");
+
+  // …and an unfinished session is RESUMED rather than wiped, whichever kind it
+  // is. Walking out of a half-read lecture to look at something and coming back
+  // must not cost the learner the lecture.
+  const lecResumed = await page.evaluate(() => {
+    startLecture(Incanto.GRAMMAR_LECTURES.find((l) => l.drills.length).id);
+    const at = (state.quizIndex = 3);
+    navTo("tavern");
+    navTo("study");
+    return { screen: state.screen, at, back: state.quizIndex, mode: state.quizMode };
+  });
+  check(lecResumed.screen === "quiz" && lecResumed.back === lecResumed.at && lecResumed.mode === "grammar",
+    "leaving a lecture and coming back resumes it at the same step (" + lecResumed.back + ")");
+
+  // THE TWO ECONOMIES DO NOT MIX. Gold is what the rune tree's whole balance is
+  // struck against (CONFIG.treeGold); gems are what gear will one day be priced
+  // in. A right answer pays exactly one of them, and which one is decided by
+  // nothing but the mode the session is in.
+  const twoPurses = await page.evaluate(() => {
+    const lec = Incanto.GRAMMAR_LECTURES.find((l) => l.drills.length);
+    state.gold = 0; state.gems = 0; state.lectures = {}; state.rewardKills = 7;
+    startLecture(lec.id);
+    while (state.quizList[state.quizIndex].type === "explain") advanceQuiz();
+    const q = state.quizList[state.quizIndex];
+    quizChoose(q.options.indexOf(q.answer));
+    const afterGrammar = { gold: state.gold, gems: state.gems, bank: state.rewardKills };
+    // …and the other way round.
+    state.gold = 0; state.gems = 0;
+    goToQuiz();
+    while (state.quizList[state.quizIndex].type !== "choose") state.quizIndex++;
+    const v = state.quizList[state.quizIndex];
+    quizChoose(v.options.indexOf(v.answer));
+    return { afterGrammar, afterVocab: { gold: state.gold, gems: state.gems }, mode: state.quizMode,
+      perCorrect: CONFIG.grammar.gemsPerCorrect };
+  });
+  check(twoPurses.afterGrammar.gems === twoPurses.perCorrect && twoPurses.afterGrammar.gold === 0,
+    "a right answer in a lecture pays gems and no gold (" + twoPurses.afterGrammar.gems + " gems, " + twoPurses.afterGrammar.gold + " gold)");
+  check(twoPurses.afterGrammar.bank === 7,
+    "a lecture leaves the fight's reward bank alone (" + twoPurses.afterGrammar.bank + " banked)");
+  check(twoPurses.afterVocab.gold > 0 && twoPurses.afterVocab.gems === 0,
+    "a right answer in the quiz pays gold and no gems (" + twoPurses.afterVocab.gold + " gold, " + twoPurses.afterVocab.gems + " gems)");
+
+  // Finishing one: scored, recorded, and the first pass carries a bonus that a
+  // re-run does not. A re-run also pays a fraction per answer, so grinding the
+  // easiest lecture is never the best way to earn.
+  const lecDone = await page.evaluate(() => {
+    const answer = () => {
+      const q = state.quizList[state.quizIndex];
+      if (q.type === "explain") return;
+      if (q.type === "choose" || q.type === "fill-choose") quizChoose(q.options.indexOf(q.answer));
+      else if (q.type === "type" || q.type === "fill-type") { state.quizTyped = q.answer; quizCheckType(); }
+      else if (q.type === "match") for (const p of q.pairs) {
+        quizMatchTap("left", q.left.findIndex((t) => t.id === p.id));
+        quizMatchTap("right", q.right.findIndex((t) => t.id === p.id));
+      }
+      else if (q.type === "arrange") {
+        for (const w of q.answer) quizArrangeAdd(q.bank.find((b) => b.word === w && !state.quizBuilt.includes(b.id)).id);
+        quizCheckArrange();
+      }
+      else if (q.type === "conj-table") { state.quizConj = q.forms.slice(); quizCheckConjTable(); }
+    };
+    const run = (id) => {
+      startLecture(id);
+      let guard = 0;
+      while (state.screen === "quiz" && guard++ < 80) { answer(); advanceQuiz(); }
+      return { screen: state.screen, gems: state.gems, last: JSON.parse(JSON.stringify(state.lectureLast)) };
+    };
+    const lec = Incanto.GRAMMAR_LECTURES.find((l) => l.drills.length);
+    state.gold = 0; state.gems = 0; state.lectures = {};
+    const first = run(lec.id);
+    const second = run(lec.id);
+    const saved = JSON.parse(localStorage.getItem("incanto.save.v1"));
+    state.gems = 0; state.lectures = {};
+    applySavedProgress();                       // what a reload does with the save
+    return { first, second, savedGems: saved.gems, reloadGems: state.gems,
+      reloadRec: state.lectures[lec.id], drills: lec.drills.length,
+      bonus: CONFIG.grammar.firstClearBonus };
+  });
+  check(lecDone.first.screen === "lecturedone" && lecDone.first.last.right === lecDone.drills,
+    "finishing a lecture lands on its scorecard (" + lecDone.first.last.right + "/" + lecDone.drills + ")");
+  check(lecDone.first.last.passed && lecDone.first.last.bonus === lecDone.bonus,
+    "the first pass carries the first-clear bonus (◆ " + lecDone.first.last.bonus + ")");
+  check(lecDone.second.last.bonus === 0 && lecDone.second.last.gems < lecDone.first.last.gems,
+    "a re-run pays neither the bonus again nor the full rate (◆ " + lecDone.second.last.gems + " vs " + lecDone.first.last.gems + ")");
+  check(lecDone.reloadGems === lecDone.savedGems && lecDone.reloadGems === lecDone.second.gems,
+    "gems survive a reload (◆ " + lecDone.reloadGems + ")");
+  check(lecDone.reloadRec && lecDone.reloadRec.passed && lecDone.reloadRec.clears === 2,
+    "so does the lecture record (" + (lecDone.reloadRec || {}).clears + " runs, passed)");
+
+  // A grammar drill that ASKS for the article must not accept the noun without
+  // it — "die Milch" -> "il latte" is a question about gender, and the typed
+  // checker's ordinary article tolerance would mark the one thing it tests as
+  // optional. That is what `strict` is for.
+  const strictDrill = await page.evaluate(() => {
+    const q = Incanto.lecture.buildDrill({ k: "write", q: "Mit Artikel:", word: "die Milch", a: "il latte", strict: true });
+    state.quizMode = "grammar"; state.quizList = [q]; state.quizIndex = 0;
+    resetQuizInput(); state.quizTyped = "latte"; quizCheckType();
+    const bare = state.quizWasCorrect;
+    resetQuizInput(); state.quizTyped = "il latte"; quizCheckType();
+    return { bare, full: state.quizWasCorrect };
+  });
+  check(strictDrill.bare === false && strictDrill.full === true,
+    "a strict drill wants the article it is asking about, and nothing less");
+
+  // Reading is tapped, like everything else in this game. A page has no reveal
+  // button to press and no key to press either (see CLAUDE.md: no keyboard).
+  const lecPage = await page.evaluate(() => {
+    startLecture(Incanto.GRAMMAR_LECTURES.find((l) => l.drills.length).id);
+    render(performance.now());
+    return {
+      steps: document.querySelectorAll(".qstep").length,
+      pages: document.querySelectorAll(".qstep.page").length,
+      reveal: document.querySelectorAll(".quiz-reveal").length,
+      advance: !!document.querySelector('[data-act="advanceQuiz"]'),
+      total: state.quizList.length,
+    };
+  });
+  check(lecPage.steps === lecPage.total && lecPage.pages > 0,
+    "the step bar counts pages and drills as one session (" + lecPage.pages + " pages of " + lecPage.steps + " steps)");
+  check(lecPage.reveal === 0 && lecPage.advance,
+    "a page offers nothing to reveal, only something to tap");
+  const lecKeyInert = await page.evaluate(async () => {
+    const at = state.quizIndex;
+    for (const key of ["Enter", " ", "ArrowRight"]) {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+    }
+    await new Promise((r) => setTimeout(r, 40));
+    return state.quizIndex === at;
+  });
+  check(lecKeyInert, "a stray key does not turn a lecture page");
+
+  await page.evaluate(() => {
+    state.quizMode = "vocab"; state.quizLecture = null;
+    state.quizList = []; state.quizIndex = 0; state.screen = "upgrade";
+  });
+
   // 8c. Every node has to print a real number. The tree divides
   //     CONFIG.treeTotals across a thousand-odd nodes and three thousand ranks,
   //     so the smallest slices are genuinely tiny — and rounded to whole percent

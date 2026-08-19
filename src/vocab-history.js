@@ -295,16 +295,10 @@ function openHistory() {
 }
 
 // Back out of the history into the study phase proper: resume a half-finished
-// quiz, or start a fresh one (the same rule navTo("study") follows).
+// session, or land on the Bücherei — the same rule navTo("study") follows.
 function closeHistory() {
   if (!state) return;
-  const quizInProgress = state.quizList.length > 0 && state.quizIndex < state.quizList.length;
-  if (quizInProgress) {
-    state.screen = "quiz";
-    state._structuralDirty = true;
-  } else {
-    goToQuiz();
-  }
+  studyResumeOr(openStudyHub);
 }
 
 function setHistoryFilter(id) {
