@@ -53,9 +53,13 @@ app.addEventListener("keydown", (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Bootstrap — you start straight in combat with the base build.
+// Bootstrap — the game opens in the TAVERN, the home room. No run is started
+// here: the corridor begins when the player walks the mage to the Gang (or taps
+// the nav's crossed blades), which is what makes the room the hub rather than a
+// screen you back out into. `freshState` already names the tavern as the screen,
+// so booting is nothing but building the state and the nav and letting the loop
+// take it from there.
 // ---------------------------------------------------------------------------
 newGame();
 renderNav();
-startRun();
 requestAnimationFrame(rafLoop);

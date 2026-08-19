@@ -31,6 +31,7 @@ try {
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SHOT = join(process.env.TMPDIR || "/tmp", "incanto-smoke.png");
+const SHOT_TAV = join(process.env.TMPDIR || "/tmp", "incanto-smoke-tavern.png");
 
 // Serve the repo over HTTP so the run mirrors GitHub Pages (and avoids the
 // file:// canvas-taint that blocks the game's own getImageData asset builds).
@@ -71,23 +72,49 @@ try {
   });
 
   await page.goto(INDEX_URL, { waitUntil: "load" });
-  await page.waitForSelector("canvas.scene", { timeout: 5000 });
+  // The game opens in the tavern, so the first canvas on the page is the room's,
+  // not the corridor's.
+  await page.waitForSelector("canvas.tav-scene", { timeout: 5000 });
   await page.waitForTimeout(900); // let a few rAF frames run
 
-  // 1. Namespace + boot state.
+  // 1. Namespace + boot state. Booting into the tavern means booting with NO run
+  //    live: the corridor starts when the player walks the mage to the Gang, so
+  //    a fresh page must not have a fight ticking away behind the room.
   const boot = await page.evaluate(() => ({
     ns: window.Incanto ? Object.keys(window.Incanto).sort() : null,
     screen: typeof state !== "undefined" ? state.screen : null,
-    assetsReady: typeof ASSETS !== "undefined" && ASSETS !== null,
+    runActive: typeof state !== "undefined" ? state.runActive : null,
+    navPhase: typeof state !== "undefined"
+      ? Incanto.nav.NAV_PHASE_FOR_SCREEN[state.screen] : null,
     clock: typeof state !== "undefined" ? state.clockMs : -1,
   }));
   check(boot.ns && boot.ns.length >= 10, "Incanto namespace populated (" + (boot.ns || []).length + " modules)");
-  check(boot.screen === "combat", "boots into combat (screen=" + boot.screen + ")");
-  check(boot.assetsReady, "render assets built");
-  check(boot.clock > 0, "game clock advanced (rendering loop running, clock=" + boot.clock + ")");
+  check(boot.screen === "tavern", "boots into the tavern (screen=" + boot.screen + ")");
+  check(boot.runActive === false, "no run is live at boot — the hall waits for the Gang");
+  check(boot.navPhase === "tavern", "the nav highlights the tavern on the first frame");
 
-  // 2. Canvas actually paints something (via compositor screenshot; avoids
-  //    getImageData taint under file://).
+  // 2. Both canvases actually paint something (via compositor screenshot; avoids
+  //    getImageData taint under file://). The room first, since that is what the
+  //    player is looking at; then the corridor, entered the way the tavern's own
+  //    Gang station enters it.
+  const tavBuf = await page.locator("canvas.tav-scene").screenshot({ path: SHOT_TAV });
+  check(tavBuf.length > 1500, "canvas.tav-scene screenshot is non-trivial (" + tavBuf.length + " bytes) -> " + SHOT_TAV);
+
+  await page.evaluate(() => { navTo("combat"); render(performance.now()); });
+  await page.waitForSelector("canvas.scene", { timeout: 5000 });
+  await page.waitForTimeout(600); // let the corridor run a few frames of its own
+  const started = await page.evaluate(() => ({
+    screen: state.screen, runActive: state.runActive, runes: state.runes.length,
+    clock: state.clockMs,
+    // The corridor's baked frames are cut on its first draw (render-scene.js),
+    // and the tavern bakes its own room instead of borrowing them — so this is
+    // the first frame they can exist on.
+    assetsReady: typeof ASSETS !== "undefined" && ASSETS !== null,
+  }));
+  check(started.screen === "combat" && started.runActive && started.runes > 0,
+    "walking into the Gang starts a run with a populated circle (" + started.runes + " runes)");
+  check(started.assetsReady, "render assets built");
+  check(started.clock > 0, "game clock advanced (run simulating, clock=" + started.clock + ")");
   const buf = await page.locator("canvas.scene").screenshot({ path: SHOT });
   check(buf.length > 1500, "canvas.scene screenshot is non-trivial (" + buf.length + " bytes) -> " + SHOT);
 
@@ -178,6 +205,11 @@ try {
       await cdp.send("Emulation.setAutoDarkModeOverride", { enabled: true });
     }
     await p.goto(INDEX_URL, { waitUntil: "load" });
+    // Every page opens in the tavern now, so walk it into the corridor first:
+    // most of what is measured below — the book, the rune wells — only exists
+    // on the combat screen, and the run has to be started to draw them.
+    await p.waitForSelector("canvas.tav-scene", { timeout: 5000 });
+    await p.evaluate(() => { navTo("combat"); render(performance.now()); });
     await p.waitForSelector("canvas.scene", { timeout: 5000 });
     if (force) {
       // Chromium HONOURS the page's opt-out, and the phones this is written for
