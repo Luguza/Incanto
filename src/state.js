@@ -11,7 +11,11 @@ let state = null;
 
 function freshState() {
   return {
-    screen: "combat",       // combat | quiz | history | upgrade | bookorder | stats | tavern | reward
+    // The game opens in the TAVERN. It is the home room — every phase has a
+    // station in it (see tavern.js), so the first thing the player sees is the
+    // place all three doors lead out of, rather than being dropped mid-corridor
+    // with a fight already running. A run only begins when he walks to the Gang.
+    screen: "tavern",       // combat | quiz | history | upgrade | bookorder | stats | tavern | reward
     statsTab: "hero",       // which tab the ledger screen shows (see stats.js) — pure UI, not persisted
     runActive: false,       // a combat run is live (used by the bottom nav to resume vs. restart)
     runes: [],               // {id, pairId, lang, word, x, y, matchState}
