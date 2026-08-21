@@ -1087,6 +1087,120 @@ try {
   });
   check(lecKeyInert, "a stray key does not turn a lecture page");
 
+  // WALKING A LECTURE BACKWARDS. A drill is very often a question about a page
+  // two steps back, and re-reading that page used to mean abandoning the
+  // lecture and starting it over. Every step of a lecture now steps in both
+  // directions — and the thing that has to hold while it does is that a settled
+  // drill comes back SETTLED: revisiting it is reading the record, not being
+  // asked again, so it can never pay a second time.
+  const lecBackStart = await page.evaluate(() => {
+    const lec = Incanto.GRAMMAR_LECTURES.find((l) => l.drills.some((d) => d.k === "pick"));
+    state.gems = 0;
+    startLecture(lec.id);
+    render(performance.now());
+    return { disabled: document.querySelector(".quiz-step-back").disabled };
+  });
+  check(lecBackStart.disabled === true,
+    "the first step of a lecture has nothing behind it, and the back button says so");
+
+  const lecAnswered = await page.evaluate(() => {
+    while (state.quizList[state.quizIndex].type !== "choose") advanceQuiz();
+    const at = state.quizIndex;
+    const q = state.quizList[at];
+    quizChoose(q.options.indexOf(q.answer));
+    const gems = state.gems;
+    advanceQuiz();
+    render(performance.now());
+    return { at, gems, moved: state.quizIndex, live: !document.querySelector(".quiz-step-back").disabled };
+  });
+  check(lecAnswered.moved === lecAnswered.at + 1 && lecAnswered.live && lecAnswered.gems > 0,
+    "past the first page the back button is live (step " + (lecAnswered.moved + 1) + ")");
+
+  await page.click(".quiz-step-back");
+  const lecStepped = await page.evaluate(() => {
+    render(performance.now());
+    const q = state.quizList[state.quizIndex];
+    // …and it cannot be answered again: a second tap on a different option
+    // neither changes the verdict nor pays.
+    const gemsBefore = state.gems;
+    quizChoose((q.options.indexOf(q.answer) + 1) % q.options.length);
+    return {
+      at: state.quizIndex, checked: state.quizChecked,
+      verdict: state.quizResults[state.quizIndex],
+      paid: state.gems - gemsBefore,
+      locked: [...document.querySelectorAll(".quiz-opt")].every((b) => b.disabled),
+      banner: !!document.querySelector(".quiz-feedback"),
+      here: !!document.querySelector(".qstep.right.now, .qstep.wrong.now, .qstep.shown.now"),
+    };
+  });
+  check(lecStepped.at === lecAnswered.at && lecStepped.checked && lecStepped.banner,
+    "a tap on ← lands back on the answered drill, still showing its verdict");
+  check(lecStepped.verdict === "right" && lecStepped.paid === 0 && lecStepped.locked,
+    "the revisited drill is a record, not a question — nothing to tap, nothing paid");
+  check(lecStepped.here,
+    "the step bar keeps the verdict's colour and rings the step you stand on");
+
+  // Back past the drills is back into the lecture's own pages, which is the
+  // whole point of the thing.
+  const lecReread = await page.evaluate(() => {
+    while (state.quizList[state.quizIndex].type !== "explain" && lectureCanStepBack()) lectureStepBack();
+    render(performance.now());
+    return { type: state.quizList[state.quizIndex].type, at: state.quizIndex,
+      page: !!document.querySelector(".lec-page") };
+  });
+  check(lecReread.type === "explain" && lecReread.page,
+    "stepping back past the drills re-opens the page they are about (step " + (lecReread.at + 1) + ")");
+
+  // Forward again over the same ground: what was written on a step is still
+  // written on it, and a step never walked stays blank.
+  const lecForward = await page.evaluate(() => {
+    while (state.quizList[state.quizIndex].type !== "choose") advanceQuiz();
+    const back = { at: state.quizIndex, checked: state.quizChecked };
+    // …and a half-written answer survives the same round trip.
+    while (state.quizIndex < state.quizList.length - 1 &&
+           !["type", "fill-type", "conj-type"].includes(state.quizList[state.quizIndex].type)) advanceQuiz();
+    state.quizTyped = "halb geschrieben";
+    lectureStepBack();
+    const cleared = state.quizTyped;
+    advanceQuiz();
+    return { back, cleared, restored: state.quizTyped };
+  });
+  check(lecForward.back.checked === true,
+    "walking forward over an answered drill finds it answered still");
+  check(lecForward.cleared === "" && lecForward.restored === "halb geschrieben",
+    "a half-written answer is put away with its step and handed back on return");
+
+  // The vocab quiz keeps its one-way road: ten unrelated questions with nothing
+  // to go back and re-read, where the step bar IS the record.
+  const vocabOneWay = await page.evaluate(() => {
+    goToQuiz();
+    state.quizIndex = 2;
+    state._structuralDirty = true;
+    render(performance.now());
+    const at = state.quizIndex;
+    lectureStepBack();
+    return { button: !!document.querySelector(".quiz-step-back"), at, after: state.quizIndex };
+  });
+  check(vocabOneWay.button === false && vocabOneWay.after === vocabOneWay.at,
+    "the vocab quiz offers no step back, and refuses one asked for anyway");
+
+  // The study chain reads the same in both directions: every screen behind the
+  // Bücherei carries the step back to the one before it.
+  const studyChain = await page.evaluate(() => {
+    state.quizMode = "vocab"; state.quizLecture = null;
+    state.quizList = []; state.quizIndex = 0;
+    openStudyHub(); render(performance.now());
+    const hub = document.querySelector(".study-back");
+    hub.click();
+    const toTavern = state.screen;
+    openLectures(); render(performance.now());
+    document.querySelector(".lec-back").click();
+    const toHub = state.screen;
+    return { hub: !!hub, toTavern, toHub };
+  });
+  check(studyChain.hub && studyChain.toTavern === "tavern" && studyChain.toHub === "study",
+    "Schänke ← Bücherei ← Grammatik: every step of the chain walks back one screen");
+
   await page.evaluate(() => {
     state.quizMode = "vocab"; state.quizLecture = null;
     state.quizList = []; state.quizIndex = 0; state.screen = "upgrade";

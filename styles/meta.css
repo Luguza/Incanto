@@ -590,10 +590,14 @@
   }
 
   /* --- The hub ------------------------------------------------------------ */
+  /* The hub's head row carries the step back to the tavern, so it centres its
+     items rather than sitting them on a shared baseline — a pill button and a
+     24 px display title have no baseline worth sharing. */
   .study-top {
-    flex: 0 0 auto; display: flex; align-items: baseline; gap: 10px;
+    flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
     padding: 6px 0 14px;
   }
+  .study-back { flex: 0 0 auto; font-size: 14px; line-height: 1; padding: 5px 11px; }
   .study-title {
     margin: 0; font-family: var(--display-font); font-size: 24px; font-weight: 400;
     letter-spacing: 0.5px; color: var(--ink);

@@ -304,23 +304,59 @@ function buildQuiz() {
   state.quizGoldEarned = 0;
   state.quizGemsEarned = 0;
   state.quizResults = [];
+  state.quizSnaps = [];
   resetQuizInput();
 }
 
-function resetQuizInput() {
-  state.quizChecked = false;
-  state.quizWasCorrect = false;
-  state.quizRevealed = false;
-  state.quizPicked = null;
-  state.quizTyped = "";
-  state.quizConj = [];
-  state.quizConjFocus = null;
-  state.quizBuilt = [];
-  state.quizMatchSel = null;
-  state.quizMatchDone = [];
-  state.quizMatchWrong = null;
-  state.quizMatchMisses = 0;
-  state.quizWordMisses = [];
+// --- the answer surface, and stepping off it --------------------------------
+// Everything a step's answer surface holds, written ONCE: the values it starts
+// at are also, key for key, the values that get put away when the session steps
+// off one question and onto another. The two have to be one list, because a
+// lecture can be walked BACKWARDS (see lectureStepBack) — a field that is reset
+// here but not stashed leaks the step you left onto the step you land on, and
+// the leak nobody would spot is `quizChecked`, which decides whether a question
+// can still be answered at all.
+function freshQuizInput() {
+  return {
+    quizChecked: false,
+    quizWasCorrect: false,
+    quizRevealed: false,
+    quizPicked: null,
+    quizTyped: "",
+    quizConj: [],
+    quizConjFocus: null,
+    quizBuilt: [],
+    quizMatchSel: null,
+    quizMatchDone: [],
+    quizMatchWrong: null,
+    quizMatchMisses: 0,
+    quizWordMisses: [],
+  };
+}
+const QUIZ_INPUT_KEYS = Object.keys(freshQuizInput());
+
+function resetQuizInput() { Object.assign(state, freshQuizInput()); }
+
+// Put the current step away. A step that is picked back up comes back exactly
+// as it was left — a half-typed answer still half-typed, and a SETTLED question
+// still settled, which is what stops a revisited question from being answered a
+// second time: every handler in this file bails on `state.quizChecked`, so
+// restoring it read-only is the whole guard against paying for one answer twice.
+function stashQuizStep() {
+  if (!state.quizSnaps) state.quizSnaps = [];
+  const snap = {};
+  for (const k of QUIZ_INPUT_KEYS) snap[k] = state[k];
+  // The red flash of a wrong pair is on a timer aimed at the step this is about
+  // to stop being; stashing it would bring a board back stuck red.
+  snap.quizMatchWrong = null;
+  state.quizSnaps[state.quizIndex] = snap;
+}
+// Pick up whatever is stored for the step now current — or start it clean, which
+// is every step the session has not been on yet.
+function restoreQuizStep() {
+  const snap = state.quizSnaps && state.quizSnaps[state.quizIndex];
+  if (snap) Object.assign(state, snap);
+  else resetQuizInput();
 }
 
 function goToQuiz() {
@@ -548,9 +584,15 @@ function quizCheckArrange() {
 }
 
 function advanceQuiz() {
-  resetQuizInput();
+  // Forward is a step like any other: the step being left is put away and the
+  // one being landed on is picked up, which is what lets a lecture be walked
+  // back through and forward again without losing either end of the walk.
+  stashQuizStep();
   state.quizIndex++;
-  if (state.quizIndex >= state.quizList.length) {
+  if (state.quizIndex < state.quizList.length) {
+    restoreQuizStep();
+  } else {
+    resetQuizInput();
     if (state.quizMode === "grammar") {
       // A lecture banks nothing of the fight's doing — the reward multiplier is
       // the vocab quiz's to spend, and grammar must not quietly drain it.
@@ -568,4 +610,4 @@ function advanceQuiz() {
   state._structuralDirty = true;
 }
 
-window.Incanto.quiz = { buildQuiz, goToQuiz, advanceQuiz, quizChoose, quizTypeInput, quizCheckType, quizFillCheckType, quizMatchTap, quizArrangeAdd, quizArrangeRemove, quizCheckArrange, quizReveal, quizConjInput, quizCheckConjTable, conjRowCorrect, conjLevels, conjTopLevel, makeConj, makeFill, makeArrange };
+window.Incanto.quiz = { buildQuiz, goToQuiz, advanceQuiz, stashQuizStep, restoreQuizStep, quizChoose, quizTypeInput, quizCheckType, quizFillCheckType, quizMatchTap, quizArrangeAdd, quizArrangeRemove, quizCheckArrange, quizReveal, quizConjInput, quizCheckConjTable, conjRowCorrect, conjLevels, conjTopLevel, makeConj, makeFill, makeArrange };

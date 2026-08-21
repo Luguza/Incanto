@@ -43,6 +43,13 @@
   .qstep.right { background: var(--good); }
   .qstep.wrong { background: var(--bad); }
   .qstep.shown { background: var(--gold); }   /* solution revealed — resolved, unearned */
+  /* A lecture can be stepped back onto a question already answered, so a cell
+     can carry a verdict AND be the one you are standing on. The verdict keeps
+     the colour — it is the thing worth reading — and "here" is a ring round it,
+     which reads on any of the three. */
+  .qstep.right.now, .qstep.wrong.now, .qstep.shown.now {
+    box-shadow: 0 0 0 1.5px var(--arcane), 0 0 10px var(--arcane-3);
+  }
   /* A lecture page is a step of the same bar with no verdict to give: narrower,
      so the reading and the answering are visibly different halves of the run,
      and quietly filled once it has been turned. */
@@ -76,6 +83,15 @@
     box-shadow: 0 0 12px rgba(242, 193, 78, 0.4);
   }
   .quiz-history-btn { margin-left: auto; }
+  /* One step back through a lecture. It sits at the HEAD of this row, where the
+     shelf's and the history's back buttons also sit — the foot bar is not
+     allowed a second button, since the primary one down there must never move
+     under the thumb. Kept to a glyph and tight padding because the row's whole
+     budget is one line at 360 px: back 36 + counter 86 + purse 64 + Verlassen 89
+     with three 9 px gaps comes to exactly the 346 px available, and a fifth item
+     — or a word instead of the arrow — would wrap the counter onto a second row
+     and push the stage down between one step and the next. */
+  .quiz-step-back { padding: 5px 11px; font-size: 14px; line-height: 1; }
   /* The caption's right-hand half holds the lecture's name, which is longer than
      a direction label; it truncates rather than wrapping the caption in two. */
   .quiz-task .quiz-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

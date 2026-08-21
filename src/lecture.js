@@ -141,6 +141,7 @@ function startLecture(id) {
   state.quizLecture = lec.id;
   state.quizList = buildLectureSession(lec);
   state.quizIndex = 0;
+  state.quizSnaps = [];
   state.quizCorrect = 0;
   state.quizGoldEarned = 0;
   state.quizGemsEarned = 0;
@@ -155,6 +156,37 @@ function retryLecture() {
   if (state.lectureLast) startLecture(state.lectureLast.id);
 }
 
+// ---------------------------------------------------------------------------
+// Walking a lecture BACKWARDS
+// ---------------------------------------------------------------------------
+// A lecture is a thing you are being taught from, and the question it puts in
+// front of you is very often a question about the page two steps back. Without
+// a way back, the only way to re-read the rule was to abandon the lecture and
+// start it over — so every step of a lecture can be stepped back onto, pages and
+// drills alike, as far as its first page.
+//
+// What a revisited step must NOT be is answerable again: a drill already settled
+// pays nothing a second time, and the guard is not written here. Stepping stores
+// and restores the whole answer surface (stashQuizStep / restoreQuizStep in
+// quiz.js), `quizChecked` included, and every handler in the game bails on it —
+// so a settled drill comes back settled, reading as the record of what happened
+// rather than as a question.
+//
+// The VOCAB quiz keeps its one-way road on purpose. It is a scored round of ten
+// unrelated questions with nothing to go back and re-read, and the step bar is
+// its record; a lecture is a text.
+function lectureCanStepBack() {
+  return state.quizMode === "grammar" && state.quizList.length > 0 && state.quizIndex > 0;
+}
+
+function lectureStepBack() {
+  if (!lectureCanStepBack()) return;
+  stashQuizStep();
+  state.quizIndex--;
+  restoreQuizStep();
+  state._structuralDirty = true;
+}
+
 // Walking out of a lecture part-way. Nothing is banked and nothing is lost —
 // the gems already earned are already in the purse, because a correct answer
 // pays on the spot (see settleQuiz). Only the first-clear bonus waits for the
@@ -164,6 +196,7 @@ function closeLecture() {
   state.quizLecture = null;
   state.quizList = [];
   state.quizIndex = 0;
+  state.quizSnaps = [];
   openLectures();
 }
 
@@ -211,6 +244,7 @@ function recordLectureClear() {
   state.quizLecture = null;
   state.quizList = [];
   state.quizIndex = 0;
+  state.quizSnaps = [];
   saveProgress();
 }
 
@@ -251,7 +285,14 @@ function renderExplainBody(q) {
   return `<div class="lec-page">${blocks}</div>`;
 }
 
-// The hub. The study phase has two doors now, and they are different kinds of
+// The hub, and the head of a chain the player can now walk in both directions:
+// Schänke → Bücherei → Grammatik → eine Lektion, with every screen carrying the
+// step back to the one before it (this button, the shelf's, and the lecture's
+// own — see lectureStepBack). The bottom nav can reach the room too, but a phase
+// switcher is not a way BACK: it is four places to jump to, and finding the way
+// out of a screen should not mean knowing which of them you came from.
+//
+// The study phase has two doors now, and they are different kinds of
 // thing: the quiz is a mixed session out of the whole vocabulary and is where
 // the banked fight multiplier is spent, the lectures are one topic taught and
 // then drilled. Saying that on the doors is cheaper than having the player find
@@ -267,6 +308,8 @@ function renderStudyHubFull() {
     <div class="screen study-screen">
       <div class="frame study-frame">
         <header class="study-top">
+          <button class="ghost-btn study-back" data-act="navTo" data-args='["tavern"]'
+            title="Zurück zur Schänke" aria-label="Zurück zur Schänke">←</button>
           <h1 class="study-title">Bücherei</h1>
           <span class="study-purse">
             <span class="study-coin"><span class="coin">◈</span> ${state.gold}</span>
@@ -370,6 +413,7 @@ function renderLectureDoneFull() {
 window.Incanto.lecture = {
   lectureById, lecturesOfUnit, lectureRecord, lecturePassedCount,
   buildDrill, buildLectureSession, startLecture, retryLecture, closeLecture,
+  lectureCanStepBack, lectureStepBack,
   lectureReward, recordLectureClear, renderExplainBody,
   openStudyHub, openLectures, renderStudyHubFull, renderLectureListFull, renderLectureDoneFull,
 };
