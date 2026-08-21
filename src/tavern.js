@@ -1595,6 +1595,11 @@ function mealSpot(meal, now) {
 function drawBarMeal(ctx, now) {
   const meal = tavern && tavern.meal;
   if (!meal || !meal.item) return;
+  // Nothing is served yet while the keeper is still answering: `item` is set the
+  // instant the word is tapped, but the serving does not exist until he slides
+  // it over. Drawing it through `reply` put it in the mage's hand for a beat,
+  // and then the hand-over animation started it back at the counter.
+  if (meal.stage === "reply") return;
   const art = TAV.meal[meal.item];
   if (!art) return;
   const m = tavern.mage;
