@@ -30,15 +30,44 @@
 //   • Explanations are in GERMAN, examples in Italian, and every Italian
 //     example carries its German gloss. The interface is German; a grammar
 //     explanation the learner has to decode first has explained nothing.
-//   • Italian words come from WORD_POOL, or are inflections of one, or are
-//     listed in the lecture's own `teaches` — which is for the forms the
-//     lecture itself introduces (articles, pronouns, participles) — and for the
-//     handful of proper names a lecture genuinely needs. Nothing is smuggled in
-//     that the game never teaches.
+//   • Italian words come from WORD_POOL, or are listed in the lecture's own
+//     `teaches` — which is for the forms the lecture itself introduces
+//     (articles, pronouns, participles) — and for the handful of proper names a
+//     lecture genuinely needs. Nothing is smuggled in that the game never
+//     teaches.
+//   • A LECTURE USES ONLY WHAT THE ROAD BEHIND IT HAS ALREADY TAUGHT, plus what
+//     it teaches itself. An INFLECTED form is not free just because its
+//     dictionary form is in the pool: a plural is a plural once "Einer oder
+//     viele?" has been read, an adjective agrees once "Adjektive auf -o" has,
+//     and a conjugated verb exists once its own lecture has. What a lecture
+//     puts in the learner's hands it declares in `opens`, and the audit walks
+//     the lectures in this array's order building the set up as it goes.
+//     Getting this wrong is not a typo but a broken lesson: the first lecture
+//     in the game once asked the learner to build `Il libro è nuovo`, which
+//     needs essere (nineteen lectures later) and adjective agreement (six),
+//     to test which article `libro` takes. So the early lectures drill NOUN
+//     PHRASES rather than sentences — that is not a limitation to work around,
+//     it is what a chapter on gender and articles has always drilled.
 //   • A lecture holds exactly CONFIG.grammar.drillCount drills, and they climb:
 //     recognition first (pick, pair), production last (write, build, para).
 //   • No raw `<` or `&` in any authored string — it is interpolated into the
 //     page as-is, the way every other authored string in this game is.
+//
+// The blocks a page is built from:
+//
+//   { t: "p",     de }                                → prose
+//   { t: "rule",  de }                                → the boxed takeaway
+//   { t: "ex",    it, de, note? }                     → an example + its gloss
+//   { t: "bad",   wrong, right }                      → the mistake, corrected
+//   { t: "list",  lang, items: [] }                   → a bare list
+//   { t: "table", head, cols, rows: [[]] }            → a paradigm or a contrast
+//
+// `cols` types a table's columns, one of "label" / "it" / "de" per column, and
+// the renderer paints each for what it holds. "label" is the column that names
+// the ROW — the person in a paradigm, the ending in a table of endings — and is
+// drawn muted; it is NOT "the first column". A table whose columns are both the
+// lesson (il figlio · la figlia) is `["it", "it"]`, and drawing one of them as a
+// label says the other is the only half worth reading.
 //
 // The drill specs are COMPACT rather than literal question objects. Every drill
 // ends up as a question object of a type the quiz already renders (see the
@@ -58,6 +87,16 @@
 //
 // Any spec may carry `title` to name itself in the exercise header, and `note`
 // to add a line of guidance under the prompt.
+//
+// `opens` is the other half of `teaches`: where `teaches` names single forms,
+// `opens` names a whole class of them that the lecture makes available from
+// here on. The audit knows these:
+//
+//   "noun-gender"  the other gender of a noun on -o / -a (figlio → figlia)
+//   "noun-plural"  the plural of every noun taught so far
+//   "adj-forms"    the gender/number forms of an adjective
+//   "verb:<inf>"   one verb's present tense (verb:essere, verb:andare)
+//   "verb:-are"    a whole regular class (-are, -ere, -ire, -isc)
 // ---------------------------------------------------------------------------
 
 // The shelf. `lectures` is the order they are read in; a unit with none yet is
@@ -88,12 +127,13 @@ const GRAMMAR_LECTURES = [
     id: "nom-genus", unit: "nomen",
     title: "Männlich oder weiblich?",
     subtitle: "Jedes Nomen hat ein Geschlecht",
-    teaches: ["il", "la", "lo", "le", "gli", "i"],
+    teaches: ["il", "la"],
+    opens: ["noun-gender"],
     pages: [
       { blocks: [
         { t: "p", de: "Jedes italienische Nomen ist entweder männlich oder weiblich. Ein Neutrum wie das deutsche „das“ gibt es nicht — auch ein Tisch und ein Fenster sind das eine oder das andere." },
         { t: "p", de: "Meistens verrät die Endung, welches von beiden:" },
-        { t: "table", head: ["Endung", "Geschlecht", "Beispiel"], rows: [
+        { t: "table", head: ["Endung", "Geschlecht", "Beispiel"], cols: ["label", "de", "it"], rows: [
           ["-o", "männlich", "il libro"],
           ["-a", "weiblich", "la casa"],
         ] },
@@ -114,21 +154,23 @@ const GRAMMAR_LECTURES = [
         { t: "bad", wrong: "la naso", right: "il naso" },
       ] },
       { blocks: [
-        { t: "p", de: "Bei Menschen und Tieren richtet sich das Geschlecht nach dem Lebewesen — und die Endung wechselt mit." },
-        { t: "table", head: ["männlich", "weiblich"], rows: [
+        { t: "p", de: "Bei Menschen und Tieren richtet sich das Geschlecht nach dem Lebewesen — und die Endung wechselt mit. Aus -o wird -a, und der Artikel geht mit." },
+        { t: "table", head: ["männlich", "weiblich"], cols: ["it", "it"], rows: [
           ["il figlio", "la figlia"],
           ["il nonno", "la nonna"],
           ["il ragazzo", "la ragazza"],
           ["il bambino", "la bambina"],
         ] },
+        { t: "p", de: "Einige Paare bestehen aus zwei verschiedenen Wörtern — im Deutschen ist das nicht anders:" },
         { t: "ex", it: "il fratello e la sorella", de: "der Bruder und die Schwester" },
+        { t: "ex", it: "il marito e la moglie", de: "der Ehemann und die Ehefrau" },
       ] },
       { blocks: [
-        { t: "p", de: "Ein paar Wörter halten sich nicht daran: einige auf -a sind männlich, und ein berühmtes auf -o ist weiblich." },
-        { t: "ex", it: "il problema", de: "das Problem", note: "-a, aber männlich" },
-        { t: "ex", it: "la mano", de: "die Hand", note: "-o, aber weiblich" },
-        { t: "p", de: "Es sind wenige, und sie bekommen später eine eigene Lektion. Fürs Erste gilt die Regel — und der Artikel, den du mitlernst, fängt die Ausnahmen ohnehin auf." },
-        { t: "rule", de: "-o ist männlich, -a ist weiblich. Der Artikel sagt es dir im Zweifel genauer als die Endung." },
+        { t: "p", de: "Die Endung ist ein Hinweis, der Artikel ist die Auskunft. Bei den allermeisten Nomen sagen beide dasselbe — und wo sie sich widersprechen, hat der Artikel recht." },
+        { t: "ex", it: "il problema", de: "das Problem", note: "Endung -a, Artikel il: männlich" },
+        { t: "ex", it: "la mano", de: "die Hand", note: "Endung -o, Artikel la: weiblich" },
+        { t: "p", de: "Deshalb steht auf einer Vokabelkarte nie casa, sondern la casa. Der Artikel ist die halbe Vokabel — er kostet nichts extra und beantwortet die Frage nach dem Geschlecht ein für alle Mal." },
+        { t: "rule", de: "-o ist männlich, -a ist weiblich. Widersprechen sich Endung und Artikel, gilt der Artikel." },
       ] },
     ],
     drills: [
@@ -140,13 +182,16 @@ const GRAMMAR_LECTURES = [
         ["il figlio", "la figlia"], ["il nonno", "la nonna"], ["il ragazzo", "la ragazza"],
         ["il fratello", "la sorella"], ["il marito", "la moglie"],
       ] },
-      { k: "gap", it: "Io vedo la casa", de: "Ich sehe das Haus", a: "la", d: ["il", "lo", "le"] },
-      { k: "gap", it: "Tu compri il pane", de: "Du kaufst das Brot", a: "il", d: ["la", "lo", "le"] },
+      { k: "pair", leftLabel: "deutsch", rightLabel: "italienisch", lang: ["de", "it"], pairs: [
+        ["das Buch", "il libro"], ["das Haus", "la casa"], ["die Tür", "la porta"],
+        ["der Tisch", "il tavolo"], ["die Katze", "il gatto"],
+      ] },
+      { k: "gap", it: "la casa e il libro", de: "das Haus und das Buch", a: "il", d: ["la", "lo", "le"] },
+      { k: "gap", it: "il gatto e la mucca", de: "die Katze und die Kuh", a: "la", d: ["il", "lo", "gli"] },
       { k: "write", q: "Mit Artikel:", word: "die Milch", a: "il latte", strict: true },
       { k: "write", q: "Mit Artikel:", word: "die Nase", a: "il naso", strict: true },
       { k: "write", q: "Mit Artikel:", word: "der Stuhl", a: "la sedia", strict: true },
-      { k: "build", it: "Il libro è nuovo", de: "Das Buch ist neu", extra: ["la", "vecchia"] },
-      { k: "build", it: "La sedia è piccola", de: "Der Stuhl ist klein", extra: ["il", "piccolo"] },
+      { k: "build", title: "Wortgruppe bilden", it: "il fratello e la sorella", de: "der Bruder und die Schwester", extra: ["figlio", "figlia"] },
     ],
   },
 
@@ -155,10 +200,11 @@ const GRAMMAR_LECTURES = [
     title: "Einer oder viele?",
     subtitle: "Die Mehrzahl ist eine andere Endung",
     teaches: ["i", "le", "gli"],
+    opens: ["noun-plural"],
     pages: [
       { blocks: [
         { t: "p", de: "Für die Mehrzahl hängt Italienisch nichts an — es tauscht die Endung aus. Und weil das Geschlecht in der Endung steckt, hat jedes Geschlecht seine eigene Mehrzahl." },
-        { t: "table", head: ["", "Singular", "Plural"], rows: [
+        { t: "table", head: ["", "Singular", "Plural"], cols: ["label", "it", "it"], rows: [
           ["männlich", "il libro", "i libri"],
           ["weiblich", "la casa", "le case"],
         ] },
@@ -186,10 +232,13 @@ const GRAMMAR_LECTURES = [
         { t: "bad", wrong: "le mucce", right: "le mucche" },
       ] },
       { blocks: [
-        { t: "p", de: "Bei den männlichen Formen auf -co und -go ist es leider nicht so verlässlich. Manche nehmen das h, manche nicht." },
-        { t: "ex", it: "l'amico", de: "der Freund" },
+        { t: "p", de: "Bei den männlichen Formen auf -co und -go hilft dieselbe Überlegung nicht weiter: die einen behalten den harten Klang und schreiben das h, die anderen geben ihn auf." },
+        { t: "table", head: ["Singular", "Plural"], cols: ["it", "it"], rows: [
+          ["il parco", "i parchi"],
+          ["l'amico", "gli amici"],
+        ] },
         { t: "ex", it: "gli amici", de: "die Freunde", note: "ohne h — gesprochen „amitschi“" },
-        { t: "p", de: "Das ist eines der wenigen Dinge in dieser Lektion, die man pro Wort lernt statt nach Regel. Es sind nicht viele." },
+        { t: "p", de: "Hier hilft nur, den Plural gleich mitzulernen. Bei den weiblichen auf -ca und -ga musst du das nie: die nehmen das h ausnahmslos." },
         { t: "rule", de: "-ca und -ga bekommen im Plural ein h. Bei -co und -go entscheidet das einzelne Wort." },
       ] },
     ],
@@ -202,13 +251,13 @@ const GRAMMAR_LECTURES = [
         ["il gatto", "i gatti"], ["la penna", "le penne"], ["il piatto", "i piatti"],
         ["la scarpa", "le scarpe"], ["il quaderno", "i quaderni"],
       ] },
-      { k: "gap", it: "Io compro le mele", de: "Ich kaufe die Äpfel", a: "le", d: ["la", "i", "gli"] },
-      { k: "gap", it: "Noi mangiamo i pomodori", de: "Wir essen die Tomaten", a: "i", d: ["il", "le", "gli"] },
+      { k: "gap", it: "i libri e le penne", de: "die Bücher und die Stifte", a: "le", d: ["la", "i", "gli"] },
+      { k: "gap", it: "le mele e i pomodori", de: "die Äpfel und die Tomaten", a: "i", d: ["il", "le", "gli"] },
       { k: "write", q: "Plural von", word: "la sedia", a: "le sedie", strict: true },
       { k: "write", q: "Plural von", word: "il bambino", a: "i bambini", strict: true },
       { k: "write", q: "Plural von", word: "l'amica", a: "le amiche", strict: true },
-      { k: "build", it: "Le finestre sono grandi", de: "Die Fenster sind groß", extra: ["la", "grande"] },
-      { k: "build", it: "I libri sono nuovi", de: "Die Bücher sind neu", extra: ["le", "nuovo"] },
+      { k: "build", title: "Wortgruppe bilden", it: "i gatti e le mucche", de: "die Katzen und die Kühe", extra: ["il", "la"] },
+      { k: "build", title: "Wortgruppe bilden", it: "gli amici e le amiche", de: "die Freunde und die Freundinnen", extra: ["i", "la"] },
     ],
   },
 
@@ -226,7 +275,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Im Plural fallen die beiden Geschlechter zusammen: -e wird zu -i, ganz gleich ob männlich oder weiblich." },
-        { t: "table", head: ["", "Singular", "Plural"], rows: [
+        { t: "table", head: ["", "Singular", "Plural"], cols: ["label", "it", "it"], rows: [
           ["männlich", "il padre", "i padri"],
           ["weiblich", "la madre", "le madri"],
         ] },
@@ -241,7 +290,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Zwei Endungen sind aber verlässlich, und die beiden decken einen guten Teil der Gruppe ab:" },
-        { t: "table", head: ["Endung", "Geschlecht", "Beispiele"], rows: [
+        { t: "table", head: ["Endung", "Geschlecht", "Beispiele"], cols: ["label", "de", "it"], rows: [
           ["-zione", "immer weiblich", "la stazione, la lezione"],
           ["-ore", "fast immer männlich", "il colore, il dottore"],
         ] },
@@ -268,12 +317,12 @@ const GRAMMAR_LECTURES = [
         ["der Hund", "il cane"], ["die Nacht", "la notte"], ["das Meer", "il mare"],
         ["der Schlüssel", "la chiave"], ["die Sonne", "il sole"],
       ] },
-      { k: "gap", it: "Io vedo il mare", de: "Ich sehe das Meer", a: "il", d: ["la", "lo", "le"] },
-      { k: "gap", it: "Tu prendi la chiave", de: "Du nimmst den Schlüssel", a: "la", d: ["il", "lo", "le"] },
+      { k: "gap", it: "il padre e la madre", de: "der Vater und die Mutter", a: "la", d: ["il", "lo", "le"] },
+      { k: "gap", it: "la chiave e il cane", de: "der Schlüssel und der Hund", a: "il", d: ["la", "lo", "le"] },
       { k: "write", q: "Mit Artikel:", word: "die Sonne", a: "il sole", strict: true },
       { k: "write", q: "Mit Artikel:", word: "das Brot", a: "il pane", strict: true },
       { k: "write", q: "Plural von", word: "la classe", a: "le classi", strict: true },
-      { k: "build", it: "La notte è fredda", de: "Die Nacht ist kalt", extra: ["il", "freddo"] },
+      { k: "build", title: "Wortgruppe bilden", it: "i padri e le madri", de: "die Väter und die Mütter", extra: ["il", "la"] },
     ],
   },
 
@@ -285,12 +334,12 @@ const GRAMMAR_LECTURES = [
     pages: [
       { blocks: [
         { t: "p", de: "Wo das Deutsche drei Artikel hat, hat das Italienische sieben. Das klingt nach mehr Arbeit, als es ist: das Geschlecht entscheidet die Spalte, und der Laut, mit dem das Wort anfängt, entscheidet die Zeile." },
-        { t: "table", head: ["männlich", "Singular", "Plural"], rows: [
+        { t: "table", head: ["männlich", "Singular", "Plural"], cols: ["label", "it", "it"], rows: [
           ["vor Konsonant", "il", "i"],
           ["vor s+Konsonant, z, ps, gn, y", "lo", "gli"],
           ["vor Vokal", "l'", "gli"],
         ] },
-        { t: "table", head: ["weiblich", "Singular", "Plural"], rows: [
+        { t: "table", head: ["weiblich", "Singular", "Plural"], cols: ["label", "it", "it"], rows: [
           ["vor Konsonant", "la", "le"],
           ["vor Vokal", "l'", "le"],
         ] },
@@ -310,7 +359,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Im Plural gibt es nur noch drei Formen: i, gli und le. gli übernimmt alles, was im Singular lo oder l' hatte." },
-        { t: "table", head: ["Singular", "Plural"], rows: [
+        { t: "table", head: ["Singular", "Plural"], cols: ["it", "it"], rows: [
           ["il tavolo", "i tavoli"],
           ["lo zaino", "gli zaini"],
           ["l'occhio", "gli occhi"],
@@ -319,9 +368,10 @@ const GRAMMAR_LECTURES = [
         ] },
       ] },
       { blocks: [
-        { t: "p", de: "Italienisch setzt den Artikel außerdem an Stellen, an denen das Deutsche keinen setzt — vor abstrakte Begriffe und vor ganze Gattungen." },
-        { t: "ex", it: "L'amore è bello", de: "Liebe ist schön" },
-        { t: "ex", it: "Il caffè è caldo", de: "Der Kaffee ist heiß" },
+        { t: "p", de: "Italienisch setzt den Artikel außerdem dort, wo das Deutsche keinen setzt: vor abstrakten Begriffen und vor ganzen Gattungen. Wo das Deutsche „Liebe“ sagt, sagt das Italienische „die Liebe“." },
+        { t: "ex", it: "l'amore", de: "die Liebe", note: "deutsch meist ohne Artikel" },
+        { t: "ex", it: "la musica", de: "die Musik", note: "deutsch meist ohne Artikel" },
+        { t: "p", de: "Der Artikel ist im Italienischen der Normalfall. Wo einer fehlt, hat das einen eigenen Grund." },
         { t: "rule", de: "Das Geschlecht wählt die Spalte, der Anfangslaut die Zeile. Im Plural bleiben nur i, gli und le übrig." },
       ] },
     ],
@@ -335,12 +385,12 @@ const GRAMMAR_LECTURES = [
         ["lo zaino", "gli zaini"], ["il tavolo", "i tavoli"], ["la porta", "le porte"],
         ["l'occhio", "gli occhi"], ["l'arancia", "le arance"],
       ] },
-      { k: "gap", it: "Io compro lo zucchero", de: "Ich kaufe den Zucker", a: "lo", d: ["il", "la", "gli"] },
-      { k: "gap", it: "Tu vedi gli occhiali", de: "Du siehst die Brille", a: "gli", d: ["i", "le", "lo"] },
+      { k: "gap", it: "il caffè e lo zucchero", de: "der Kaffee und der Zucker", a: "lo", d: ["il", "la", "gli"] },
+      { k: "gap", it: "le penne e gli zaini", de: "die Stifte und die Rucksäcke", a: "gli", d: ["i", "le", "lo"] },
       { k: "write", q: "Mit Artikel:", word: "der Rucksack", a: "lo zaino", strict: true },
       { k: "write", q: "Mit Artikel:", word: "der Spiegel", a: "lo specchio", strict: true },
       { k: "write", q: "Plural von", word: "lo studente", a: "gli studenti", strict: true },
-      { k: "build", it: "Gli studenti sono giovani", de: "Die Studenten sind jung", extra: ["i", "giovane"] },
+      { k: "build", title: "Wortgruppe bilden", it: "lo specchio e la porta", de: "der Spiegel und die Tür", extra: ["il", "gli"] },
     ],
   },
 
@@ -348,11 +398,11 @@ const GRAMMAR_LECTURES = [
     id: "art-indef", unit: "nomen",
     title: "Der unbestimmte Artikel",
     subtitle: "un · uno · una · un'",
-    teaches: ["un", "uno", "una", "dei", "delle"],
+    teaches: ["un", "uno", "una", "dei", "delle", "degli"],
     pages: [
       { blocks: [
         { t: "p", de: "„Ein“ und „eine“ folgen derselben Logik wie il und lo: das Geschlecht wählt die Spalte, der Anfangslaut die Zeile. Nur sind es vier Formen statt sieben." },
-        { t: "table", head: ["", "männlich", "weiblich"], rows: [
+        { t: "table", head: ["", "männlich", "weiblich"], cols: ["label", "it", "it"], rows: [
           ["vor Konsonant", "un libro", "una casa"],
           ["vor s+Konsonant, z", "uno zaino", "—"],
           ["vor Vokal", "un amico", "un'amica"],
@@ -372,14 +422,20 @@ const GRAMMAR_LECTURES = [
         { t: "bad", wrong: "un zaino", right: "uno zaino" },
       ] },
       { blocks: [
-        { t: "p", de: "Einen Plural hat der unbestimmte Artikel nicht — „einige“ sagt man mit di plus bestimmtem Artikel, oder man lässt es ganz weg." },
-        { t: "ex", it: "Io compro dei libri", de: "Ich kaufe einige Bücher" },
-        { t: "ex", it: "Io compro delle mele", de: "Ich kaufe einige Äpfel" },
-        { t: "ex", it: "Io compro libri", de: "Ich kaufe Bücher" },
+        { t: "p", de: "Einen Plural hat der unbestimmte Artikel nicht. „Einige“ sagt man mit di plus bestimmtem Artikel: dei, delle und degli, je nachdem, welcher Artikel im Plural stünde." },
+        { t: "ex", it: "dei libri", de: "einige Bücher", note: "aus i libri" },
+        { t: "ex", it: "delle mele", de: "einige Äpfel", note: "aus le mele" },
+        { t: "ex", it: "degli amici", de: "einige Freunde", note: "aus gli amici" },
       ] },
       { blocks: [
-        { t: "p", de: "Und noch ein Unterschied zum Deutschen: bei einem Beruf steht gar kein Artikel." },
-        { t: "ex", it: "Io sono studente", de: "Ich bin Student" },
+        { t: "p", de: "Beide Reihen laufen parallel, und das ist alles, was du dir merken musst: wo lo steht, steht uno — und wo l' steht, steht un oder un'." },
+        { t: "table", head: ["bestimmt", "unbestimmt"], cols: ["it", "it"], rows: [
+          ["il libro", "un libro"],
+          ["lo zaino", "uno zaino"],
+          ["l'amico", "un amico"],
+          ["la casa", "una casa"],
+          ["l'amica", "un'amica"],
+        ] },
         { t: "rule", de: "un vor allem Männlichen, uno vor s+Konsonant und z, una vor weiblichem Konsonant, un' vor weiblichem Vokal." },
       ] },
     ],
@@ -393,12 +449,12 @@ const GRAMMAR_LECTURES = [
         ["zaino", "uno zaino"], ["libro", "un libro"], ["casa", "una casa"],
         ["amica", "un'amica"], ["studente", "uno studente"],
       ] },
-      { k: "gap", it: "Io voglio una mela", de: "Ich will einen Apfel", a: "una", d: ["un", "uno", "un'"] },
-      { k: "gap", it: "Tu prendi un caffè", de: "Du nimmst einen Kaffee", a: "un", d: ["uno", "una", "un'"] },
+      { k: "gap", it: "una mela e un caffè", de: "ein Apfel und ein Kaffee", a: "un", d: ["uno", "una", "un'"] },
+      { k: "gap", it: "un libro e una penna", de: "ein Buch und ein Stift", a: "una", d: ["un", "uno", "un'"] },
       { k: "write", q: "Mit unbestimmtem Artikel:", word: "ein Spiegel", a: "uno specchio", strict: true },
       { k: "write", q: "Mit unbestimmtem Artikel:", word: "eine Freundin", a: "un'amica", strict: true },
       { k: "write", q: "Mit unbestimmtem Artikel:", word: "ein Freund", a: "un amico", strict: true },
-      { k: "build", it: "Io voglio un bicchiere di vino", de: "Ich will ein Glas Wein", extra: ["una", "uno"] },
+      { k: "build", title: "Wortgruppe bilden", it: "un bicchiere di vino", de: "ein Glas Wein", extra: ["una", "uno"] },
     ],
   },
 
@@ -406,12 +462,12 @@ const GRAMMAR_LECTURES = [
     id: "nom-irr", unit: "nomen",
     title: "Nomen, die aus der Reihe tanzen",
     subtitle: "città, bar, mano, uomo, problema",
-    teaches: ["il", "la", "i", "le", "gli", "foto", "uomini"],
+    teaches: ["il", "la", "i", "le", "gli", "foto", "uomini", "mani", "problemi"],
     pages: [
       { blocks: [
         { t: "p", de: "Eine Handvoll Nomen hält sich an keine der bisherigen Endungen. Es sind wenige, aber es sind alltägliche — und deshalb begegnen sie einem ständig." },
         { t: "p", de: "Die größte Gruppe ändert sich im Plural überhaupt nicht. Nur der Artikel zeigt dann noch an, dass es mehrere sind." },
-        { t: "table", head: ["Singular", "Plural"], rows: [
+        { t: "table", head: ["Singular", "Plural"], cols: ["it", "it"], rows: [
           ["la città", "le città"],
           ["il bar", "i bar"],
           ["il film", "i film"],
@@ -427,7 +483,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Dann die Wörter auf -a, die trotzdem männlich sind. Ihr Plural endet auf -i, nicht auf -e — sie verhalten sich also männlich, wie sie es auch sind." },
-        { t: "table", head: ["Singular", "Plural"], rows: [
+        { t: "table", head: ["Singular", "Plural"], cols: ["it", "it"], rows: [
           ["il problema", "i problemi"],
           ["il cinema", "i cinema"],
         ] },
@@ -445,7 +501,7 @@ const GRAMMAR_LECTURES = [
         { t: "p", de: "Zuletzt die abgekürzten Wörter. la foto ist die Kurzform von la fotografia — sie behält deren Geschlecht und ändert sich nicht mehr." },
         { t: "ex", it: "la foto", de: "das Foto" },
         { t: "ex", it: "le foto", de: "die Fotos" },
-        { t: "rule", de: "Diese Wörter lernt man einzeln. Es sind so wenige, dass das billiger ist als jede Regel." },
+        { t: "rule", de: "Diese Wörter lernt man einzeln — es sind wenige, und man begegnet ihnen täglich." },
       ] },
     ],
     drills: [
@@ -458,12 +514,12 @@ const GRAMMAR_LECTURES = [
         ["la città", "le città"], ["il film", "i film"], ["la mano", "le mani"],
         ["il problema", "i problemi"], ["l'uomo", "gli uomini"],
       ] },
-      { k: "gap", it: "Tu hai un problema", de: "Du hast ein Problem", a: "un", d: ["una", "uno", "un'"] },
-      { k: "gap", it: "Io ho due mani", de: "Ich habe zwei Hände", a: "mani", d: ["mano", "mane", "manie"] },
+      { k: "gap", it: "le città e i bar", de: "die Städte und die Bars", a: "i", d: ["il", "le", "gli"] },
+      { k: "gap", it: "due mani e due foto", de: "zwei Hände und zwei Fotos", a: "mani", d: ["mano", "mane", "manie"] },
       { k: "write", q: "Plural von", word: "l'università", a: "le università", strict: true },
       { k: "write", q: "Mit Artikel:", word: "die Hand", a: "la mano", strict: true },
       { k: "write", q: "Plural von", word: "il problema", a: "i problemi", strict: true },
-      { k: "build", it: "Le città italiane sono belle", de: "Die italienischen Städte sind schön", extra: ["la", "bello"] },
+      { k: "build", title: "Wortgruppe bilden", it: "le foto e i film", de: "die Fotos und die Filme", extra: ["la", "il"] },
     ],
   },
 
@@ -475,14 +531,15 @@ const GRAMMAR_LECTURES = [
     title: "Adjektive auf -o",
     subtitle: "Vier Formen, und das Nomen wählt sie",
     teaches: ["nero", "nera", "neri", "nere"],
+    opens: ["adj-forms"],
     pages: [
       { blocks: [
         { t: "p", de: "Ein italienisches Adjektiv richtet sich nach dem Nomen, zu dem es gehört — nach dessen Geschlecht und dessen Zahl. Die größte Gruppe endet im Wörterbuch auf -o und hat vier Formen." },
-        { t: "table", head: ["", "Singular", "Plural"], rows: [
+        { t: "table", head: ["", "Singular", "Plural"], cols: ["label", "it", "it"], rows: [
           ["männlich", "piccolo", "piccoli"],
           ["weiblich", "piccola", "piccole"],
         ] },
-        { t: "p", de: "Es sind dieselben Endungen wie beim Nomen. Wer die Mehrzahl kann, kann das hier schon." },
+        { t: "p", de: "Es sind dieselben vier Endungen, die auch ein Nomen trägt: -o und -a in der Einzahl, -i und -e in der Mehrzahl." },
       ] },
       { blocks: [
         { t: "p", de: "Entscheidend ist das Nomen, nicht das Adjektiv. Das Adjektiv hat kein eigenes Geschlecht — es leiht sich das seines Nomens." },
@@ -497,9 +554,13 @@ const GRAMMAR_LECTURES = [
         { t: "bad", wrong: "le scarpe nero", right: "le scarpe nere" },
       ] },
       { blocks: [
-        { t: "p", de: "Gehören zu einem Adjektiv mehrere Nomen und ist eines davon männlich, steht die männliche Mehrzahl. Ein einziges männliches Wort genügt." },
-        { t: "ex", it: "Il ragazzo e la ragazza sono italiani", de: "Der Junge und das Mädchen sind Italiener" },
-        { t: "ex", it: "La madre e la figlia sono italiane", de: "Die Mutter und die Tochter sind Italienerinnen" },
+        { t: "p", de: "So kommst du zur richtigen Form: sieh dir das Nomen an — Geschlecht und Zahl —, und nimm die Endung, die dazu gehört. Das Adjektiv steht dabei hinter dem Nomen." },
+        { t: "table", head: ["Nomen", "Geschlecht und Zahl", "mit nero"], cols: ["it", "de", "it"], rows: [
+          ["il gatto", "männlich, Einzahl", "il gatto nero"],
+          ["la mucca", "weiblich, Einzahl", "la mucca nera"],
+          ["i gatti", "männlich, Mehrzahl", "i gatti neri"],
+          ["le mucche", "weiblich, Mehrzahl", "le mucche nere"],
+        ] },
       ] },
       { blocks: [
         { t: "p", de: "Zwei Schreibregeln laufen mit, dieselben wie beim Nomen: -io hat im Plural nur ein i, und -ca und -ga schieben ein h ein, damit der harte Klang bleibt." },
@@ -517,13 +578,13 @@ const GRAMMAR_LECTURES = [
         ["il libro", "nuovo"], ["la casa", "nuova"], ["i gatti", "piccoli"],
         ["le sedie", "vecchie"], ["gli occhi", "neri"],
       ] },
-      { k: "gap", it: "Io ho una casa nuova", de: "Ich habe ein neues Haus", a: "nuova", d: ["nuovo", "nuovi", "nuove"] },
-      { k: "gap", it: "Noi mangiamo le mele rosse", de: "Wir essen die roten Äpfel", a: "rosse", d: ["rosso", "rossa", "rossi"] },
+      { k: "gap", it: "una casa nuova e bella", de: "ein neues und schönes Haus", a: "nuova", d: ["nuovo", "nuovi", "nuove"] },
+      { k: "gap", it: "le mele rosse e buone", de: "die roten und guten Äpfel", a: "rosse", d: ["rosso", "rossa", "rossi"] },
       { k: "write", q: "Wie heißt „die alten Stühle“?", a: "le sedie vecchie", strict: true },
       { k: "write", q: "Wie heißt „das kleine Buch“?", a: "il libro piccolo", strict: true },
       { k: "write", q: "Wie heißt „die schwarzen Katzen“?", a: "i gatti neri", strict: true },
-      { k: "build", it: "La casa è piccola", de: "Das Haus ist klein", extra: ["piccolo", "il"] },
-      { k: "build", it: "I libri sono vecchi", de: "Die Bücher sind alt", extra: ["vecchio", "le"] },
+      { k: "build", title: "Wortgruppe bilden", it: "la casa piccola e nuova", de: "das kleine und neue Haus", extra: ["piccolo", "nuovo"] },
+      { k: "build", title: "Wortgruppe bilden", it: "i libri vecchi e neri", de: "die alten und schwarzen Bücher", extra: ["vecchio", "nera"] },
     ],
   },
 
@@ -535,7 +596,7 @@ const GRAMMAR_LECTURES = [
     pages: [
       { blocks: [
         { t: "p", de: "Die zweite Gruppe endet auf -e und hat nur zwei Formen: eine für beide Geschlechter im Singular, eine für beide im Plural." },
-        { t: "table", head: ["", "Singular", "Plural"], rows: [
+        { t: "table", head: ["", "Singular", "Plural"], cols: ["label", "it", "it"], rows: [
           ["männlich", "grande", "grandi"],
           ["weiblich", "grande", "grandi"],
         ] },
@@ -550,7 +611,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Es sind viele der alltäglichsten Eigenschaftswörter:" },
-        { t: "list", items: [
+        { t: "list", lang: "it", items: [
           "grande, giovane, forte, veloce",
           "felice, triste, gentile",
           "facile, difficile, importante, interessante",
@@ -566,7 +627,7 @@ const GRAMMAR_LECTURES = [
         { t: "p", de: "In einer Aufzählung können beide Gruppen nebeneinander stehen, und dann sieht man den Unterschied am deutlichsten:" },
         { t: "ex", it: "le case grandi e nuove", de: "die großen und neuen Häuser" },
         { t: "ex", it: "i ragazzi giovani e simpatici", de: "die jungen und sympathischen Jungen" },
-        { t: "rule", de: "Ein Adjektiv auf -e hat zwei Formen, eines auf -o hat vier. Mehr Unterschied ist da nicht." },
+        { t: "rule", de: "Ein Adjektiv auf -e hat zwei Formen, eines auf -o hat vier." },
       ] },
     ],
     drills: [
@@ -578,13 +639,13 @@ const GRAMMAR_LECTURES = [
         ["la casa", "grande"], ["i cani", "veloci"], ["il fiore", "verde"],
         ["le donne", "gentili"], ["i ragazzi", "forti"],
       ] },
-      { k: "gap", it: "Io ho un cane veloce", de: "Ich habe einen schnellen Hund", a: "veloce", d: ["veloci", "veloco", "veloca"] },
-      { k: "gap", it: "Noi siamo molto felici", de: "Wir sind sehr glücklich", a: "felici", d: ["felice", "felica", "felico"] },
+      { k: "gap", it: "un cane veloce e forte", de: "ein schneller und starker Hund", a: "veloce", d: ["veloci", "veloco", "veloca"] },
+      { k: "gap", it: "le ragazze felici e gentili", de: "die glücklichen und freundlichen Mädchen", a: "felici", d: ["felice", "felica", "felico"] },
       { k: "write", q: "Wie heißt „die großen Häuser“?", a: "le case grandi", strict: true },
       { k: "write", q: "Wie heißt „die grünen Blumen“?", a: "i fiori verdi", strict: true },
       { k: "write", q: "Wie heißt „der starke Junge“?", a: "il ragazzo forte", strict: true },
-      { k: "build", it: "La lezione è difficile", de: "Die Lektion ist schwierig", extra: ["difficili", "il"] },
-      { k: "build", it: "I ragazzi sono giovani", de: "Die Jungen sind jung", extra: ["giovane", "le"] },
+      { k: "build", title: "Wortgruppe bilden", it: "una lezione difficile e importante", de: "eine schwierige und wichtige Lektion", extra: ["difficili", "importanti"] },
+      { k: "build", title: "Wortgruppe bilden", it: "i ragazzi giovani e forti", de: "die jungen und starken Jungen", extra: ["giovane", "forte"] },
     ],
   },
 
@@ -614,14 +675,17 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Zwei aus dieser Gruppe kürzen sich vor dem Nomen, genau wie die Artikel es tun. Aus buono wird buon, aus bello wird bel." },
-        { t: "table", head: ["nach dem Nomen", "vor dem Nomen"], rows: [
+        { t: "table", head: ["nach dem Nomen", "vor dem Nomen"], cols: ["it", "it"], rows: [
           ["un caffè buono", "un buon caffè"],
           ["un libro bello", "un bel libro"],
         ] },
         { t: "p", de: "Weiblich bleiben sie, wie sie sind: una buona idea, una bella casa." },
       ] },
       { blocks: [
-        { t: "p", de: "Merke dir die Grundstellung und diese eine Handvoll. Alles andere geht hinter das Nomen und ist damit erledigt." },
+        { t: "p", de: "Bei einigen wenigen Adjektiven ändert die Stellung sogar die Bedeutung. Das bekannteste Paar:" },
+        { t: "ex", it: "un uomo grande", de: "ein großer Mann", note: "hinten: die Größe" },
+        { t: "ex", it: "un grande uomo", de: "ein bedeutender Mann", note: "vorne: die Bedeutung" },
+        { t: "p", de: "Solche Paare sind selten. Sie zeigen aber, dass die Stellung im Italienischen nicht bloß Geschmack ist." },
         { t: "rule", de: "Adjektiv hinter das Nomen. Farbe, Herkunft und Form immer. Nur ein paar sehr häufige stellen sich davor." },
       ] },
     ],
@@ -635,13 +699,13 @@ const GRAMMAR_LECTURES = [
         ["ein guter Wein", "un buon vino"], ["eine kleine Stadt", "una piccola città"],
         ["ein italienischer Junge", "un ragazzo italiano"],
       ] },
-      { k: "gap", it: "Io compro una mela rossa", de: "Ich kaufe einen roten Apfel", a: "rossa", d: ["rosso", "rosse", "rossi"] },
-      { k: "gap", it: "Tu sei un ragazzo italiano", de: "Du bist ein italienischer Junge", a: "italiano", d: ["italiana", "italiani", "italiane"] },
+      { k: "gap", it: "un buon caffè italiano", de: "ein guter italienischer Kaffee", a: "buon", d: ["buono", "buona", "buoni"] },
+      { k: "gap", it: "una piccola città italiana", de: "eine kleine italienische Stadt", a: "italiana", d: ["italiano", "italiani", "italiane"] },
       { k: "write", q: "Wie heißt „ein neues Haus“?", a: "una casa nuova", strict: true },
       { k: "write", q: "Wie heißt „ein guter Kaffee“?", a: "un buon caffè", accept: ["un caffè buono"], strict: true },
       { k: "write", q: "Wie heißt „eine grüne Pflanze“?", a: "una pianta verde", strict: true },
-      { k: "build", it: "Io compro un libro nuovo", de: "Ich kaufe ein neues Buch", extra: ["nuova", "nuovi"] },
-      { k: "build", it: "Lei ha una casa piccola", de: "Sie hat ein kleines Haus", extra: ["piccolo", "piccoli"] },
+      { k: "build", title: "Wortgruppe bilden", it: "un bel libro nuovo", de: "ein schönes neues Buch", extra: ["bello", "nuova"] },
+      { k: "build", title: "Wortgruppe bilden", it: "una piccola casa bianca", de: "ein kleines weißes Haus", extra: ["piccolo", "bianco"] },
     ],
   },
 
@@ -653,7 +717,7 @@ const GRAMMAR_LECTURES = [
     pages: [
       { blocks: [
         { t: "p", de: "Farben sind gewöhnliche Adjektive: sie stehen hinter dem Nomen und richten sich nach ihm. Die meisten enden auf -o und haben deshalb vier Formen." },
-        { t: "table", head: ["", "Singular", "Plural"], rows: [
+        { t: "table", head: ["", "Singular", "Plural"], cols: ["label", "it", "it"], rows: [
           ["männlich", "rosso", "rossi"],
           ["weiblich", "rossa", "rosse"],
         ] },
@@ -679,8 +743,8 @@ const GRAMMAR_LECTURES = [
         { t: "bad", wrong: "le porte blue", right: "le porte blu" },
       ] },
       { blocks: [
-        { t: "p", de: "Damit sind die Farben des Spiels vollständig:" },
-        { t: "table", head: ["Farbe", "deutsch", "Formen"], rows: [
+        { t: "p", de: "Die Farben im Überblick — die dritte Spalte sagt, wie viele Formen jede hat:" },
+        { t: "table", head: ["Farbe", "deutsch", "Formen"], cols: ["it", "de", "de"], rows: [
           ["rosso", "rot", "vier"],
           ["nero", "schwarz", "vier"],
           ["bianco", "weiß", "vier"],
@@ -703,13 +767,13 @@ const GRAMMAR_LECTURES = [
         ["rot", "rosso"], ["grün", "verde"], ["schwarz", "nero"],
         ["weiß", "bianco"], ["gelb", "giallo"],
       ] },
-      { k: "gap", it: "Io bevo il vino rosso", de: "Ich trinke den Rotwein", a: "rosso", d: ["rossa", "rossi", "rosse"] },
-      { k: "gap", it: "Lei compra le scarpe nere", de: "Sie kauft die schwarzen Schuhe", a: "nere", d: ["nero", "nera", "neri"] },
+      { k: "gap", it: "i fiori gialli e rossi", de: "die gelben und roten Blumen", a: "gialli", d: ["giallo", "gialla", "gialle"] },
+      { k: "gap", it: "le porte blu e bianche", de: "die blauen und weißen Türen", a: "blu", d: ["blue", "blui", "blua"] },
       { k: "write", q: "Wie heißt „der weiße Teller“?", a: "il piatto bianco", strict: true },
       { k: "write", q: "Wie heißt „die grünen Pflanzen“?", a: "le piante verdi", strict: true },
       { k: "write", q: "Wie heißt „die blauen Türen“?", a: "le porte blu", strict: true },
-      { k: "build", it: "Il gatto è nero", de: "Die Katze ist schwarz", extra: ["nera", "neri"] },
-      { k: "build", it: "Le mele sono rosse", de: "Die Äpfel sind rot", extra: ["rosso", "rossa"] },
+      { k: "build", title: "Wortgruppe bilden", it: "un gatto nero e grigio", de: "eine schwarze und graue Katze", extra: ["nera", "grigia"] },
+      { k: "build", title: "Wortgruppe bilden", it: "le mele rosse e gialle", de: "die roten und gelben Äpfel", extra: ["rosso", "giallo"] },
     ],
   },
 
@@ -720,10 +784,10 @@ const GRAMMAR_LECTURES = [
     teaches: [],
     pages: [
       { blocks: [
-        { t: "p", de: "molto, poco und troppo machen zweierlei, und wovon das abhängt, ist leicht zu sehen: es kommt darauf an, was hinter ihnen steht." },
-        { t: "table", head: ["vor einem Nomen", "vor Adjektiv oder Verb"], rows: [
-          ["Adjektiv — es passt sich an", "Adverb — es bleibt, wie es ist"],
-          ["molta acqua", "molto stanco"],
+        { t: "p", de: "molto, poco und troppo machen zweierlei. Welche Rolle sie spielen, entscheidet allein das Wort dahinter." },
+        { t: "table", head: ["Stellung", "Rolle", "Beispiel"], cols: ["label", "de", "it"], rows: [
+          ["vor einem Nomen", "Adjektiv — es passt sich an", "molta acqua"],
+          ["vor einem Adjektiv", "Adverb — es bleibt gleich", "molto stanco"],
         ] },
       ] },
       { blocks: [
@@ -734,9 +798,10 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Vor einem Adjektiv heißt es „sehr“ — und dann ändert es sich nicht mehr, egal wen es beschreibt." },
-        { t: "ex", it: "Io sono molto stanco", de: "Ich bin sehr müde" },
-        { t: "ex", it: "Lei è molto stanca", de: "Sie ist sehr müde" },
-        { t: "bad", wrong: "Lei è molta stanca", right: "Lei è molto stanca" },
+        { t: "ex", it: "un ragazzo molto stanco", de: "ein sehr müder Junge" },
+        { t: "ex", it: "una ragazza molto stanca", de: "ein sehr müdes Mädchen" },
+        { t: "bad", wrong: "una ragazza molta stanca", right: "una ragazza molto stanca" },
+        { t: "p", de: "Sieh nach, was sich zwischen den beiden Zeilen geändert hat: stanco ist zu stanca geworden, molto ist geblieben." },
       ] },
       { blocks: [
         { t: "p", de: "poco (wenig) und troppo (zu viel) machen es genauso." },
@@ -745,28 +810,33 @@ const GRAMMAR_LECTURES = [
         { t: "ex", it: "troppo caro", de: "zu teuer" },
       ] },
       { blocks: [
-        { t: "p", de: "Hinter einem Verb steht molto ebenfalls unverändert und heißt dort „viel“ oder „sehr“." },
-        { t: "ex", it: "Io lavoro molto", de: "Ich arbeite viel" },
-        { t: "rule", de: "Vor einem Nomen passt es sich an. Vor einem Adjektiv oder hinter einem Verb bleibt es molto." },
+        { t: "p", de: "Am schnellsten fällt der Unterschied auf, wenn dasselbe Wort zweimal nebeneinander steht:" },
+        { t: "table", head: ["vor einem Nomen", "vor einem Adjektiv"], cols: ["it", "it"], rows: [
+          ["molta acqua", "molto fredda"],
+          ["molti amici", "molto simpatici"],
+          ["troppe cose", "troppo care"],
+        ] },
+        { t: "p", de: "Links richtet sich das Wort nach dem Nomen, rechts nach niemandem — deshalb steht rechts dreimal dieselbe Form." },
+        { t: "rule", de: "Vor einem Nomen passt es sich an. Vor einem Adjektiv bleibt es molto." },
       ] },
     ],
     drills: [
-      { k: "pick", q: "Welche Form passt?", word: "Io bevo ___ acqua", a: "molta", d: ["molto", "molti", "molte"] },
-      { k: "pick", q: "Welche Form passt?", word: "Io sono ___ stanco", a: "molto", d: ["molta", "molti", "molte"] },
-      { k: "pick", q: "Welche Form passt?", word: "Io ho ___ problemi", a: "troppi", d: ["troppo", "troppa", "troppe"] },
-      { k: "pick", q: "Welche Form passt?", word: "Io ho ___ tempo", a: "poco", d: ["poca", "pochi", "poche"] },
+      { k: "pick", q: "Welche Form passt?", word: "___ acqua", a: "molta", d: ["molto", "molti", "molte"] },
+      { k: "pick", q: "Welche Form passt?", word: "un ragazzo ___ stanco", a: "molto", d: ["molta", "molti", "molte"] },
+      { k: "pick", q: "Welche Form passt?", word: "___ problemi", a: "troppi", d: ["troppo", "troppa", "troppe"] },
+      { k: "pick", q: "Welche Form passt?", word: "___ tempo", a: "poco", d: ["poca", "pochi", "poche"] },
       { k: "pair", leftLabel: "italienisch", rightLabel: "deutsch", lang: ["it", "de"], pairs: [
         ["molta acqua", "viel Wasser"], ["molto stanco", "sehr müde"],
         ["poco tempo", "wenig Zeit"], ["troppo caro", "zu teuer"],
         ["troppe cose", "zu viele Sachen"],
       ] },
-      { k: "gap", it: "Io bevo molta acqua", de: "Ich trinke viel Wasser", a: "molta", d: ["molto", "molti", "molte"] },
-      { k: "gap", it: "Il vino è molto caro", de: "Der Wein ist sehr teuer", a: "molto", d: ["molta", "molti", "molte"] },
-      { k: "gap", it: "Noi abbiamo poco tempo", de: "Wir haben wenig Zeit", a: "poco", d: ["poca", "pochi", "poche"] },
+      { k: "gap", it: "molte case e molti libri", de: "viele Häuser und viele Bücher", a: "molti", d: ["molto", "molta", "molte"] },
+      { k: "gap", it: "un vino molto caro", de: "ein sehr teurer Wein", a: "molto", d: ["molta", "molti", "molte"] },
+      { k: "gap", it: "poco pane e poca acqua", de: "wenig Brot und wenig Wasser", a: "poca", d: ["poco", "pochi", "poche"] },
       { k: "write", q: "Wie heißt „zu viele Probleme“?", a: "troppi problemi", strict: true },
       { k: "write", q: "Wie heißt „wenig Milch“?", a: "poco latte", strict: true },
-      { k: "build", it: "Io ho molti amici", de: "Ich habe viele Freunde", extra: ["molto", "molta"] },
-      { k: "build", it: "La pizza è troppo calda", de: "Die Pizza ist zu heiß", extra: ["troppa", "troppe"] },
+      { k: "build", title: "Wortgruppe bilden", it: "molti amici italiani", de: "viele italienische Freunde", extra: ["molto", "molta"] },
+      { k: "build", title: "Wortgruppe bilden", it: "una pizza troppo calda", de: "eine zu heiße Pizza", extra: ["troppa", "troppe"] },
     ],
   },
 
@@ -784,10 +854,11 @@ const GRAMMAR_LECTURES = [
     title: "essere — sein",
     subtitle: "Das häufigste Verb, und das unregelmäßigste",
     teaches: [],
+    opens: ["verb:essere"],
     pages: [
       { blocks: [
         { t: "p", de: "essere heißt „sein“. Es ist das meistgebrauchte Verb des Italienischen und zugleich das unregelmäßigste — von der Grundform essere ist in den sechs Formen fast nichts mehr übrig." },
-        { t: "table", head: ["Person", "Form", "deutsch"], rows: [
+        { t: "table", head: ["Person", "Form", "deutsch"], cols: ["label", "it", "de"], rows: [
           ["io", "sono", "ich bin"],
           ["tu", "sei", "du bist"],
           ["lui / lei", "è", "er / sie ist"],
@@ -795,7 +866,7 @@ const GRAMMAR_LECTURES = [
           ["voi", "siete", "ihr seid"],
           ["loro", "sono", "sie sind"],
         ] },
-        { t: "p", de: "Es gibt nichts abzuleiten. Diese sechs Wörter lernt man auswendig — und dann hat man sie für immer." },
+        { t: "p", de: "Fünf der sechs Formen beginnen mit s-, nur è nicht. Ableiten lässt sich keine davon: es sind sechs eigene Wörter, und sie werden als sechs Wörter gelernt." },
       ] },
       { blocks: [
         { t: "p", de: "io und loro haben dieselbe Form: sono. Welche gemeint ist, sagt der Zusammenhang, und wenn er es nicht sagt, setzt man das Pronomen davor." },
@@ -815,9 +886,12 @@ const GRAMMAR_LECTURES = [
         { t: "ex", it: "La casa è grande", de: "Das Haus ist groß" },
       ] },
       { blocks: [
-        { t: "p", de: "Und ein Hinweis, der später wichtig wird: was mit essere verbunden ist, richtet sich nach dem Subjekt. Ein Adjektiv hinter essere hat also dessen Geschlecht und Zahl." },
+        { t: "p", de: "Ein Adjektiv hinter essere richtet sich nach dem Subjekt — es trägt dessen Geschlecht und dessen Zahl, genau wie hinter einem Nomen." },
         { t: "ex", it: "Lei è stanca", de: "Sie ist müde" },
         { t: "ex", it: "Loro sono stanchi", de: "Sie sind müde" },
+        { t: "p", de: "Sind mehrere Subjekte gemeint und ist eines davon männlich, steht die männliche Mehrzahl. Ein einziges männliches Wort genügt dafür." },
+        { t: "ex", it: "Il ragazzo e la ragazza sono italiani", de: "Der Junge und das Mädchen sind Italiener" },
+        { t: "ex", it: "La madre e la figlia sono italiane", de: "Die Mutter und die Tochter sind Italienerinnen" },
         { t: "rule", de: "sono · sei · è · siamo · siete · sono. Sechs Wörter, keine Regel." },
       ] },
     ],
@@ -844,10 +918,11 @@ const GRAMMAR_LECTURES = [
     title: "avere — haben",
     subtitle: "Und die Dinge, die man auf Italienisch „hat“",
     teaches: [],
+    opens: ["verb:avere"],
     pages: [
       { blocks: [
-        { t: "p", de: "avere heißt „haben“ und ist das zweite Verb, an dem später alles hängt. Auch es ist unregelmäßig, aber sein Muster ist leichter zu sehen als das von essere." },
-        { t: "table", head: ["Person", "Form", "deutsch"], rows: [
+        { t: "p", de: "avere heißt „haben“ und ist nach essere das zweite Verb, das man wirklich können muss. Auch es ist unregelmäßig, aber sein Muster ist leichter zu sehen." },
+        { t: "table", head: ["Person", "Form", "deutsch"], cols: ["label", "it", "de"], rows: [
           ["io", "ho", "ich habe"],
           ["tu", "hai", "du hast"],
           ["lui / lei", "ha", "er / sie hat"],
@@ -859,7 +934,7 @@ const GRAMMAR_LECTURES = [
       { blocks: [
         { t: "p", de: "Das h wird nie gesprochen. Es steht nur da, um ho von o („oder“) und ha von a („zu, nach“) zu unterscheiden — geschrieben, nicht gehört." },
         { t: "bad", wrong: "Io o un libro", right: "Io ho un libro" },
-        { t: "p", de: "Genau drei Formen tragen es: ho, hai, ha und hanno. abbiamo und avete nicht." },
+        { t: "p", de: "Vier Formen tragen es: ho, hai, ha und hanno. abbiamo und avete tragen keines — die beiden lassen sich mit keinem anderen Wort verwechseln." },
       ] },
       { blocks: [
         { t: "p", de: "Der normale Gebrauch ist der deutsche: etwas besitzen." },
@@ -869,7 +944,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Daneben steht avere dort, wo das Deutsche „sein“ sagt — bei Zuständen des Körpers und beim Alter." },
-        { t: "table", head: ["italienisch", "deutsch"], rows: [
+        { t: "table", head: ["italienisch", "deutsch"], cols: ["it", "de"], rows: [
           ["avere fame", "Hunger haben"],
           ["avere sete", "Durst haben"],
           ["avere sonno", "müde sein"],
@@ -909,11 +984,12 @@ const GRAMMAR_LECTURES = [
     title: "Verben auf -are",
     subtitle: "Die größte Gruppe, und die regelmäßigste",
     teaches: [],
+    opens: ["verb:-are"],
     pages: [
       { blocks: [
         { t: "p", de: "Ein regelmäßiges Verb wird nicht auswendig gelernt, sondern gebaut: von der Grundform die letzten drei Buchstaben abschneiden, und an den Rest die Endung der Person hängen." },
         { t: "p", de: "parlare ohne -are ist parl-. Darauf kommen die sechs Endungen:" },
-        { t: "table", head: ["Person", "Endung", "parlare"], rows: [
+        { t: "table", head: ["Person", "Endung", "parlare"], cols: ["label", "it", "it"], rows: [
           ["io", "-o", "parlo"],
           ["tu", "-i", "parli"],
           ["lui / lei", "-a", "parla"],
@@ -941,11 +1017,12 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Es ist die mit Abstand größte Gruppe. Fast jedes neue Verb, das dir begegnet, gehört dazu:" },
-        { t: "list", items: [
+        { t: "list", lang: "it", items: [
           "parlare, lavorare, studiare, abitare",
           "comprare, pagare, cucinare, guardare",
           "aspettare, arrivare, camminare, pensare",
         ] },
+        { t: "ex", it: "Io lavoro molto", de: "Ich arbeite viel", note: "molto hinter dem Verb bleibt unverändert" },
         { t: "rule", de: "-o · -i · -a · -iamo · -ate · -ano, an den Stamm gehängt." },
       ] },
     ],
@@ -972,10 +1049,11 @@ const GRAMMAR_LECTURES = [
     title: "Verben auf -ere",
     subtitle: "Fast dieselben Endungen",
     teaches: [],
+    opens: ["verb:-ere"],
     pages: [
       { blocks: [
         { t: "p", de: "Die zweite Gruppe wird genauso gebaut: -ere abschneiden, Endung anhängen. leggere ohne -ere ist legg-." },
-        { t: "table", head: ["Person", "Endung", "leggere"], rows: [
+        { t: "table", head: ["Person", "Endung", "leggere"], cols: ["label", "it", "it"], rows: [
           ["io", "-o", "leggo"],
           ["tu", "-i", "leggi"],
           ["lui / lei", "-e", "legge"],
@@ -986,7 +1064,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Nebeneinandergelegt sieht man, wie wenig sich ändert: drei von sechs Endungen sind dieselben wie bei -are." },
-        { t: "table", head: ["Person", "-are", "-ere"], rows: [
+        { t: "table", head: ["Person", "-are", "-ere"], cols: ["label", "it", "it"], rows: [
           ["io", "-o", "-o"],
           ["tu", "-i", "-i"],
           ["lui / lei", "-a", "-e"],
@@ -1003,14 +1081,16 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Die Gruppe ist kleiner als die auf -are, enthält aber viele Alltagsverben:" },
-        { t: "list", items: [
+        { t: "list", lang: "it", items: [
           "leggere, scrivere, vedere, prendere",
           "correre, vivere, chiudere, mettere",
           "credere, ripetere, perdere",
         ] },
       ] },
       { blocks: [
-        { t: "p", de: "Ein Hinweis für später: gerade in dieser Gruppe sind viele Verben zwar im Präsens regelmäßig, in der Vergangenheit aber nicht. Das Präsens hier kannst du ohne Sorge bauen." },
+        { t: "p", de: "Der Fehler, der hier am häufigsten passiert, ist die Verwechslung mit -are. Dort endet lui auf -a und loro auf -ano; hier heißt es -e und -ono." },
+        { t: "bad", wrong: "lui legga", right: "lui legge" },
+        { t: "bad", wrong: "loro scrivano", right: "loro scrivono" },
         { t: "rule", de: "-o · -i · -e · -iamo · -ete · -ono." },
       ] },
     ],
@@ -1037,10 +1117,11 @@ const GRAMMAR_LECTURES = [
     title: "Verben auf -ire",
     subtitle: "Und damit das ganze System",
     teaches: [],
+    opens: ["verb:-ire"],
     pages: [
       { blocks: [
         { t: "p", de: "Die dritte Gruppe, und die letzte. dormire ohne -ire ist dorm-." },
-        { t: "table", head: ["Person", "Endung", "dormire"], rows: [
+        { t: "table", head: ["Person", "Endung", "dormire"], cols: ["label", "it", "it"], rows: [
           ["io", "-o", "dormo"],
           ["tu", "-i", "dormi"],
           ["lui / lei", "-e", "dorme"],
@@ -1052,7 +1133,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Damit steht das ganze Präsens der regelmäßigen Verben auf einer Seite:" },
-        { t: "table", head: ["Person", "-are", "-ere", "-ire"], rows: [
+        { t: "table", head: ["Person", "-are", "-ere", "-ire"], cols: ["label", "it", "it", "it"], rows: [
           ["io", "-o", "-o", "-o"],
           ["tu", "-i", "-i", "-i"],
           ["lui / lei", "-a", "-e", "-e"],
@@ -1067,13 +1148,19 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Die Gruppe ist die kleinste der drei:" },
-        { t: "list", items: ["dormire, sentire, aprire, partire, servire"] },
+        { t: "list", lang: "it", items: ["dormire, sentire, aprire, partire, servire"] },
         { t: "ex", it: "Io dormo bene", de: "Ich schlafe gut" },
-        { t: "ex", it: "Voi aprite la porta", de: "Ihr öffnet die Tür" },
+        { t: "ex", it: "Voi aprite la porta", de: "Ihr öffnet die Tür", note: "-ere hieße hier aprete" },
       ] },
       { blocks: [
-        { t: "p", de: "Eine Warnung zum Schluss: bei -ire gibt es eine zweite, größere Gruppe, die sich anders verhält — sie schiebt eine Silbe ein. Das ist die nächste Lektion." },
-        { t: "ex", it: "io capisco", de: "ich verstehe", note: "nicht capo" },
+        { t: "p", de: "Diese vier brauchst du täglich. Lerne die io-Form gleich mit: an ihr siehst du den Stamm, aus dem die anderen fünf gebaut werden." },
+        { t: "table", head: ["Verb", "deutsch", "io-Form"], cols: ["it", "de", "it"], rows: [
+          ["dormire", "schlafen", "dormo"],
+          ["sentire", "hören, fühlen", "sento"],
+          ["aprire", "öffnen", "apro"],
+          ["partire", "abfahren", "parto"],
+        ] },
+        { t: "rule", de: "-o · -i · -e · -iamo · -ite · -ono. Nur voi trennt -ire von -ere." },
       ] },
     ],
     drills: [
@@ -1098,11 +1185,12 @@ const GRAMMAR_LECTURES = [
     id: "v-isc", unit: "praes",
     title: "Die -isc-Verben",
     subtitle: "capire, finire, preferire, pulire",
-    teaches: ["spedire"],
+    teaches: ["spedire", "spedisco"],
+    opens: ["verb:-isc"],
     pages: [
       { blocks: [
-        { t: "p", de: "Eine große Gruppe der -ire-Verben schiebt zwischen Stamm und Endung eine Silbe ein: -isc-. Die Endungen selbst bleiben dieselben wie in der vorigen Lektion." },
-        { t: "table", head: ["Person", "capire", ""], rows: [
+        { t: "p", de: "Nicht jedes Verb auf -ire wird gebaut wie dormire. Eine große Gruppe schiebt zwischen Stamm und Endung eine Silbe ein: -isc-. Die Endungen selbst bleiben genau dieselben." },
+        { t: "table", head: ["Person", "capire", ""], cols: ["label", "it", "de"], rows: [
           ["io", "capisco", "ich verstehe"],
           ["tu", "capisci", "du verstehst"],
           ["lui / lei", "capisce", "er / sie versteht"],
@@ -1113,7 +1201,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Sieh dir an, WO die Silbe steht. noi und voi haben sie nicht — sie sind genau die Formen, die ein gewöhnliches -ire-Verb auch hätte. Alle vier anderen tragen sie." },
-        { t: "table", head: ["mit -isc-", "ohne"], rows: [
+        { t: "table", head: ["mit -isc-", "ohne"], cols: ["it", "it"], rows: [
           ["io, tu, lui / lei, loro", "noi, voi"],
         ] },
         { t: "rule", de: "Vier Formen mit -isc-, zwei ohne. Die zwei ohne sind noi und voi." },
@@ -1130,8 +1218,14 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Der Grundform sieht man nicht an, ob ein -ire-Verb dazugehört. Das muss man pro Verb lernen — auf A1 ist die Liste aber kurz:" },
-        { t: "list", items: ["capire — verstehen", "finire — beenden", "preferire — bevorzugen", "pulire — putzen", "spedire — verschicken"] },
-        { t: "p", de: "Vier gewöhnliche -ire-Verben stehen dem gegenüber: dormire, sentire, aprire, partire. Zusammen sind das neun Wörter, und damit hast du die ganze Gruppe." },
+        { t: "table", head: ["Verb", "deutsch", "io-Form"], cols: ["it", "de", "it"], rows: [
+          ["capire", "verstehen", "capisco"],
+          ["finire", "beenden", "finisco"],
+          ["preferire", "bevorzugen", "preferisco"],
+          ["pulire", "putzen", "pulisco"],
+          ["spedire", "verschicken", "spedisco"],
+        ] },
+        { t: "p", de: "Dem gegenüber stehen die vier gewöhnlichen aus der vorigen Lektion: dormire, sentire, aprire, partire. Neun Verben zusammen — und damit die ganze Gruppe, die auf A1 vorkommt." },
       ] },
     ],
     drills: [
@@ -1157,10 +1251,11 @@ const GRAMMAR_LECTURES = [
     title: "Unregelmäßig I",
     subtitle: "andare · fare · stare · dare",
     teaches: [],
+    opens: ["verb:andare", "verb:fare", "verb:stare", "verb:dare"],
     pages: [
       { blocks: [
-        { t: "p", de: "Vier Verben, die man täglich braucht und die sich nicht bauen lassen. Der Trost: sie sind einander ähnlich, und wer eines kann, erkennt die anderen drei wieder." },
-        { t: "table", head: ["Person", "andare", "deutsch"], rows: [
+        { t: "p", de: "Vier Verben, die man täglich braucht und die sich nicht nach Regel bauen lassen. Sie ähneln einander aber stark — wer eines kann, erkennt die anderen drei wieder." },
+        { t: "table", head: ["Person", "andare", "deutsch"], cols: ["label", "it", "de"], rows: [
           ["io", "vado", "ich gehe"],
           ["tu", "vai", "du gehst"],
           ["lui / lei", "va", "er / sie geht"],
@@ -1171,7 +1266,7 @@ const GRAMMAR_LECTURES = [
         { t: "p", de: "andare hat zwei Stämme: vad-/va- im Singular und bei loro, and- bei noi und voi." },
       ] },
       { blocks: [
-        { t: "table", head: ["Person", "fare", "deutsch"], rows: [
+        { t: "table", head: ["Person", "fare", "deutsch"], cols: ["label", "it", "de"], rows: [
           ["io", "faccio", "ich mache"],
           ["tu", "fai", "du machst"],
           ["lui / lei", "fa", "er / sie macht"],
@@ -1182,7 +1277,7 @@ const GRAMMAR_LECTURES = [
         { t: "ex", it: "Lui fa il caffè", de: "Er macht den Kaffee" },
       ] },
       { blocks: [
-        { t: "table", head: ["Person", "stare", "dare"], rows: [
+        { t: "table", head: ["Person", "stare", "dare"], cols: ["label", "it", "it"], rows: [
           ["io", "sto", "do"],
           ["tu", "stai", "dai"],
           ["lui / lei", "sta", "dà"],
@@ -1194,7 +1289,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Und jetzt das Muster, das alle vier teilen. Leg die loro-Formen nebeneinander:" },
-        { t: "table", head: ["Verb", "loro"], rows: [
+        { t: "table", head: ["Verb", "loro"], cols: ["it", "it"], rows: [
           ["andare", "vanno"], ["fare", "fanno"], ["stare", "stanno"], ["dare", "danno"],
         ] },
         { t: "p", de: "Alle vier enden auf -anno. Auch tu ist überall gleich gebaut: vai, fai, stai, dai. Es sind vier Verben, aber nicht vierundzwanzig Formen." },
@@ -1231,10 +1326,11 @@ const GRAMMAR_LECTURES = [
     title: "Unregelmäßig II",
     subtitle: "venire · uscire · dire · bere",
     teaches: [],
+    opens: ["verb:venire", "verb:uscire", "verb:dire", "verb:bere"],
     pages: [
       { blocks: [
         { t: "p", de: "Vier weitere, die man ständig braucht. Sie sind unregelmäßig, aber nicht willkürlich — jedes verändert genau eine Sache, und immer dieselbe Sache in denselben Formen." },
-        { t: "table", head: ["Person", "venire", "deutsch"], rows: [
+        { t: "table", head: ["Person", "venire", "deutsch"], cols: ["label", "it", "de"], rows: [
           ["io", "vengo", "ich komme"],
           ["tu", "vieni", "du kommst"],
           ["lui / lei", "viene", "er / sie kommt"],
@@ -1245,7 +1341,7 @@ const GRAMMAR_LECTURES = [
         { t: "p", de: "noi und voi sind völlig regelmäßig. Alles andere schiebt ein g ein oder bricht das e zu ie auf." },
       ] },
       { blocks: [
-        { t: "table", head: ["Person", "uscire", "deutsch"], rows: [
+        { t: "table", head: ["Person", "uscire", "deutsch"], cols: ["label", "it", "de"], rows: [
           ["io", "esco", "ich gehe hinaus"],
           ["tu", "esci", "du gehst hinaus"],
           ["lui / lei", "esce", "er / sie geht hinaus"],
@@ -1256,7 +1352,7 @@ const GRAMMAR_LECTURES = [
         { t: "p", de: "Wieder dasselbe Bild: noi und voi behalten das u der Grundform, die vier anderen machen ein e daraus." },
       ] },
       { blocks: [
-        { t: "table", head: ["Person", "dire", "bere"], rows: [
+        { t: "table", head: ["Person", "dire", "bere"], cols: ["label", "it", "it"], rows: [
           ["io", "dico", "bevo"],
           ["tu", "dici", "bevi"],
           ["lui / lei", "dice", "beve"],
@@ -1301,6 +1397,7 @@ const GRAMMAR_LECTURES = [
     title: "Modalverben",
     subtitle: "potere · volere · dovere",
     teaches: [],
+    opens: ["verb:potere", "verb:volere", "verb:dovere"],
     pages: [
       { blocks: [
         { t: "p", de: "Drei Verben, die selten allein stehen: sie bringen ein zweites Verb mit, und das zweite bleibt in der Grundform. Genau wie im Deutschen — „ich will essen“, nicht „ich will esse“." },
@@ -1310,7 +1407,7 @@ const GRAMMAR_LECTURES = [
         { t: "bad", wrong: "Io voglio mangio", right: "Io voglio mangiare" },
       ] },
       { blocks: [
-        { t: "table", head: ["Person", "potere", "können"], rows: [
+        { t: "table", head: ["Person", "potere", "können"], cols: ["label", "it", "de"], rows: [
           ["io", "posso", "ich kann"],
           ["tu", "puoi", "du kannst"],
           ["lui / lei", "può", "er / sie kann"],
@@ -1320,7 +1417,7 @@ const GRAMMAR_LECTURES = [
         ] },
       ] },
       { blocks: [
-        { t: "table", head: ["Person", "volere", "dovere"], rows: [
+        { t: "table", head: ["Person", "volere", "dovere"], cols: ["label", "it", "it"], rows: [
           ["io", "voglio", "devo"],
           ["tu", "vuoi", "devi"],
           ["lui / lei", "vuole", "deve"],
@@ -1332,7 +1429,7 @@ const GRAMMAR_LECTURES = [
       ] },
       { blocks: [
         { t: "p", de: "Was die drei bedeuten:" },
-        { t: "table", head: ["Verb", "deutsch", "Beispiel"], rows: [
+        { t: "table", head: ["Verb", "deutsch", "Beispiel"], cols: ["it", "de", "it"], rows: [
           ["potere", "können, dürfen", "Posso entrare?"],
           ["volere", "wollen", "Voglio un caffè"],
           ["dovere", "müssen", "Devo lavorare"],
@@ -1371,11 +1468,12 @@ const GRAMMAR_LECTURES = [
     subtitle: "Wenn das Verb ein Pronomen mitbringt",
     // Two names, because a lecture on "what are you called" cannot be written
     // without anyone being called anything.
-    teaches: ["chiamarsi", "vi", "anna", "marco"],
+    teaches: ["chiamarsi", "mi", "ti", "si", "ci", "vi", "anna", "marco"],
+    opens: ["verb:svegliarsi", "verb:chiamarsi"],
     pages: [
       { blocks: [
         { t: "p", de: "Manche Verben tragen in der Grundform ein -si am Ende: svegliarsi, chiamarsi. Dieses -si ist kein Teil der Endung, sondern ein eigenes kleines Wort — und sobald das Verb konjugiert wird, tritt es davor und ändert sich mit der Person." },
-        { t: "table", head: ["Person", "Pronomen", "svegliarsi"], rows: [
+        { t: "table", head: ["Person", "Pronomen", "svegliarsi"], cols: ["label", "it", "it"], rows: [
           ["io", "mi", "mi sveglio"],
           ["tu", "ti", "ti svegli"],
           ["lui / lei", "si", "si sveglia"],

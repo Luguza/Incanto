@@ -233,6 +233,19 @@ function lecturePct(x) { return Math.round(x * 100) + "%"; }
 // grammar explanation actually needs — including `bad`, the wrong form struck
 // through beside the right one, which is how every grammar book alive corrects
 // the mistake it knows you are about to make.
+//
+// A TABLE'S COLUMNS ARE TYPED, and the type decides the paint: `it` is Italian
+// and gets the vocabulary's gold display face, `de` is a German gloss and gets
+// the interface face, `label` is the column that says what the ROW is — the
+// person in a paradigm, the ending in a table of endings — and is muted,
+// because it is scaffolding rather than something to learn.
+//
+// The muting used to be positional: whatever stood in column one was drawn as a
+// label. That is right for `io · parlo` and wrong for `il figlio · la figlia`,
+// where both columns are the lesson — and it reads exactly as it looks, as if
+// the masculine column were a caption for the feminine one. A column is muted
+// for what it holds, never for where it sits.
+const LECTURE_CELL = { label: ' class="lec-th"', de: ' class="lec-gloss"', it: "" };
 const LECTURE_BLOCK = {
   p: (b) => `<p class="lec-p">${b.de}</p>`,
   rule: (b) => `<p class="lec-rule">${b.de}</p>`,
@@ -242,7 +255,8 @@ const LECTURE_BLOCK = {
   list: (b) => `<ul class="lec-list">${b.items.map((x) => `<li>${x}</li>`).join("")}</ul>`,
   table: (b) => `<div class="lec-table-wrap"><table class="lec-table">
     <thead><tr>${b.head.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
-    <tbody>${b.rows.map((r) => `<tr>${r.map((c, i) => `<td${i ? "" : ' class="lec-th"'}>${c}</td>`).join("")}</tr>`).join("")}</tbody>
+    <tbody>${b.rows.map((r) => `<tr>${r.map((c, i) => `<td${
+      LECTURE_CELL[(b.cols || [])[i]] || ""}>${c}</td>`).join("")}</tr>`).join("")}</tbody>
   </table></div>`,
 };
 
