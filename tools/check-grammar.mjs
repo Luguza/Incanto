@@ -27,11 +27,18 @@
 //     - write: `accept` never contradicts the answer
 //     - build: 3–7 tokens, the bank is tapped with a thumb
 //     - para: six forms, blanks inside the paradigm
-//   • every Italian word is vocabulary the game teaches, an inflection of one,
-//     or listed in the lecture's own `teaches` — which is for the forms the
-//     lecture itself introduces. DISTRACTORS are exempt: a wrong option is
-//     supposed to be a form that does not exist, and holding it to the
-//     vocabulary would be holding it to being right.
+//   • every table declares what its columns hold (`cols`, one of label/it/de
+//     each) and every list what language it is in — the renderer paints a cell
+//     for what it holds, and a column typed wrong is a column drawn wrong
+//   • every Italian word is vocabulary the game teaches BY THAT POINT ON THE
+//     ROAD. The audit walks the lectures in order and grows the set as it goes:
+//     a lecture may use the pool's dictionary forms, whatever earlier lectures
+//     taught, whatever its own `teaches` names, and whatever its `opens`
+//     unlocks — the plural once the plural has a lecture, a verb's six forms
+//     once that verb has one. See `curriculumStage` in lib/italian-vocab.mjs
+//     for why an inflection is gated at all. DISTRACTORS are exempt: a wrong
+//     option is supposed to be a form that does not exist, and holding it to
+//     the vocabulary would be holding it to being right.
 //   • no raw < or & in an authored string — it goes into the page as written,
 //     the way every other authored string in this game does
 //
@@ -39,7 +46,7 @@
 // ==============================================================================
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { loadScript, buildKnownWords, tokenKnown } from "./lib/italian-vocab.mjs";
+import { loadScript, buildKnownWords, curriculumStage, tokenKnown } from "./lib/italian-vocab.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -47,13 +54,19 @@ const { WORD_POOL, CONJ_POOL, conjugateRegular, CONJ_PERSONS } = loadScript(root
 const { GRAMMAR_UNITS, GRAMMAR_LECTURES } = loadScript(root, "src/grammar.js");
 const CONFIG = loadScript(root, "src/config.js").CONFIG;
 
+// Two sets, on purpose. `baseKnown` is the flat "does the game teach this word
+// at all?" — it is what tells a typo apart from a form that is simply not due
+// yet, and the two deserve different messages. `stage` is the same vocabulary
+// as a set that grows lecture by lecture, and it is what a lecture is held to.
 const baseKnown = buildKnownWords({ WORD_POOL, CONJ_POOL, conjugateRegular });
+const stage = curriculumStage({ WORD_POOL, CONJ_POOL, conjugateRegular });
 
 const errors = [];
 const BLOCK_FIELDS = {
   p: ["de"], rule: ["de"], ex: ["it", "de"], bad: ["wrong", "right"],
-  list: ["items"], table: ["head", "rows"],
+  list: ["items", "lang"], table: ["head", "rows", "cols"],
 };
+const COL_KINDS = new Set(["label", "it", "de"]);
 const DRILL_KINDS = new Set(["pick", "write", "pair", "gap", "build", "para"]);
 
 // Everything authored gets read for markup that would land in the page raw.
@@ -62,7 +75,9 @@ function checkText(where, s) {
   if (/[<&]/.test(s)) errors.push(`${where}: contains a raw < or & — it is interpolated into the page as-is`);
 }
 
-// Italian, held to the vocabulary. `extra` is the lecture's own `teaches`.
+// Italian, held to the vocabulary that has been taught by here. `extra` is the
+// lecture's own `teaches` (already folded into the stage, and passed in as well
+// so the message can tell one failure from the other).
 function checkItalian(where, text, extra) {
   checkText(where, text);
   if (typeof text !== "string") return;
@@ -70,10 +85,15 @@ function checkItalian(where, text, extra) {
     // A trailing apostrophe is NOT punctuation here: l' and un' are words in
     // their own right, and they are exactly what a lecture on articles teaches.
     const token = raw.replace(/^[(„"]+|[)!?.,;:"“”]+$/g, "");
-    if (!token || /^_+$/.test(token)) continue;
+    // A bare ending is morphology, not a word: -iamo is what the table is FOR.
+    if (!token || /^_+$/.test(token) || /^[-—]/.test(token)) continue;
     if (extra.has(token.toLowerCase())) continue;
-    if (tokenKnown(token, baseKnown)) continue;
-    errors.push(`${where}: "${raw}" is not vocabulary the game teaches (add it to the lecture's \`teaches\` if this lecture is what introduces it)`);
+    if (tokenKnown(token, stage.known)) continue;
+    if (tokenKnown(token, baseKnown)) {
+      errors.push(`${where}: "${raw}" is taught, but not by this point in the curriculum — an earlier lecture has to open it, or this one has to name it in \`teaches\`/\`opens\``);
+    } else {
+      errors.push(`${where}: "${raw}" is not vocabulary the game teaches (add it to the lecture's \`teaches\` if this lecture is what introduces it)`);
+    }
   }
 }
 
@@ -103,6 +123,13 @@ for (const lec of GRAMMAR_LECTURES) {
   checkText(`${where} subtitle`, lec.subtitle);
 
   const teaches = new Set((lec.teaches || []).map((w) => String(w).toLowerCase()));
+  // WHAT A LECTURE HANDS OVER IS HANDED OVER BEFORE IT IS READ, not after: the
+  // lecture on essere is allowed to write `sono`, and every lecture after it is
+  // too. Everything before it is not.
+  for (const name of lec.opens || []) {
+    if (!stage.open(name)) errors.push(`${where}: \`opens\` names "${name}", which the audit has no rule for`);
+  }
+  for (const word of teaches) stage.known.add(word);
 
   // --- pages ---
   const pages = lec.pages || [];
@@ -128,13 +155,32 @@ for (const lec of GRAMMAR_LECTURES) {
         checkText(`${pw} wrong form`, b.wrong);   // deliberately not real Italian
         checkItalian(`${pw} right form`, b.right, teaches);
       }
-      if (b.t === "list") for (const it of b.items || []) checkText(`${pw} list item`, it);
+      if (b.t === "list") {
+        if (b.lang !== "it" && b.lang !== "de") errors.push(`${pw}: a list needs \`lang\` ("it" or "de")`);
+        for (const it of b.items || []) {
+          if (b.lang === "it") checkItalian(`${pw} list item`, it, teaches);
+          else checkText(`${pw} list item`, it);
+        }
+      }
       if (b.t === "table") {
-        const cols = (b.head || []).length;
+        const width = (b.head || []).length;
         for (const h of b.head || []) checkText(`${pw} table head`, h);
+        // A CELL IS PAINTED FOR WHAT IT HOLDS, so what it holds is declared.
+        // While the first column was muted on position alone, a table of two
+        // Italian columns came out reading as one column captioning the other.
+        const cols = b.cols || [];
+        if (cols.length !== width) {
+          errors.push(`${pw}: table has ${width} columns but \`cols\` types ${cols.length}`);
+        }
+        for (const c of cols) {
+          if (!COL_KINDS.has(c)) errors.push(`${pw}: \`cols\` has "${c}" — one of label/it/de per column`);
+        }
         (b.rows || []).forEach((r, ri) => {
-          if (r.length !== cols) errors.push(`${pw}: table row ${ri + 1} has ${r.length} cells, head has ${cols}`);
-          for (const c of r) checkText(`${pw} table cell`, c);
+          if (r.length !== width) errors.push(`${pw}: table row ${ri + 1} has ${r.length} cells, head has ${width}`);
+          r.forEach((c, ci) => {
+            if (cols[ci] === "it") checkItalian(`${pw} table cell`, c, teaches);
+            else checkText(`${pw} table cell`, c);
+          });
         });
       }
     }
