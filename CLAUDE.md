@@ -139,14 +139,66 @@ against the same part drawn normally. Ink and parchment are read as the darkest
 and lightest pixels of the written block rather than as its average — averaging
 hides a hand that has inverted under the page it is written on.
 
+## The game has to work with no network
+
+`manifest.webmanifest` invites the player to install Incanto to a homescreen,
+and a homescreen icon is a promise: it is tapped on a train, in a lift, in a
+tunnel. So the game is carried by a service worker (`sw.js`, registered by
+`src/offline.js`) and is fully playable after one visit with the network gone.
+The smoke test proves that by taking the server away and reloading — not with
+Playwright's offline emulation, which a worker's own `fetch` goes on ignoring,
+so a run driven that way passes while the cache is never touched.
+
+**The caching is split by what staleness costs, and the split is the whole
+design.** Nothing here is content-hashed — there is no build step, so
+`src/loop.js` is `src/loop.js` in every build there will ever be. A cache-first
+worker therefore pins whoever loaded it to the build they first saw forever, and
+the person it pins hardest is whoever is reviewing the `gh-pages` preview, since
+that branch is a movable pointer every session force-pushes at its own work. The
+symptom is "my change didn't deploy" when it did, and the cure a normal person
+reaches for — clearing site data — is one no player will ever find. So **code and
+markup are network-first** (the cache answers only when the network can't) and
+**`assets/` is cache-first**, revalidated behind the player's back: one launch on
+an old sprite sheet is cosmetic, one launch on old code is a wrong build.
+
+Underneath that sits a second cache that undid it once: a worker's `fetch` is
+served by the browser's ordinary HTTP cache, which does not know it is standing
+in for the network. GitHub Pages sends `max-age=600`, so for ten minutes
+"network-first" quietly meant "disk-first" and a build pushed between two loads
+did not arrive at all — a *regression* against having no worker, since a reload
+revalidates a page's own subresources and a worker's fetch does not inherit
+that. Every request `sw.js` makes is therefore reissued `cache: "no-cache"`.
+Don't tidy that away; the reasoning is written out at the top of the file.
+
+Two more things about it are load-bearing. **Every path is relative** (`./sw.js`,
+`./index.html`), because the live site is a subdirectory — an absolute path
+resolves to `luguza.github.io/` and either 404s or takes a scope that excludes
+the game. And **registration failing is a non-event**: it is wrapped and
+swallowed, since opening `index.html` off the disk is a supported way to look at
+this game and `file://` cannot have a worker. Nothing about it may reach the
+console, because the smoke test fails the build on a single console error and
+that rule is worth more than this feature is.
+
+There is deliberately **no "update ready, tap to reload" affordance**. The worker
+claims the page as soon as it installs and serves code network-first, so a
+reload is already current and such a prompt would have nothing to offer. (It
+would also have to be a tappable button — this game has no keyboard
+affordances; see above.)
+
 ## Module map — where things live
 
 Load order is set by the `<script>` list in `index.html` (data → logic → render
 → screens → loop → bootstrap). **Add any new `src/*.js` file to that list.**
 
+`sw.js` sits at the repo root rather than in `src/` on purpose: a worker only
+controls the folder it is served from, so from `src/` it could not carry
+`index.html`. It is not a `<script>` and is not in that list — but its precache
+IS a transcription of that list, and the smoke test fails if the two drift.
+
 | File | Owns |
 |------|------|
 | `src/core.js` | `window.Incanto` root namespace (loads first) |
+| `src/offline.js` | registers the service worker — the doorbell, not the rules; what `sw.js` caches and why is written at the top of `sw.js`. Registers late (on `load`, so the ~1,6 MB precache doesn't race the launch the player is waiting on), by a **relative** path (the live site is a subdirectory), and fails **silently** (there are ordinary ways to have no worker — `file://` first among them — and none of them is a thing to tell the player about or to put in the console) |
 | `src/dark-paint.js` | **painting a colour a phone's dark mode cannot repaint**: `flood()` (flat), `ramp()` (a colour running across a shape), `dropShadow()`. All build `feFlood`-based filters into one document-level `<defs>`, since a flood's colour is a filter constant and never gets classified. A stylesheet can't call `flood()`, so the colours the stylesheets use are registered in `CSS_FLOODS` and referenced as `url(#fl-<hex>)` — the same hex twice, so the two can't drift. Loads early, before anything draws |
 | `src/pixel-font.js` | **`Incanto.pixelFont`** — a bitmap font for text drawn INSIDE a canvas scene, which is the tavern's speech bubbles and nothing else so far. The DOM handles every other word in the game and should; this is for words that belong to the ROOM rather than to the interface, where a crisp browser panel over a pixel picture reads as an interface interrupting it. ALL CAPS on purpose — at five pixels of cap height a mixed-case font's `a` and `o` are the same blob, and `draw` uppercases what it is given. A glyph is rows of `#`/`.` and is as wide as it needs to be (`I` is one pixel, `M` is five); rows above five carry an accent and are drawn higher, since the baseline is the bottom row either way. Loads early, before anything draws |
 | `src/config.js` | `CONFIG` — all gameplay numbers, flags, colours, **the bestiary** (`enemyTypes`, where a variant's sprite, colour filter, size, stats, CADENCE (`attackMs` — what one blow costs is `dmgMult`, how often it lands is `attackMs`, and only the two together say what a body is worth) and ROLE — melee / ranged / summoner / healer — are defined, plus `slimeTiers`, the HP→size ladder the one SPLITTING family walks down), and the two numbers the whole balance hangs off: **`treeGold`** (what the entire tree costs, end to end — every node's price is a share of it, by depth and by how many of its ranks you already own) and **`treeTotals`** (how much of each stat the whole tree contains). They are set against each other so an endgame build walks ~90 % of the nodes and actually reaches the totals. No runtime caps, soft caps or diminishing returns exist anywhere; a stat's total is its ceiling because it bounds the supply, and every node pays exactly what it prints. Damage is built in three stages (Kern → Verstärkung → Zuschlag). **The spread between a bare hero and a walked-out one is the design** — 16 damage to ~2.150, 112 LP to ~2.550 with about half of every blow turned aside — and the bestiary is baked against it: a body's pressure per second ramps ×13 from chapter 2 to the door and its HP pool ×4,2 again on top of the tiers' own climb. Both ramps are BAKED INTO the table, so re-deriving one means re-deriving it from the original authored weights or the factors compound silently. `heroArmorK` / `heroArmorMaxReduction` are the hero's own plate (the tree stat `armor`), the same fraction curve the bodies wear read from the other side — and it deliberately does NOT cover the backfire from a wrong match |
@@ -216,6 +268,11 @@ point `gh-pages` at yours whenever you want it reviewable live.
   other's preview — that's fine, just be aware).
 - After a PR merges to `main`, repoint Pages at production so the public site
   tracks `main` again: `./tools/deploy-preview.sh main`.
+- The preview is served through a service worker. Code and markup are fetched
+  network-first, so a force-push lands on the reviewer's very next load with
+  nothing to clear — that is precisely what the strategy is chosen for (see
+  "The game has to work with no network"). If a change ever seems not to have
+  deployed, read the top of `sw.js` before touching the caching.
 
 ## Verifying changes
 

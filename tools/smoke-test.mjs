@@ -40,19 +40,37 @@ const MIME = {
   ".png": "image/png", ".otf": "font/otf", ".webmanifest": "application/manifest+json",
   ".txt": "text/plain", ".json": "application/json",
 };
-const server = createServer(async (req, res) => {
-  try {
-    let p = decodeURIComponent(req.url.split("?")[0]);
-    if (p === "/") p = "/index.html";
-    const buf = await readFile(join(ROOT, p));
-    res.writeHead(200, { "Content-Type": MIME[extname(p)] || "application/octet-stream" });
-    res.end(buf);
-  } catch {
-    res.writeHead(404); res.end("not found");
-  }
-});
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const INDEX_URL = `http://127.0.0.1:${server.address().port}/index.html`;
+//
+// Started as a function because the offline check (section 13) needs a SECOND
+// one it is allowed to KILL: proving the service worker really serves the game
+// with no network means taking the server away, and `context.setOffline` does
+// not reach a worker's own fetches — it goes on answering them, so a run driven
+// that way passes while the cache is never touched.
+const startServer = async () => {
+  const sockets = new Set();
+  const srv = createServer(async (req, res) => {
+    try {
+      let p = decodeURIComponent(req.url.split("?")[0]);
+      if (p === "/") p = "/index.html";
+      const buf = await readFile(join(ROOT, p));
+      res.writeHead(200, { "Content-Type": MIME[extname(p)] || "application/octet-stream" });
+      res.end(buf);
+    } catch {
+      res.writeHead(404); res.end("not found");
+    }
+  });
+  srv.on("connection", (s) => { sockets.add(s); s.on("close", () => sockets.delete(s)); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  return {
+    url: `http://127.0.0.1:${srv.address().port}/index.html`,
+    close: () => new Promise((r) => {
+      srv.close(r);
+      for (const s of sockets) s.destroy();   // keep-alive would outlive close()
+    }),
+  };
+};
+const server = await startServer();
+const INDEX_URL = server.url;
 
 const errors = [];
 let browser;
@@ -2441,6 +2459,93 @@ try {
   check(await page.evaluate(() => state.devMode === false && !document.querySelector(".dev-bar")),
     "switching the slider back off puts the tools away");
 
+  // 13. Offline. The game is installed to a homescreen (manifest.webmanifest,
+  //     "display": "standalone") and played on a train, so a service worker
+  //     (sw.js, registered by src/offline.js) has to carry the whole of it.
+  //
+  //     Two halves, and the first is the one that rots quietly: the precache
+  //     list in sw.js is a TRANSCRIPTION of the <link>/<script> list in
+  //     index.html, and nothing at runtime would notice them drifting apart —
+  //     a new src/*.js file added to the page but not to the worker simply
+  //     goes missing on the first train, months later. So they are compared
+  //     here, both ways.
+  const [indexSrc, swSrc] = await Promise.all([
+    readFile(join(ROOT, "index.html"), "utf8"),
+    readFile(join(ROOT, "sw.js"), "utf8"),
+  ]);
+  const pageFiles = [...indexSrc.matchAll(/(?:src|href)="((?:src|styles)\/[^"]+)"/g)].map((m) => m[1]);
+  // The PRECACHE array itself, not the whole file: sw.js quotes a few of these
+  // paths in its own comments, and a comment is not a promise to cache anything.
+  const list = swSrc.slice(swSrc.indexOf("const PRECACHE = ["), swSrc.indexOf("];"));
+  const precached = [...list.matchAll(/"\.\/([^"]+)"/g)].map((m) => m[1]);
+  const unshipped = pageFiles.filter((f) => !precached.includes(f));
+  const orphaned = precached.filter((f) => /^(src|styles)\//.test(f) && !pageFiles.includes(f));
+  check(pageFiles.length > 30 && unshipped.length === 0 && orphaned.length === 0,
+    "sw.js precaches exactly what index.html loads (" + pageFiles.length + " files" +
+    (unshipped.length ? ", MISSING: " + unshipped.join(" ") : "") +
+    (orphaned.length ? ", STALE: " + orphaned.join(" ") : "") + ")");
+
+  //     The second half is the claim itself, and it is only worth making if the
+  //     network is really gone — so this runs against a server of its own and
+  //     then TAKES IT AWAY. (A worker's fetches survive Playwright's offline
+  //     emulation, which would let a broken cache pass.)
+  const offServer = await startServer();
+  const offPage = await browser.newPage({ viewport: { width: 420, height: 780 } });
+  offPage.on("pageerror", (e) => errors.push("offline pageerror: " + e.message));
+  offPage.on("console", (m) => {
+    if (m.type() === "error") errors.push("offline console.error: " + m.text());
+  });
+  await offPage.goto(offServer.url, { waitUntil: "load" });
+  await offPage.waitForSelector("canvas.tav-scene", { timeout: 5000 });
+  const worker = await offPage.evaluate(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    const names = (await caches.keys()).filter((n) => n.startsWith("incanto-"));
+    const held = await (await caches.open(names[0])).keys();
+    return { scope: reg.scope, state: reg.active && reg.active.state, caches: names, held: held.length };
+  });
+  check(worker.state === "activated" && worker.caches.length === 1,
+    "the worker installs and activates over plain HTTP (" + worker.state +
+    ", cache " + worker.caches.join(",") + ")");
+  check(worker.held >= pageFiles.length + 6,
+    "…and the precache holds the game (" + worker.held + " responses)");
+  //     Scope comes from the worker's own location, never a hard-coded path:
+  //     the live site is a SUBDIRECTORY (…/Incanto/), where an absolute scope
+  //     would be refused and an absolute "/sw.js" would 404.
+  check(worker.scope === new URL("./", offServer.url).href,
+    "…with a scope taken from where it was served (" + worker.scope + ")");
+
+  await offServer.close();
+  await offPage.reload({ waitUntil: "load" });
+  await offPage.waitForSelector("canvas.tav-scene", { timeout: 15000 });
+  await offPage.waitForTimeout(900);
+  const gone = await offPage.evaluate(() => ({
+    screen: state.screen,
+    modules: Object.keys(window.Incanto).length,
+    tavern: typeof tavern !== "undefined" && !!tavern,
+  }));
+  check(gone.screen === "tavern" && gone.modules >= 10 && gone.tavern,
+    "with the server switched off, a reload still boots the tavern (" +
+    gone.modules + " modules)");
+  const offShot = await offPage.locator("canvas.tav-scene").screenshot();
+  check(offShot.length > 1500,
+    "…and the room actually paints from the cache (" + offShot.length + " bytes)");
+
+  //     The corridor too, which is the one that could fail on its own: its
+  //     creature frames are cut out of assets/dungeon_tiles.png with
+  //     getImageData at boot, so a sprite sheet the cache missed does not dim
+  //     the art, it stops the game.
+  await offPage.evaluate(() => { navTo("combat"); render(performance.now()); });
+  await offPage.waitForSelector("canvas.scene", { timeout: 5000 });
+  await offPage.waitForTimeout(600);
+  const offRun = await offPage.evaluate(() => ({
+    run: state.runActive, runes: state.runes.length,
+    baked: typeof ASSETS !== "undefined" && !!ASSETS && !!ASSETS.skelet,
+  }));
+  check(offRun.run && offRun.runes > 0 && offRun.baked,
+    "…and the hall runs with its sheet baked from the cached copy (" +
+    offRun.runes + " runes)");
+  await offPage.close();
+
   check(errors.length === 0, "no console/page errors");
 
   console.log("\nSMOKE TEST PASSED");
@@ -2450,5 +2555,5 @@ try {
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close();
-  server.close();
+  await server.close();
 }
