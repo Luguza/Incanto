@@ -26,6 +26,16 @@
 // passato prossimo) it is kept and placed late, because a learner meets both
 // long before they are ready to be examined on them.
 //
+// Where a rule is finer than a beginner's coursebook bothers to state it — what
+// decides the plural of a noun on -co, which shortened form of bello goes where
+// — it is checked against the reference grammars that are online in full:
+// Treccani's «La grammatica italiana» and «Enciclopedia dell'Italiano», the
+// Accademia della Crusca's consulenza linguistica, and Zanichelli's Aula di
+// lingue. Two rules in here came back rewritten because of it, and both had
+// been written as "you have to learn each word" — which is what a page says
+// when nobody looked the rule up. A lecture is a fixed page somebody is being
+// TAUGHT from; "roughly right" is not a standard it can be written to.
+//
 // House rules for writing one — `tools/check-grammar.mjs` enforces them:
 //   • Explanations are in GERMAN, examples in Italian, and every Italian
 //     example carries its German gloss. The interface is German; a grammar
@@ -232,14 +242,15 @@ const GRAMMAR_LECTURES = [
         { t: "bad", wrong: "le mucce", right: "le mucche" },
       ] },
       { blocks: [
-        { t: "p", de: "Bei den männlichen Formen auf -co und -go hilft dieselbe Überlegung nicht weiter: die einen behalten den harten Klang und schreiben das h, die anderen geben ihn auf." },
+        { t: "p", de: "Bei den männlichen Formen auf -co und -go entscheidet die Betonung. Liegt sie auf der vorletzten Silbe — und das ist bei fast allen so —, bleibt der harte Klang und das h kommt mit:" },
         { t: "table", head: ["Singular", "Plural"], cols: ["it", "it"], rows: [
           ["il parco", "i parchi"],
-          ["l'amico", "gli amici"],
+          ["il lago", "i laghi"],
+          ["il fuoco", "i fuochi"],
         ] },
+        { t: "p", de: "Eine Handvoll sehr häufiger Wörter macht es trotzdem anders, und das bekannteste davon ist amico:" },
         { t: "ex", it: "gli amici", de: "die Freunde", note: "ohne h — gesprochen „amitschi“" },
-        { t: "p", de: "Hier hilft nur, den Plural gleich mitzulernen. Bei den weiblichen auf -ca und -ga musst du das nie: die nehmen das h ausnahmslos." },
-        { t: "rule", de: "-ca und -ga bekommen im Plural ein h. Bei -co und -go entscheidet das einzelne Wort." },
+        { t: "rule", de: "-ca und -ga bekommen im Plural immer ein h. Bei -co und -go bekommen es fast alle — amico ist die Ausnahme, die man kennt." },
       ] },
     ],
     drills: [
@@ -619,7 +630,7 @@ const GRAMMAR_LECTURES = [
         ] },
       ] },
       { blocks: [
-        { t: "p", de: "Der Fehler, der hier passiert, ist der umgekehrte zu vorhin: statt der Endung des Nomens zu folgen, wird eine erfunden, die es bei dieser Gruppe gar nicht gibt." },
+        { t: "p", de: "Der Fehler, der hier passiert, ist der umgekehrte: statt der Endung des Nomens zu folgen, wird eine erfunden, die es bei dieser Gruppe gar nicht gibt." },
         { t: "bad", wrong: "la casa granda", right: "la casa grande" },
         { t: "bad", wrong: "le case grande", right: "le case grandi" },
       ] },
@@ -674,12 +685,19 @@ const GRAMMAR_LECTURES = [
         { t: "p", de: "Hinten stehen dürfen sie auch — es ist eine Gewohnheit, keine Regel." },
       ] },
       { blocks: [
-        { t: "p", de: "Zwei aus dieser Gruppe kürzen sich vor dem Nomen, genau wie die Artikel es tun. Aus buono wird buon, aus bello wird bel." },
-        { t: "table", head: ["nach dem Nomen", "vor dem Nomen"], cols: ["it", "it"], rows: [
-          ["un caffè buono", "un buon caffè"],
-          ["un libro bello", "un bel libro"],
+        { t: "p", de: "Zwei aus dieser Gruppe verändern sich vor dem Nomen, und zwar nach einem Muster, das du schon kennst: buono verhält sich wie der unbestimmte Artikel." },
+        { t: "table", head: ["Artikel", "vor dem Nomen"], cols: ["it", "it"], rows: [
+          ["un caffè", "un buon caffè"],
+          ["uno studente", "un buono studente"],
+          ["un amico", "un buon amico"],
         ] },
-        { t: "p", de: "Weiblich bleiben sie, wie sie sind: una buona idea, una bella casa." },
+        { t: "p", de: "Und bello verhält sich wie der bestimmte Artikel — il, lo und l' geben die Form vor:" },
+        { t: "table", head: ["Artikel", "vor dem Nomen"], cols: ["it", "it"], rows: [
+          ["il libro", "un bel libro"],
+          ["lo specchio", "un bello specchio"],
+          ["l'amico", "un bell'amico"],
+        ] },
+        { t: "p", de: "Hinter dem Nomen bleiben beide vollständig: un caffè buono, un libro bello. Weiblich ebenso: una buona idea, una bella casa." },
       ] },
       { blocks: [
         { t: "p", de: "Bei einigen wenigen Adjektiven ändert die Stellung sogar die Bedeutung. Das bekannteste Paar:" },
@@ -1217,7 +1235,7 @@ const GRAMMAR_LECTURES = [
         { t: "ex", it: "Noi capiamo tutto", de: "Wir verstehen alles" },
       ] },
       { blocks: [
-        { t: "p", de: "Der Grundform sieht man nicht an, ob ein -ire-Verb dazugehört. Das muss man pro Verb lernen — auf A1 ist die Liste aber kurz:" },
+        { t: "p", de: "Der Grundform sieht man nicht an, ob ein -ire-Verb dazugehört. Das muss man pro Verb lernen, und die Liste ist kurz:" },
         { t: "table", head: ["Verb", "deutsch", "io-Form"], cols: ["it", "de", "it"], rows: [
           ["capire", "verstehen", "capisco"],
           ["finire", "beenden", "finisco"],
@@ -1225,7 +1243,7 @@ const GRAMMAR_LECTURES = [
           ["pulire", "putzen", "pulisco"],
           ["spedire", "verschicken", "spedisco"],
         ] },
-        { t: "p", de: "Dem gegenüber stehen die vier gewöhnlichen aus der vorigen Lektion: dormire, sentire, aprire, partire. Neun Verben zusammen — und damit die ganze Gruppe, die auf A1 vorkommt." },
+        { t: "p", de: "Dem gegenüber stehen die vier gewöhnlichen: dormire, sentire, aprire, partire. Neun Verben, und damit die ganze Gruppe." },
       ] },
     ],
     drills: [
@@ -1425,7 +1443,7 @@ const GRAMMAR_LECTURES = [
           ["voi", "volete", "dovete"],
           ["loro", "vogliono", "devono"],
         ] },
-        { t: "p", de: "Auch hier gilt die Regel aus der letzten Lektion: voi ist regelmäßig (potete, volete, dovete), und noi liegt nah daran." },
+        { t: "p", de: "Auch hier ist die voi-Form vollkommen regelmäßig — potete, volete, dovete —, und noi liegt nah daran." },
       ] },
       { blocks: [
         { t: "p", de: "Was die drei bedeuten:" },
