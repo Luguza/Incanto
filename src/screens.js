@@ -67,7 +67,11 @@ function renderQuizSteps() {
     // it is read, not answered. Turned pages mark themselves quietly so the bar
     // still says where in the lecture you are without pretending you scored.
     const page = q.type === "explain" ? " page" : "";
-    const cls = r ? `qstep ${r}` : i === state.quizIndex ? `qstep now${page}`
+    // A lecture can be walked back through, so "answered" and "where you are"
+    // are two things that can be true of the same cell at once — the verdict
+    // keeps the colour, `now` adds the ring on top of it.
+    const now = i === state.quizIndex ? " now" : "";
+    const cls = r ? `qstep ${r}${now}` : now ? `qstep now${page}`
       : i < state.quizIndex ? `qstep read${page}` : `qstep${page}`;
     return `<span class="${cls}"></span>`;
   }).join("");
@@ -96,11 +100,26 @@ function quizHeaderMeta() {
   const n = state.quizList.length;
   const at = state.quizIndex + 1;
   if (state.quizMode === "grammar") {
-    // Three things, the same three the quiz's row carries. Which lecture this
-    // is belongs in the caption under the header, not up here — the row is
-    // 360 px wide on the phone this is played on, and a fourth item in it
-    // wrapped the step counter onto a second line.
+    // Four things, and the row is FULL at four: it is 360 px wide on the phone
+    // this is played on, and naming the lecture up here — the obvious fourth
+    // item — wrapped the step counter onto a second line, which is why the
+    // lecture's name lives in the caption under the header instead. What fits
+    // beside the three is a glyph (see .quiz-step-back for the arithmetic).
+    //
+    // That glyph is the ONE place a lecture is stepped back from. It belongs up
+    // here rather than beside the primary button, because the foot bar's whole
+    // discipline is that the button under the thumb never moves — and a back
+    // button is where every other back button in this game is (the shelf's, the
+    // history's), at the head of the screen.
+    //
+    // It is rendered DISABLED on the first step rather than left out, so the row
+    // keeps its shape and the counter beside it never slides sideways between
+    // one step and the next.
+    const canBack = lectureCanStepBack();
+    const back = `<button class="ghost-btn quiz-step-back" data-act="lectureStepBack"
+      title="Einen Schritt zurück" aria-label="Einen Schritt zurück" ${canBack ? "" : "disabled"}>←</button>`;
     return `<div class="quiz-meta">
+      ${back}
       <span class="quiz-count">Schritt <b>${at}</b> / ${n}</span>
       <span class="quiz-purse" title="in dieser Lektion verdient"><span class="gem">◆</span> ${state.quizGemsEarned}</span>
       <button class="ghost-btn quiz-history-btn" data-act="closeLecture">Verlassen</button>
