@@ -624,6 +624,16 @@ function rafLoop(now) {
       if (state.mods.regen > 0 && state.heroHP < state.heroMaxHP) {
         state.heroHP = Math.min(state.heroMaxHP, state.heroHP + state.mods.regen * effectiveDt / 1000);
       }
+      // MANA. The pool refills on its own clock and never stops while the run
+      // is live — including while the player is off at the quiz, exactly as the
+      // bodies keep walking and the hero keeps bleeding. It is what a cast is
+      // paid for out of, and therefore what decides how often one can happen:
+      // see CONFIG.manaBase for why the game's rate of fire was taken out of
+      // the player's hands.
+      if (state.heroMana < state.heroMaxMana) {
+        state.heroMana = Math.min(state.heroMaxMana,
+          state.heroMana + manaRegenPerSec() * effectiveDt / 1000);
+      }
       updateSpawns(now);
       updateEnemies(now, effectiveDt);
       // A Meteoritenschauer resolves rock by rock as it comes down rather than
@@ -643,6 +653,12 @@ function rafLoop(now) {
         state.pendingShapeAt = 0;
         onShapeComplete(now);
       }
+      // A shape finished before the pool could pay for it. onShapeComplete bails
+      // while the mana is short and sets castHeldSince, so ask it again every
+      // frame: the cast goes off on the beat the pool crosses the page's price.
+      // Gated on the combat screen with the two above it, and for the same
+      // reason — the board must not advance while nobody is at the circle.
+      if (state.castHeldSince && state.screen === "combat") onShapeComplete(now);
     }
 
     render(now);

@@ -171,6 +171,50 @@ function castChargeMs() {
   return CONFIG.castChargeMs / (1 + (state.mods.castHaste || 0));
 }
 
+// ---------------------------------------------------------------------------
+// MANA — what a page costs to turn, and how fast the pool comes back.
+//
+// This is the hero's RATE OF FIRE, and since the rune circle stopped being one
+// (see CONFIG.manaBase), it is the only thing that is. A cheap page can be cast
+// more often than an expensive one, which is the whole of the trade between
+// them: the Frostkegel barely scratches anything and is the cheapest thing in
+// the book precisely so that the setup it exists for is affordable, and the
+// Meteoritenschauer costs half again what the Feuerball does because it lands
+// four rocks instead of one ball.
+//
+// A cost is read off the page rather than passed in, so the spell a shape fires
+// and the spell a shape is CHARGED for can never come apart — including the one
+// case where they could have: switching pages while a shape hangs waiting for
+// mana turns the cast into the new page's cast, at the new page's price.
+// ---------------------------------------------------------------------------
+function spellMana(id) {
+  const cfg = CONFIG.spells[id];
+  return cfg && cfg.mana ? cfg.mana : 0;
+}
+function activeSpellMana() { return spellMana(activeSpellId()); }
+
+// Mana per second, always ticking while a run is live (see rafLoop). Flat and
+// additive, like LP regen: the tree holds so much of it and no more, and what
+// it buys is read straight off the Werte screen as seconds per cast.
+function manaRegenPerSec() {
+  return CONFIG.manaRegenBase + (state.mods.manaRegen || 0);
+}
+
+// Can the pool pay for the page the book is open at? The epsilon is not
+// cosmetic: the pool is filled by a per-frame float and would otherwise sit at
+// 29,999999 of a 30 mana cost for a whole extra frame — or, at an unlucky
+// rounding, for good.
+function manaReady() {
+  return (state.heroMana || 0) >= activeSpellMana() - 1e-6;
+}
+
+// How long the pool needs before the open page can be cast again from empty —
+// the number the whole pacing argument rests on, and the one the ledger prints.
+function secondsPerCast(id = activeSpellId()) {
+  const rate = manaRegenPerSec();
+  return rate > 0 ? spellMana(id) / rate : Infinity;
+}
+
 // Living skeletons nearest the hero first — the order every targeted spell
 // picks from.
 function spellTargets() {
@@ -613,6 +657,11 @@ function castActiveSpell(now) {
     },
   };
 
+  // Paid for HERE rather than where the shape completed, so the price and the
+  // spell are read out of the same place in the same breath (see spellMana).
+  // onShapeComplete has already made sure the pool covers it.
+  state.heroMana = Math.max(0, (state.heroMana || 0) - spellMana(id));
+
   const dealt = SPELL_RESOLVERS[id](ctx) || 0;
   // A primed cast is spent the moment it goes off, whether or not it connected.
   if (shatter) state.spellPrimeUntil = 0;
@@ -628,6 +677,7 @@ function castActiveSpell(now) {
 window.Incanto.spells = {
   SPELLS, SPELL_BY_ID, STARTER_SPELL, spellUnlocked, activeSpellId, activeSpell,
   spellSelect, spellPower, castActiveSpell, primeActive, castChargeMs, applySpellHit,
+  spellMana, activeSpellMana, manaRegenPerSec, manaReady, secondsPerCast,
   meteorField, updateMeteorRocks,
   normalizeSpellOrder, bookOrder, bookSpells, bookSlot, swapBookPages,
 };

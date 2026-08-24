@@ -82,10 +82,75 @@
     flex: 0 0 auto;
     width: 100%;
     display: flex; align-items: center; gap: 8px;
-    padding: 5px max(3vw, env(safe-area-inset-left)) 5px max(3vw, env(safe-area-inset-right));
+    padding: 4px max(3vw, env(safe-area-inset-left)) 4px max(3vw, env(safe-area-inset-right));
     background: #1b1624;
     border-top: 1px solid #3a3550;
     border-bottom: 1px solid #3a3550;
+  }
+  /* The strip carries two bars now — LP and mana — stacked in one row rather
+     than in two, so the height it costs the rune circle is a few pixels and not
+     a whole line (see the note at the top of this file, and patchCombatContinuous).
+     The mana bar is the thinner of the two on purpose: it is read by counting
+     its divisions, not by measuring its length. */
+  .hud-bars {
+    flex: 1 1 auto; min-width: 0;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .mana-track {
+    /* One segment = one cast of the page the book is open at. --seg is that
+       page's price as a share of the whole pool, set per frame in
+       patchCombatContinuous; the gradient rules a 2px divider at the end of
+       every segment. `calc` inside a colour-stop position keeps the last,
+       partial segment honest — it simply gets cut short by the bar's end. */
+    --seg: 100%;
+    position: relative;
+    width: 100%; height: 6px;
+    background: #241f2f; border: 1px solid #3a3550; border-radius: 4px; overflow: hidden;
+    transition: opacity 160ms linear;
+  }
+  /* THE DIVISIONS ARE RULED TWICE, and that is not belt and braces: a segment
+     has to be countable on the SPENT part of the bar as well as the filled one,
+     or the strip only ever says how many casts you have and never how many the
+     pool holds. A dark tick disappears on the dark empty track and a light one
+     disappears on the light fill — so the light ruling goes UNDER the fill
+     (where only the empty stretch can show it) and the dark ruling OVER it. */
+  .mana-track::before,
+  .mana-track::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+  }
+  .mana-track::before {
+    z-index: 0;
+    background: repeating-linear-gradient(90deg,
+      rgba(0,0,0,0) 0, rgba(0,0,0,0) calc(var(--seg) - 2px),
+      #453f5c calc(var(--seg) - 2px), #453f5c var(--seg));
+  }
+  .mana-track::after {
+    z-index: 2;
+    background: repeating-linear-gradient(90deg,
+      rgba(0,0,0,0) 0, rgba(0,0,0,0) calc(var(--seg) - 2px),
+      rgba(12,10,20,0.85) calc(var(--seg) - 2px), rgba(12,10,20,0.85) var(--seg));
+  }
+  .mana-fill {
+    position: relative; z-index: 1;
+    height: 100%;
+    background: linear-gradient(90deg, #3f56b8, #7f9dff);
+    transition: width 120ms linear;
+  }
+  /* Not enough in the pool for the open page: the strip steps back rather than
+     shouting. There is nothing to DO about it — the shape will go off by itself
+     — so it must not read as an error. */
+  .mana-track.short { opacity: 0.72; }
+  /* …and the chords the player already drew breathe with it, so the wait reads
+     as the staff gathering rather than as a tap that didn't register. */
+  .combat-screen.gathering .chord,
+  .combat-screen.gathering .chord-glow { animation: mana-gather 900ms ease-in-out infinite; }
+  /* A finished shape is waiting on the pool. This is the one mana state that
+     has to catch the eye, because it is the game saying the player's part is
+     already done. */
+  .mana-track.gathering .mana-fill { animation: mana-gather 900ms ease-in-out infinite; }
+  @keyframes mana-gather {
+    0%, 100% { filter: brightness(1); }
+    50%      { filter: brightness(1.75); }
   }
   .hp-figures {
     flex: 0 0 auto;
@@ -94,8 +159,8 @@
   }
   .hp-track {
     flex: 1 1 auto;
-    width: 100%; height: 12px;
-    background: #241f2f; border: 1px solid #3a3550; border-radius: 6px; overflow: hidden;
+    width: 100%; height: 10px;
+    background: #241f2f; border: 1px solid #3a3550; border-radius: 5px; overflow: hidden;
   }
   .hp-fill { height: 100%; transition: width 180ms linear; }
   .hp-track.hero .hp-fill { background: linear-gradient(90deg, #2f9e57, #5ecf8f); }
