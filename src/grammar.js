@@ -58,6 +58,23 @@
 //     to test which article `libro` takes. So the early lectures drill NOUN
 //     PHRASES rather than sentences — that is not a limitation to work around,
 //     it is what a chapter on gender and articles has always drilled.
+//   • A PAGE IS WRITTEN IN THE VOICE OF A TEXTBOOK, NOT IN THE VOICE OF THIS
+//     FILE. The comments here argue: long sentences, an aside behind every
+//     em-dash, a closing line that lands the point. On a lecture page that same
+//     voice reads as text generated about Italian rather than a page teaching
+//     it — which is how it was reported, and the tells were countable (99
+//     em-dashes, nearly one per paragraph, almost all the same trailing aside).
+//     So: no em-dash in a sentence, no CAPITALS for emphasis, no pointing at
+//     the syllabus (the CEFR level, which lecture something was in, what "gets
+//     its own lecture later"). `check-grammar.mjs` fails on those three. The
+//     rest is judgement and is written out above `checkVoice` there: end a
+//     paragraph on information rather than on a line that lands, don't run
+//     "nicht X, sondern Y" down a whole unit, and say the thing instead of
+//     telling the reader to look at it.
+//   • DON'T STATE A RULE THE AUTHOR DIDN'T LOOK UP. "That one you have to learn
+//     word by word" was written twice where a real rule exists — the plural of
+//     -co/-go is decided by stress, and bello/buono follow the two articles.
+//     Both were found in half an hour in the reference grammars named above.
 //   • A lecture holds exactly CONFIG.grammar.drillCount drills, and they climb:
 //     recognition first (pick, pair), production last (write, build, para).
 //   • No raw `<` or `&` in any authored string — it is interpolated into the
@@ -117,7 +134,7 @@ const GRAMMAR_UNITS = [
   { id: "adj",     title: "Adjektive",          blurb: "Wie ein Eigenschaftswort sich anpasst" },
   { id: "praes",   title: "Verben: Präsens",    blurb: "Die Gegenwart, von essere bis zu den Reflexiven" },
   { id: "satz",    title: "Sätze bauen",        blurb: "Fragen, Verneinung und was Italienisch weglässt" },
-  { id: "praep",   title: "Präpositionen",      blurb: "di, a, da, in — und was passiert, wenn ein Artikel folgt" },
+  { id: "praep",   title: "Präpositionen",      blurb: "di, a, da, in und ihre Formen mit Artikel" },
   { id: "besitz",  title: "Besitz und Zeigen",  blurb: "mein, dein, dieser, jener" },
   { id: "zahlen",  title: "Zahlen und Zeit",    blurb: "Zählen, die Uhrzeit und das Datum" },
   { id: "pron",    title: "Pronomen",           blurb: "mi piace, lo, gli und die Höflichkeitsform" },
@@ -804,8 +821,8 @@ const GRAMMAR_LECTURES = [
       { blocks: [
         { t: "p", de: "molto, poco und troppo haben zwei Funktionen. Welche gemeint ist, hängt vom Wort dahinter ab." },
         { t: "table", head: ["Stellung", "Rolle", "Beispiel"], cols: ["label", "de", "it"], rows: [
-          ["vor einem Nomen", "Adjektiv — es passt sich an", "molta acqua"],
-          ["vor einem Adjektiv", "Adverb — es bleibt gleich", "molto stanco"],
+          ["vor einem Nomen", "Adjektiv, passt sich an", "molta acqua"],
+          ["vor einem Adjektiv", "Adverb, bleibt gleich", "molto stanco"],
         ] },
       ] },
       { blocks: [

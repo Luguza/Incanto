@@ -41,6 +41,8 @@
 //     the vocabulary would be holding it to being right.
 //   • no raw < or & in an authored string — it goes into the page as written,
 //     the way every other authored string in this game does
+//   • the PAGE VOICE rules — see `checkVoice` below for what they are and what
+//     each of them cost before it was written down
 //
 // Run: node tools/check-grammar.mjs   (exits non-zero on any failure)
 // ==============================================================================
@@ -97,6 +99,59 @@ function checkItalian(where, text, extra) {
   }
 }
 
+// ==============================================================================
+// The page voice.
+//
+// A lecture page is read by a learner, not by the person maintaining this repo,
+// and the two want opposite prose. The comments in this codebase are written to
+// argue — long sentences, an aside behind every em-dash, a line at the end that
+// lands the point. Written into a lecture that voice reads as what it is: text
+// generated about Italian rather than a page teaching it. It was reported that
+// way, and the tells turned out to be countable — ninety-nine em-dashes across
+// the file, nearly one per paragraph, almost all of them the same trailing
+// aside, plus a punchline fragment closing paragraph after paragraph.
+//
+// Three of those tells can be caught mechanically, so they are:
+//
+//   • NO EM-DASH, except in the two places it is punctuation rather than an
+//     aside: a lecture title and a drill prompt, where it separates a word from
+//     its gloss (`essere — sein`), and a table cell holding nothing else, where
+//     it means the form does not exist. Anywhere else there is a full stop or a
+//     colon that says the same thing plainly. Which side of the dash is short
+//     cannot be told apart from an aside by counting words, so the licence is
+//     given by WHERE the string is, not by how it reads.
+//   • NO CAPITALS FOR EMPHASIS. `Sieh dir an, WO die Silbe steht` is how the
+//     comments in this repo shout, and it walked straight onto a page somebody
+//     is taught from. Word order carries emphasis in German prose.
+//   • NO POINTING AT THE SYLLABUS. Not the CEFR level a list belongs to, not
+//     which lecture something was in, not that a topic "gets its own lecture
+//     later". A learner needs the Italian; the shape of the course around it is
+//     between the author and the file. (Held to prose only: `Lektion` is also
+//     the ordinary German for `lezione` and may appear in a drill's gloss.)
+//
+// What is left is not checkable and is written down instead: end a paragraph on
+// information rather than on a line that lands, vary the sentence frame instead
+// of running "nicht X, sondern Y" down a whole unit, and drop the stagey second
+// person ("Sieh dir an…", "Leg die Formen nebeneinander") in favour of saying
+// the thing. Rewriting for it is also worth doing rather than skimming: doing it
+// once turned up a page claiming only -are differs between the three verb
+// groups, which is true at lui and loro and false at voi.
+// ==============================================================================
+const ROMAN = /^[IVX]+$/;
+
+function checkVoice(where, text, { dash = "none", syllabus = false } = {}) {
+  if (typeof text !== "string") return;
+  if (dash === "none" && /[—–]/.test(text) && text.trim() !== "—") {
+    errors.push(`${where}: em-dash — the aside habit. A full stop or a colon says it plainly`);
+  }
+  for (const word of text.match(/\b[A-ZÄÖÜ]{2,}\b/g) || []) {
+    if (!ROMAN.test(word)) errors.push(`${where}: "${word}" shouts in capitals — let the word order carry it`);
+  }
+  if (syllabus && /\b(A1|A2|Lektion|Kapitel)\b/.test(text)) {
+    errors.push(`${where}: names the syllabus rather than the Italian — a learner has no use for it`);
+  }
+}
+
 // --- units --------------------------------------------------------------------
 const unitIds = new Set();
 for (const u of GRAMMAR_UNITS) {
@@ -105,6 +160,8 @@ for (const u of GRAMMAR_UNITS) {
   unitIds.add(u.id);
   checkText(`unit "${u.id}" title`, u.title);
   checkText(`unit "${u.id}" blurb`, u.blurb);
+  checkVoice(`unit "${u.id}" title`, u.title, { syllabus: true });
+  checkVoice(`unit "${u.id}" blurb`, u.blurb, { syllabus: true });
 }
 
 // --- lectures -------------------------------------------------------------------
@@ -121,6 +178,8 @@ for (const lec of GRAMMAR_LECTURES) {
   if (!lec.title || !lec.subtitle) errors.push(`${where}: missing title/subtitle`);
   checkText(`${where} title`, lec.title);
   checkText(`${where} subtitle`, lec.subtitle);
+  checkVoice(`${where} title`, lec.title, { dash: "label" });
+  checkVoice(`${where} subtitle`, lec.subtitle);
 
   const teaches = new Set((lec.teaches || []).map((w) => String(w).toLowerCase()));
   // WHAT A LECTURE HANDS OVER IS HANDED OVER BEFORE IT IS READ, not after: the
@@ -144,12 +203,18 @@ for (const lec of GRAMMAR_LECTURES) {
       for (const f of need) {
         if (b[f] === undefined || b[f] === null) errors.push(`${pw}: a "${b.t}" block is missing \`${f}\``);
       }
-      if (b.t === "p" || b.t === "rule") checkText(`${pw} ${b.t}`, b.de);
+      if (b.t === "p" || b.t === "rule") {
+        checkText(`${pw} ${b.t}`, b.de);
+        checkVoice(`${pw} ${b.t}`, b.de, { syllabus: true });
+      }
       if (b.t === "ex") {
         checkItalian(`${pw} example`, b.it, teaches);
         checkText(`${pw} example gloss`, b.de);
         if (!String(b.de || "").trim()) errors.push(`${pw}: example "${b.it}" has no German gloss`);
-        if (b.note !== undefined) checkText(`${pw} example note`, b.note);
+        if (b.note !== undefined) {
+          checkText(`${pw} example note`, b.note);
+          checkVoice(`${pw} example note`, b.note, { syllabus: true });
+        }
       }
       if (b.t === "bad") {
         checkText(`${pw} wrong form`, b.wrong);   // deliberately not real Italian
@@ -160,6 +225,7 @@ for (const lec of GRAMMAR_LECTURES) {
         for (const it of b.items || []) {
           if (b.lang === "it") checkItalian(`${pw} list item`, it, teaches);
           else checkText(`${pw} list item`, it);
+          checkVoice(`${pw} list item`, it);
         }
       }
       if (b.t === "table") {
@@ -180,6 +246,7 @@ for (const lec of GRAMMAR_LECTURES) {
           r.forEach((c, ci) => {
             if (cols[ci] === "it") checkItalian(`${pw} table cell`, c, teaches);
             else checkText(`${pw} table cell`, c);
+            checkVoice(`${pw} table cell`, c);
           });
         });
       }
@@ -200,7 +267,12 @@ for (const lec of GRAMMAR_LECTURES) {
     if (!DRILL_KINDS.has(d.k)) { errors.push(`${dw}: unknown drill kind`); return; }
     kindCounts[d.k] = (kindCounts[d.k] || 0) + 1;
     if (d.title !== undefined) checkText(`${dw} title`, d.title);
-    if (d.note !== undefined) checkText(`${dw} note`, d.note);
+    if (d.note !== undefined) {
+      checkText(`${dw} note`, d.note);
+      checkVoice(`${dw} note`, d.note, { syllabus: true });
+    }
+    if (d.q !== undefined) checkVoice(`${dw} prompt`, d.q, { dash: "label" });
+    if (d.de !== undefined) checkVoice(`${dw} gloss`, d.de);
 
     // A closed set of options: the answer has to be in it, exactly once, and
     // there have to be as many as the grid is built for.
