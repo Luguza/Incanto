@@ -228,6 +228,13 @@
   }
   .ghost-btn:hover { color: var(--arcane-pale); border-color: var(--arcane-3); background: var(--arcane-2); }
   .ghost-btn:active { background: var(--arcane-2); color: var(--ink); }
+  /* A ghost button with nowhere to go. It is dimmed rather than dropped, so a
+     row that holds one keeps its shape and nothing beside it slides sideways
+     the moment the button becomes live. */
+  .ghost-btn:disabled { opacity: 0.3; cursor: default; }
+  .ghost-btn:disabled:hover {
+    color: var(--ink-3); border-color: var(--edge); background: var(--arcane-1);
+  }
 
   /* Bottom phase-switcher: one flush panel across the whole bottom edge with
      three equal, text-free pixel-art buttons — study · forge · combat. */

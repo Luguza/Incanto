@@ -135,6 +135,11 @@ function freshState() {
     quizCorrect: 0,
     quizGoldEarned: 0,
     quizResults: [],         // per question, once settled: "right" | "wrong" | "shown" (drives the step bar)
+    // One stored answer surface per step of the session, so a lecture that is
+    // walked backwards shows what the learner actually did on the step they went
+    // back to rather than a blank one (see stashQuizStep in quiz.js). Session
+    // scratch, never persisted — a reload starts the round again anyway.
+    quizSnaps: [],
     quizChecked: false,      // the current question has been answered/checked
     quizWasCorrect: false,   // result of the checked answer
     quizRevealed: false,     // solution shown via "I don't know" (checked, but no gold)

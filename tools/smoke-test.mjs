@@ -40,19 +40,37 @@ const MIME = {
   ".png": "image/png", ".otf": "font/otf", ".webmanifest": "application/manifest+json",
   ".txt": "text/plain", ".json": "application/json",
 };
-const server = createServer(async (req, res) => {
-  try {
-    let p = decodeURIComponent(req.url.split("?")[0]);
-    if (p === "/") p = "/index.html";
-    const buf = await readFile(join(ROOT, p));
-    res.writeHead(200, { "Content-Type": MIME[extname(p)] || "application/octet-stream" });
-    res.end(buf);
-  } catch {
-    res.writeHead(404); res.end("not found");
-  }
-});
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const INDEX_URL = `http://127.0.0.1:${server.address().port}/index.html`;
+//
+// Started as a function because the offline check (section 13) needs a SECOND
+// one it is allowed to KILL: proving the service worker really serves the game
+// with no network means taking the server away, and `context.setOffline` does
+// not reach a worker's own fetches — it goes on answering them, so a run driven
+// that way passes while the cache is never touched.
+const startServer = async () => {
+  const sockets = new Set();
+  const srv = createServer(async (req, res) => {
+    try {
+      let p = decodeURIComponent(req.url.split("?")[0]);
+      if (p === "/") p = "/index.html";
+      const buf = await readFile(join(ROOT, p));
+      res.writeHead(200, { "Content-Type": MIME[extname(p)] || "application/octet-stream" });
+      res.end(buf);
+    } catch {
+      res.writeHead(404); res.end("not found");
+    }
+  });
+  srv.on("connection", (s) => { sockets.add(s); s.on("close", () => sockets.delete(s)); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  return {
+    url: `http://127.0.0.1:${srv.address().port}/index.html`,
+    close: () => new Promise((r) => {
+      srv.close(r);
+      for (const s of sockets) s.destroy();   // keep-alive would outlive close()
+    }),
+  };
+};
+const server = await startServer();
+const INDEX_URL = server.url;
 
 const errors = [];
 let browser;
@@ -1086,6 +1104,120 @@ try {
     return state.quizIndex === at;
   });
   check(lecKeyInert, "a stray key does not turn a lecture page");
+
+  // WALKING A LECTURE BACKWARDS. A drill is very often a question about a page
+  // two steps back, and re-reading that page used to mean abandoning the
+  // lecture and starting it over. Every step of a lecture now steps in both
+  // directions — and the thing that has to hold while it does is that a settled
+  // drill comes back SETTLED: revisiting it is reading the record, not being
+  // asked again, so it can never pay a second time.
+  const lecBackStart = await page.evaluate(() => {
+    const lec = Incanto.GRAMMAR_LECTURES.find((l) => l.drills.some((d) => d.k === "pick"));
+    state.gems = 0;
+    startLecture(lec.id);
+    render(performance.now());
+    return { disabled: document.querySelector(".quiz-step-back").disabled };
+  });
+  check(lecBackStart.disabled === true,
+    "the first step of a lecture has nothing behind it, and the back button says so");
+
+  const lecAnswered = await page.evaluate(() => {
+    while (state.quizList[state.quizIndex].type !== "choose") advanceQuiz();
+    const at = state.quizIndex;
+    const q = state.quizList[at];
+    quizChoose(q.options.indexOf(q.answer));
+    const gems = state.gems;
+    advanceQuiz();
+    render(performance.now());
+    return { at, gems, moved: state.quizIndex, live: !document.querySelector(".quiz-step-back").disabled };
+  });
+  check(lecAnswered.moved === lecAnswered.at + 1 && lecAnswered.live && lecAnswered.gems > 0,
+    "past the first page the back button is live (step " + (lecAnswered.moved + 1) + ")");
+
+  await page.click(".quiz-step-back");
+  const lecStepped = await page.evaluate(() => {
+    render(performance.now());
+    const q = state.quizList[state.quizIndex];
+    // …and it cannot be answered again: a second tap on a different option
+    // neither changes the verdict nor pays.
+    const gemsBefore = state.gems;
+    quizChoose((q.options.indexOf(q.answer) + 1) % q.options.length);
+    return {
+      at: state.quizIndex, checked: state.quizChecked,
+      verdict: state.quizResults[state.quizIndex],
+      paid: state.gems - gemsBefore,
+      locked: [...document.querySelectorAll(".quiz-opt")].every((b) => b.disabled),
+      banner: !!document.querySelector(".quiz-feedback"),
+      here: !!document.querySelector(".qstep.right.now, .qstep.wrong.now, .qstep.shown.now"),
+    };
+  });
+  check(lecStepped.at === lecAnswered.at && lecStepped.checked && lecStepped.banner,
+    "a tap on ← lands back on the answered drill, still showing its verdict");
+  check(lecStepped.verdict === "right" && lecStepped.paid === 0 && lecStepped.locked,
+    "the revisited drill is a record, not a question — nothing to tap, nothing paid");
+  check(lecStepped.here,
+    "the step bar keeps the verdict's colour and rings the step you stand on");
+
+  // Back past the drills is back into the lecture's own pages, which is the
+  // whole point of the thing.
+  const lecReread = await page.evaluate(() => {
+    while (state.quizList[state.quizIndex].type !== "explain" && lectureCanStepBack()) lectureStepBack();
+    render(performance.now());
+    return { type: state.quizList[state.quizIndex].type, at: state.quizIndex,
+      page: !!document.querySelector(".lec-page") };
+  });
+  check(lecReread.type === "explain" && lecReread.page,
+    "stepping back past the drills re-opens the page they are about (step " + (lecReread.at + 1) + ")");
+
+  // Forward again over the same ground: what was written on a step is still
+  // written on it, and a step never walked stays blank.
+  const lecForward = await page.evaluate(() => {
+    while (state.quizList[state.quizIndex].type !== "choose") advanceQuiz();
+    const back = { at: state.quizIndex, checked: state.quizChecked };
+    // …and a half-written answer survives the same round trip.
+    while (state.quizIndex < state.quizList.length - 1 &&
+           !["type", "fill-type", "conj-type"].includes(state.quizList[state.quizIndex].type)) advanceQuiz();
+    state.quizTyped = "halb geschrieben";
+    lectureStepBack();
+    const cleared = state.quizTyped;
+    advanceQuiz();
+    return { back, cleared, restored: state.quizTyped };
+  });
+  check(lecForward.back.checked === true,
+    "walking forward over an answered drill finds it answered still");
+  check(lecForward.cleared === "" && lecForward.restored === "halb geschrieben",
+    "a half-written answer is put away with its step and handed back on return");
+
+  // The vocab quiz keeps its one-way road: ten unrelated questions with nothing
+  // to go back and re-read, where the step bar IS the record.
+  const vocabOneWay = await page.evaluate(() => {
+    goToQuiz();
+    state.quizIndex = 2;
+    state._structuralDirty = true;
+    render(performance.now());
+    const at = state.quizIndex;
+    lectureStepBack();
+    return { button: !!document.querySelector(".quiz-step-back"), at, after: state.quizIndex };
+  });
+  check(vocabOneWay.button === false && vocabOneWay.after === vocabOneWay.at,
+    "the vocab quiz offers no step back, and refuses one asked for anyway");
+
+  // The study chain reads the same in both directions: every screen behind the
+  // Bücherei carries the step back to the one before it.
+  const studyChain = await page.evaluate(() => {
+    state.quizMode = "vocab"; state.quizLecture = null;
+    state.quizList = []; state.quizIndex = 0;
+    openStudyHub(); render(performance.now());
+    const hub = document.querySelector(".study-back");
+    hub.click();
+    const toTavern = state.screen;
+    openLectures(); render(performance.now());
+    document.querySelector(".lec-back").click();
+    const toHub = state.screen;
+    return { hub: !!hub, toTavern, toHub };
+  });
+  check(studyChain.hub && studyChain.toTavern === "tavern" && studyChain.toHub === "study",
+    "Schänke ← Bücherei ← Grammatik: every step of the chain walks back one screen");
 
   await page.evaluate(() => {
     state.quizMode = "vocab"; state.quizLecture = null;
@@ -2441,6 +2573,93 @@ try {
   check(await page.evaluate(() => state.devMode === false && !document.querySelector(".dev-bar")),
     "switching the slider back off puts the tools away");
 
+  // 13. Offline. The game is installed to a homescreen (manifest.webmanifest,
+  //     "display": "standalone") and played on a train, so a service worker
+  //     (sw.js, registered by src/offline.js) has to carry the whole of it.
+  //
+  //     Two halves, and the first is the one that rots quietly: the precache
+  //     list in sw.js is a TRANSCRIPTION of the <link>/<script> list in
+  //     index.html, and nothing at runtime would notice them drifting apart —
+  //     a new src/*.js file added to the page but not to the worker simply
+  //     goes missing on the first train, months later. So they are compared
+  //     here, both ways.
+  const [indexSrc, swSrc] = await Promise.all([
+    readFile(join(ROOT, "index.html"), "utf8"),
+    readFile(join(ROOT, "sw.js"), "utf8"),
+  ]);
+  const pageFiles = [...indexSrc.matchAll(/(?:src|href)="((?:src|styles)\/[^"]+)"/g)].map((m) => m[1]);
+  // The PRECACHE array itself, not the whole file: sw.js quotes a few of these
+  // paths in its own comments, and a comment is not a promise to cache anything.
+  const list = swSrc.slice(swSrc.indexOf("const PRECACHE = ["), swSrc.indexOf("];"));
+  const precached = [...list.matchAll(/"\.\/([^"]+)"/g)].map((m) => m[1]);
+  const unshipped = pageFiles.filter((f) => !precached.includes(f));
+  const orphaned = precached.filter((f) => /^(src|styles)\//.test(f) && !pageFiles.includes(f));
+  check(pageFiles.length > 30 && unshipped.length === 0 && orphaned.length === 0,
+    "sw.js precaches exactly what index.html loads (" + pageFiles.length + " files" +
+    (unshipped.length ? ", MISSING: " + unshipped.join(" ") : "") +
+    (orphaned.length ? ", STALE: " + orphaned.join(" ") : "") + ")");
+
+  //     The second half is the claim itself, and it is only worth making if the
+  //     network is really gone — so this runs against a server of its own and
+  //     then TAKES IT AWAY. (A worker's fetches survive Playwright's offline
+  //     emulation, which would let a broken cache pass.)
+  const offServer = await startServer();
+  const offPage = await browser.newPage({ viewport: { width: 420, height: 780 } });
+  offPage.on("pageerror", (e) => errors.push("offline pageerror: " + e.message));
+  offPage.on("console", (m) => {
+    if (m.type() === "error") errors.push("offline console.error: " + m.text());
+  });
+  await offPage.goto(offServer.url, { waitUntil: "load" });
+  await offPage.waitForSelector("canvas.tav-scene", { timeout: 5000 });
+  const worker = await offPage.evaluate(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    const names = (await caches.keys()).filter((n) => n.startsWith("incanto-"));
+    const held = await (await caches.open(names[0])).keys();
+    return { scope: reg.scope, state: reg.active && reg.active.state, caches: names, held: held.length };
+  });
+  check(worker.state === "activated" && worker.caches.length === 1,
+    "the worker installs and activates over plain HTTP (" + worker.state +
+    ", cache " + worker.caches.join(",") + ")");
+  check(worker.held >= pageFiles.length + 6,
+    "…and the precache holds the game (" + worker.held + " responses)");
+  //     Scope comes from the worker's own location, never a hard-coded path:
+  //     the live site is a SUBDIRECTORY (…/Incanto/), where an absolute scope
+  //     would be refused and an absolute "/sw.js" would 404.
+  check(worker.scope === new URL("./", offServer.url).href,
+    "…with a scope taken from where it was served (" + worker.scope + ")");
+
+  await offServer.close();
+  await offPage.reload({ waitUntil: "load" });
+  await offPage.waitForSelector("canvas.tav-scene", { timeout: 15000 });
+  await offPage.waitForTimeout(900);
+  const gone = await offPage.evaluate(() => ({
+    screen: state.screen,
+    modules: Object.keys(window.Incanto).length,
+    tavern: typeof tavern !== "undefined" && !!tavern,
+  }));
+  check(gone.screen === "tavern" && gone.modules >= 10 && gone.tavern,
+    "with the server switched off, a reload still boots the tavern (" +
+    gone.modules + " modules)");
+  const offShot = await offPage.locator("canvas.tav-scene").screenshot();
+  check(offShot.length > 1500,
+    "…and the room actually paints from the cache (" + offShot.length + " bytes)");
+
+  //     The corridor too, which is the one that could fail on its own: its
+  //     creature frames are cut out of assets/dungeon_tiles.png with
+  //     getImageData at boot, so a sprite sheet the cache missed does not dim
+  //     the art, it stops the game.
+  await offPage.evaluate(() => { navTo("combat"); render(performance.now()); });
+  await offPage.waitForSelector("canvas.scene", { timeout: 5000 });
+  await offPage.waitForTimeout(600);
+  const offRun = await offPage.evaluate(() => ({
+    run: state.runActive, runes: state.runes.length,
+    baked: typeof ASSETS !== "undefined" && !!ASSETS && !!ASSETS.skelet,
+  }));
+  check(offRun.run && offRun.runes > 0 && offRun.baked,
+    "…and the hall runs with its sheet baked from the cached copy (" +
+    offRun.runes + " runes)");
+  await offPage.close();
+
   check(errors.length === 0, "no console/page errors");
 
   console.log("\nSMOKE TEST PASSED");
@@ -2450,5 +2669,5 @@ try {
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close();
-  server.close();
+  await server.close();
 }
