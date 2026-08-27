@@ -114,6 +114,28 @@ function handleRuneClick(id, viaTap = false) {
 }
 
 function onShapeComplete(now) {
+  // THE POOL DECIDES WHEN, NOT THE THUMB. A finished shape whose page the mana
+  // pool cannot pay for yet does not fail, does not cost anything and does not
+  // throw the board away: it HANGS, lit, and rafLoop calls back here every frame
+  // until the pool has caught up (see CONFIG.manaBase for why the game is built
+  // this way at all).
+  //
+  // Holding rather than refusing is the whole point. A refusal would put the
+  // player back where mana was meant to get them out of — reading the circle
+  // with one eye on a clock — because a shape solved a moment too early would
+  // have been work thrown away. Held, being early costs exactly nothing, and
+  // the seconds before the pool fills are seconds with nothing to do but look
+  // at the words.
+  //
+  // Nothing here marks the screen structurally dirty: the wait is drawn by a
+  // class toggle in patchCombatContinuous, because rebuilding the combat screen
+  // twice per cast would tear the book and the circle out from under a thumb
+  // that is already on them (see the note above `app`).
+  if (!manaReady()) {
+    if (!state.castHeldSince) state.castHeldSince = now;
+    return;
+  }
+  state.castHeldSince = 0;
   // The three completed chords lighting up together *is* the cast. The rune
   // charge, the flash and the refill are the same whatever is being cast; WHAT
   // goes off is the page the hero's book is open at, so the resolution itself is

@@ -18,8 +18,8 @@
 // THE MODEL, and what it is worth. Per camp it ticks 50 ms at a time: bodies
 // walk in, the front body of each lane swings on its own cadence (ranged bodies
 // shoot from wherever they planted, per loop.js), the hero casts his best page
-// every `SEC_PER_CAST` at the frontmost body with a splash onto the next, armour
-// is applied through the game's own curve, and regen ticks. It is NOT the game
+// at the frontmost body with a splash onto the next, armour is applied through
+// the game's own curve, and regen ticks — both regens, LP and mana. It is NOT the game
 // — it has no freezes, no shove, no summons, no healers mending, no crit, no
 // leech, and it assumes a player who never misses a rune. Read it as an upper
 // bound on the hero and a comparison between two sets of numbers, not as a
@@ -81,11 +81,32 @@ const data = await page.evaluate(({ shares, overrides }) => {
   const { spawnHP, bodyTier } = Incanto.progression;
 
   // How long one cast takes end to end on a phone: the rune has to be TRACED by
-  // a thumb before it charges, and that trace — not castChargeMs — is what
-  // actually sets the hero's rate of fire. Two seconds is a brisk, accurate
-  // player; the charge is added on top because it is real time the spell spends
-  // in the air.
-  const TRACE_MS = 2000;
+  // a thumb before it charges. Two seconds is a brisk, accurate player; the
+  // charge is added on top because it is real time the spell spends in the air.
+  //
+  // IT IS NO LONGER THE ONLY THING SETTING THE HERO'S RATE OF FIRE, and that is
+  // the whole reason mana exists (see CONFIG.manaBase). A cast is paid for out
+  // of a pool that refills on its own clock, so the hero fires at whichever of
+  // the two is slower — his hands, or the pool. For a fresh and a middling build
+  // it is the pool, so reading faster than that rate buys nothing whatsoever.
+  //
+  // WHAT IT COSTS TO BE SLOW, measured rather than hoped for. Override it —
+  // `node tools/attrition.mjs traceMs=4000` — and the seven rows come out
+  //
+  //     2 s (brisk):     3 · 3 · 5 · 28 · 61 · 78 · 82
+  //     4 s (unhurried): 1 · 3 · 4 · 23 · 53 · 68 · 78
+  //     6 s (slow):      1 · 2 · 3 · 13 · 51 · 63 · 75
+  //
+  // — taking twice as long over a board now costs about a tenth of the hall
+  // where it used to cost half of it, and what is left of that loss sits in the
+  // tiers whose Takt has dropped below the reading itself. That is the honest
+  // shape of the fix: the race is gone from the early and middle hall, and at
+  // the deep end, where the tree has bought the Takt down to ~1,4 s, a quick
+  // thumb is worth something again. Flattening that last stretch too would mean
+  // holding the Takt near 3 s at every tier and handing the deep build its
+  // throughput back in DAMAGE instead — a rescale of every damage total in
+  // CONFIG.treeTotals, which is a decision and not a knob.
+  const TRACE_MS = CONFIG.traceMs || 2000;
   const ENGAGE_MS = 4000;   // spawn line to the standoff line, roughly
   const ADVANCE_MS = 1500;  // a lane's next body stepping up over its dead front rank
   const SPLASH = 0.5;       // share of a hit the body behind the target also takes
@@ -170,10 +191,17 @@ const data = await page.evaluate(({ shares, overrides }) => {
 
   // One camp, ticked. Returns the HP the hero has left and how long it took;
   // hp <= 0 means the corridor ended here.
-  function fightCamp(bodies, hp, maxHp, dps, regen, soak) {
+  function fightCamp(bodies, hp, maxHp, dps, regen, soak, pool) {
     const alive = bodies.slice();
     const engagedAt = new Map();
-    let t = 0, nextCast = TRACE_MS + Incanto.spells.castChargeMs();
+    // `nextShape` is when the player's hands are next ready; the cast itself
+    // waits on the pool as well, and in the game it literally hangs there until
+    // the mana arrives (see onShapeComplete). The pool is carried in and out of
+    // every camp because it is a RUN resource — it refills across the walk to
+    // the next mark exactly as LP does, so a camp met on an empty pool is a
+    // camp fought at the regen's own trickle.
+    let t = 0, nextShape = TRACE_MS + Incanto.spells.castChargeMs();
+    let mana = pool.mana;
     // WHO IS SWINGING. A lane still fights front-to-back — one melee body per
     // lane reaches the hero — but which bodies fill those slots is no longer
     // decided by the formation: a body walled in behind one that is already
@@ -223,9 +251,15 @@ const data = await page.evaluate(({ shares, overrides }) => {
         engagedAt.set(b, due);
       }
       if (regen > 0 && hp < maxHp) hp = Math.min(maxHp, hp + regen * TICK / 1000);
-      // The hero's cast: frontmost body, splash onto the one behind it.
-      if (t >= nextCast) {
-        nextCast += TRACE_MS + Incanto.spells.castChargeMs();
+      if (mana < pool.max) mana = Math.min(pool.max, mana + pool.regen * TICK / 1000);
+      // The hero's cast: frontmost body, splash onto the one behind it — once
+      // his hands are ready AND the pool can pay for the page. The cadence is
+      // measured from the cast that actually went off rather than accumulated,
+      // because a shape held waiting for mana does not bank time: solving the
+      // next board starts when the last spell leaves the staff.
+      if (t >= nextShape && mana >= pool.cost) {
+        mana -= pool.cost;
+        nextShape = t + TRACE_MS + Incanto.spells.castChargeMs();
         const order = alive.slice().sort((a, b) => a.rank - b.rank || a.lane - b.lane);
         if (order[0]) order[0].hp -= dps * armorMult(order[0].armor);
         if (order[1]) order[1].hp -= dps * SPLASH * armorMult(order[1].armor);
@@ -243,7 +277,7 @@ const data = await page.evaluate(({ shares, overrides }) => {
         for (let i = alive.length - 1; i >= 0; i--) if (alive[i].hp <= 0) alive.splice(i, 1);
       }
     }
-    return { hp, ms: t, cleared: !alive.length };
+    return { hp, mana, ms: t, cleared: !alive.length };
   }
 
   const rows = [];
@@ -266,20 +300,30 @@ const data = await page.evaluate(({ shares, overrides }) => {
       if (!best || bc > state.gold) break;
       treeBuy(best);
     }
-    // The best damage page this build has unlocked.
-    let hit = 0;
+    // The best damage page this build has unlocked — and, since a cast is now
+    // paid for, the best one PER MANA rather than per cast: a page that hits
+    // half again as hard for twice the price is a worse page to walk the hall
+    // with, and a model that ignored the price would credit the hero with a
+    // rate of fire he cannot afford.
+    let hit = 0, castCost = CONFIG.spells.fireball.mana;
+    let bestRate = 0;
     for (const s of Incanto.spells.SPELLS) {
       if (s.kind === "support") continue;
       if (s.id !== "fireball" && !(state.spellsUnlocked || []).includes(s.id)) continue;
-      hit = Math.max(hit, spellPower(s.id));
+      const power = spellPower(s.id), cost = CONFIG.spells[s.id].mana;
+      const rate = cost > 0 ? power / cost : power;
+      if (rate > bestRate) { bestRate = rate; hit = power; castCost = cost; }
     }
     const maxHp = state.heroMaxHP, regen = state.mods.regen || 0;
     const soak = heroTakes();
+    const maxMana = state.heroMaxMana, manaRegen = Incanto.spells.manaRegenPerSec();
+    const pool = { mana: maxMana, max: maxMana, regen: manaRegen, cost: castCost };
     let hp = maxHp, camps = 0, firstCampHp = null, ms = 0;
     const chapters = [];
     for (let i = 0; i < ENCOUNTER_PLAN.length; i++) {
       const before = hp;
-      const r = fightCamp(campBodies(i), hp, maxHp, hit, regen, soak);
+      const r = fightCamp(campBodies(i), hp, maxHp, hit, regen, soak, pool);
+      pool.mana = r.mana;
       ms += r.ms;
       if (firstCampHp === null) firstCampHp = Math.max(0, Math.round(r.hp));
       const ch = ENCOUNTER_PLAN[i].chapter;
@@ -291,9 +335,14 @@ const data = await page.evaluate(({ shares, overrides }) => {
       const walkMs = CONFIG.encounterSpacingMetres * 16 / CONFIG.heroWalkPxPerMs;
       ms += walkMs;
       if (regen > 0) hp = Math.min(maxHp, hp + regen * walkMs / 1000);
+      pool.mana = Math.min(maxMana, pool.mana + manaRegen * walkMs / 1000);
     }
     rows.push({
       budget, hp: maxHp, hit: Math.round(hit), regen: Math.round(regen * 10) / 10,
+      // What the pool actually buys, which is the only form the two mana stats
+      // are worth reading in: seconds between one cast and the next, from empty.
+      takt: Math.round(10 * castCost / Math.max(1e-9, manaRegen)) / 10,
+      mana: maxMana,
       soak: Math.round((1 - soak) * 100),
       camps, chapter: ENCOUNTER_PLAN[Math.min(camps, ENCOUNTER_PLAN.length - 1)].chapter + 1,
       firstCampHp, mins: Math.round(ms / 60000), chapters: chapters.filter(Boolean),
@@ -314,12 +363,16 @@ server.close();
 
 const pad = (s, n) => String(s).padStart(n);
 console.log(`\nenemyBaseDmg ${data.baseDmg} · heroBaseHP ${data.baseHp} · ${data.total} camps in the hall\n`);
-console.log("   gold     LP   Treffer  Regen  Rüstung   Skelettsekunden   Camp 1 endet mit   geschafft   Kapitel   ~min");
-console.log("  ".padEnd(110, "─"));
+console.log("   gold     LP   Treffer  Regen  Rüstung   Mana    Takt   Skelettsekunden   Camp 1 endet mit   geschafft   Kapitel   ~min");
+console.log("  ".padEnd(125, "─"));
 for (const r of data.rows) {
   console.log(
     "  " + pad(r.budget, 6) + pad(r.hp, 7) + pad(r.hit, 10) + pad(r.regen, 7) +
     pad(r.soak + " %", 9) +
+    // TAKT is the mana column that matters: seconds from one cast to the next
+    // on an empty pool. It is the hero's rate of fire, and therefore half of
+    // every number to the right of it.
+    pad(r.mana, 7) + pad(r.takt.toFixed(1) + " s", 8) +
     pad(r.secs + " s", 18) + pad(r.firstCampHp + " LP", 19) +
     pad(r.camps + "/" + data.total, 12) + pad(r.chapter, 10) + pad(r.mins, 7)
   );

@@ -338,6 +338,16 @@ const A = {
                 title: "Schutzzauber",  blurb: "Chance, den Rückschlag eines Fehlschlags ganz abzuwehren." },
   haste:      { stat: "castHaste",  theme: "focus",   base: 0.015, cost: 26, maxRank: 2, growth: 1.6,
                 title: "Zauberhast" },
+  // MANA — the two halves of the hero's rate of fire (see CONFIG.manaBase).
+  // They wear the Sammlung colour rather than one of their own on purpose:
+  // gathering power and spending it quickly are the same idea, and Zauberhast
+  // was already that idea's other half. Both keep a blurb, because neither
+  // number says what it is FOR — a pool is only ever read as "how many casts",
+  // and a trickle only as "how long until the next one".
+  manaRegen:  { stat: "manaRegen",  theme: "focus",   base: 0.5,   cost: 24, maxRank: 3,
+                title: "Manafluss",     blurb: "Der Vorrat füllt sich schneller nach — und dein nächster Zauber steht früher bereit." },
+  manaMax:    { stat: "manaMax",    theme: "focus",   base: 9,     cost: 22, maxRank: 3,
+                title: "Manakelch",     blurb: "Fasst mehr, ohne schneller zu fließen: mehr Zauber hintereinander, bevor du auf den Vorrat warten musst." },
   shield:     { special: "shield",  theme: "guard",   cost: 26, maxRank: 3,
                 title: "Schildzauber",  blurb: "Manche Zauber gewähren einen absorbierenden Schild." },
 };
@@ -456,19 +466,19 @@ const ARMS = [
 
   // ---- Heilwort: the arm that turns spell power back into life.
   { key: "hea", kind: "spell", spell: "heal", theme: "heal", title: "Heilwort",
-    prelude: [A.hpFlat, A.regen, A.hpPct, A.leech],
+    prelude: [A.hpFlat, A.regen, A.hpPct, A.manaRegen],
     branches: [
       bRawPower(SPELL_LORE.heal),
       bSigil("heal", SPELL_LORE.heal),
       { title: "Quell", arch: [A.regen, A.leech, A.regen],
-        tip: uq("sustain", "Ewige Quelle", KEYSTONE_COST, { regen: 8.0, leech: 0.05 },
+        tip: uq("sustain", "Ewige Quelle", KEYSTONE_COST, { regen: 8.0, manaRegen: 2.4 },
           "Die Quelle versiegt nicht mehr, auch wenn du das Wort nicht sprichst.") },
       { title: "Fürsorge", arch: [A.hpFlat, A.hpPct, A.hpFlat],
         tip: uq("vigor", "Zweites Leben", KEYSTONE_COST, { flatHp: 90, pctHp: 0.10 },
           "Ein Leben in Reserve, für den Schlag, den du nicht kommen siehst.") },
-      { title: "Gelassenheit", arch: [A.haste, A.failProt, A.hpFlat],
-        tip: uq("focus", "Ruhige Hand", KEYSTONE_COST, { castHaste: 0.10, spellFailProt: 0.10 },
-          "Keine Hast in der Hand, und darum kein Zittern im Zeichen.") },
+      { title: "Gelassenheit", arch: [A.haste, A.manaRegen, A.manaMax],
+        tip: uq("focus", "Ruhige Hand", KEYSTONE_COST, { castHaste: 0.10, manaRegen: 2.0 },
+          "Keine Hast in der Hand: das Zeichen sitzt schneller, und die Kraft dafür ist schon da.") },
     ] },
 
   // ---- Precision: crit for the whole book.
@@ -483,9 +493,9 @@ const ARMS = [
       { title: "Wucht", arch: [A.critMult, A.critMult, A.critChance],
         tip: uq("crit", "Vernichtender Schlag", KEYSTONE_COST, { critMult: 0.45 },
           "Ein kritischer Treffer ist kein Glück mehr, sondern ein Urteil.") },
-      { title: "Kaltblütigkeit", arch: [A.critChance, A.haste, A.dmgPct],
-        tip: uq("crit", "Meisterstreich", KEYSTONE_COST, { critChance: 0.05, critMult: 0.20, castHaste: 0.05 },
-          "Schnell, ruhig, tödlich — in dieser Reihenfolge."),
+      { title: "Kaltblütigkeit", arch: [A.critChance, A.haste, A.manaRegen],
+        tip: uq("crit", "Meisterstreich", KEYSTONE_COST, { critChance: 0.05, critMult: 0.20, manaRegen: 1.2 },
+          "Ruhig, genau, tödlich — in dieser Reihenfolge."),
         tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
           "Ein verborgener Hort, nur ein einziges Mal zu heben. Ein Teil jedes erlittenen Schlages fährt in den Angreifer zurück.") },
     ] },
@@ -506,7 +516,7 @@ const ARMS = [
 
   // ---- Sustain: regen and leech, the arm that lets a build stay out longer.
   { key: "sus", kind: "generic", theme: "sustain", title: "Zehrung",
-    prelude: [A.regen, A.leech, A.regen, A.hpFlat],
+    prelude: [A.regen, A.leech, A.manaRegen, A.hpFlat],
     notable: uq("sustain", "Lebensband", NOTABLE_COST, { regen: 4.0, leech: 0.03 },
       "Ein Faden zwischen dir und allem, was du niederstreckst."),
     branches: [
@@ -516,7 +526,7 @@ const ARMS = [
       { title: "Aderlass", arch: [A.leech, A.leech, A.dmgFlat],
         tip: uq("sustain", "Blutdurst", KEYSTONE_COST, { leech: 0.09 },
           "Jeder Zauber bringt dir zurück, was er dem Gang nimmt.") },
-      { title: "Wandeln", arch: [A.leech, A.hpPct, A.regen],
+      { title: "Wandeln", arch: [A.leech, A.manaMax, A.regen],
         tip: uq("sustain", "Wandelndes Grab", KEYSTONE_COST, { leech: 0.05, regen: 4.0, flatHp: 36 },
           "Du gehst durch die Toten, als wärst du einer von ihnen."),
         tip2: uq("thorn", "Dornenkrone", THORN_COST, { thorns: THORN_VALUE },
@@ -573,9 +583,9 @@ const ARMS = [
       { title: "Bollwerk", arch: [A.armor, A.hpPct, A.hpFlat],
         tip: uq("armor", "Steinhaut", KEYSTONE_COST, { armor: 11, flatHp: 60 },
           "Knochen prallen ab, wo sie früher eindrangen.") },
-      { title: "Wehrhaftigkeit", arch: [A.failProt, A.haste, A.hpFlat],
-        tip: uq("guard", "Bannwall", KEYSTONE_COST, { spellFailProt: 0.12, castHaste: 0.06 },
-          "Der Schild steht schon, bevor das Zeichen fertig ist.") },
+      { title: "Wehrhaftigkeit", arch: [A.failProt, A.haste, A.manaMax],
+        tip: uq("guard", "Bannwall", KEYSTONE_COST, { spellFailProt: 0.12, manaMax: 40 },
+          "Ein Wall, hinter dem sich sammeln lässt — mehr Vorrat, und weniger, das ihn dich kostet.") },
     ] },
 
   // ---- Vigour: the plain HP arm.
@@ -613,7 +623,7 @@ const ARMS = [
 
   // ---- Fortune: gold and pace. Belongs to no page — it funds all of them.
   { key: "for", kind: "generic", theme: "fortune", title: "Fortuna",
-    prelude: [A.coin, A.walk, A.coin, A.walk],
+    prelude: [A.coin, A.walk, A.manaMax, A.walk],
     notable: uq("fortune", "Glücksmünze", NOTABLE_COST, { coinMult: 0.12 },
       "Sie fällt immer richtig herum. Frag nicht, warum."),
     branches: [
@@ -623,11 +633,11 @@ const ARMS = [
       { title: "Flinkheit", arch: [A.walk, A.walk, A.hpFlat],
         tip: uq("fortune", "Windschritt", KEYSTONE_COST, { walkMult: 0.20 },
           "Der Gang zwischen zwei Lagern wird kurz genug, um kein Gang mehr zu sein.") },
-      { title: "Fündigkeit", arch: [A.coin, A.haste, A.walk],
+      { title: "Fündigkeit", arch: [A.coin, A.manaRegen, A.walk],
         // No Dornenkrone out here: exactly five caches exist, and Fortuna — the
         // one arm that belongs to no page — is the one that doesn't hide one.
-        tip: uq("fortune", "Schatzsinn", KEYSTONE_COST, { coinMult: 0.15, castHaste: 0.05 },
-          "Du riechst Gold durch Stein — und sparst dir den Umweg.") },
+        tip: uq("fortune", "Schatzsinn", KEYSTONE_COST, { coinMult: 0.15, manaMax: 30 },
+          "Du riechst Gold durch Stein — und trägst genug bei dir, um es dir zu holen.") },
     ] },
 ];
 
@@ -903,12 +913,12 @@ function relaxTree(pos, nodes, edges) {
 // honestly (treeNum has always had the decimal place; nothing else needed it
 // until now).
 const WHOLE_STATS = {
-  shieldAmount: 1, shieldMax: 1,
+  shieldAmount: 1, shieldMax: 1, manaMax: 1,
   freezeFrost: 1, chainLightning: 1, countMeteor: 1,
 };
 // …and the pools carried to one decimal, floored where the tooltip's last place
 // is (0,1). `regen` was always one of these; the three flat pools joined it.
-const TENTH_STATS = { regen: 1, flatDmg: 1, flatBase: 1, flatHp: 1, armor: 1 };
+const TENTH_STATS = { regen: 1, flatDmg: 1, flatBase: 1, flatHp: 1, armor: 1, manaRegen: 1 };
 
 // What every rank of every node adds up to, per stat.
 function supplyOf(nodes) {
@@ -1171,6 +1181,7 @@ function recomputeMods() {
     flatDmg: 0, flatBase: 0, pctBase: 0, flatHp: 0, pctDmg: 0, pctHp: 0,
     critChance: 0, critMult: 0, armorPen: 0, armor: 0,
     leech: 0, regen: 0, walkMult: 0, coinMult: 0, castHaste: 0,
+    manaMax: 0, manaRegen: 0,
     shieldChance: 0, shieldAmount: 0, shieldMax: 0,
     thorns: 0, spellFailProt: 0,
   };
@@ -1219,6 +1230,11 @@ function recomputeMods() {
     leech: sum.leech,
     regen: sum.regen,
     castHaste: sum.castHaste,
+    // The two mana pools, carried raw for the same reason armour's points are:
+    // what they are WORTH is seconds per cast, and that is worked out in one
+    // place (spells.js) rather than baked in here.
+    manaMax: sum.manaMax,
+    manaRegen: sum.manaRegen,
     walkMult: 1 + sum.walkMult,
     coinMult: 1 + sum.coinMult,
     shieldChance: asChance(sum.shieldChance),
@@ -1235,6 +1251,12 @@ function recomputeMods() {
   state.mods.sums = sum;
   state.mods.derived = { flatHp, pctHp, flatBase, pctBase, pctDmg, flatDmg };
   state.heroMaxHP = Math.round((CONFIG.heroBaseHP + flatHp) * (1 + pctHp));
+  // The mana pool, derived the same way the LP pool is — flat only, since a
+  // percentage of a pool that exists to be a COUNT OF CASTS reads as nothing.
+  state.heroMaxMana = Math.round(CONFIG.manaBase + sum.manaMax);
+  if (state.heroMana == null || state.heroMana > state.heroMaxMana) {
+    state.heroMana = state.heroMaxMana;
+  }
   // Stages 1 and 2. Stage 3 (flatDmg) is deliberately NOT in here: it is added
   // after the page's own factor too, inside spellPower, which is the whole point
   // of splitting it out — see spells.js.
@@ -1257,9 +1279,12 @@ function treeBuy(id) {
   state.gold -= cost;
   state.nodeRanks[id] = rank + 1;
   const oldMax = state.heroMaxHP;
+  const oldMana = state.heroMaxMana;
   recomputeMods();
   const gain = state.heroMaxHP - oldMax;   // buying vitality tops the pool up by the gain
   if (gain > 0) state.heroHP = Math.min(state.heroMaxHP, state.heroHP + gain);
+  const manaGain = state.heroMaxMana - oldMana;   // …and a bigger chalice comes full
+  if (manaGain > 0) state.heroMana = Math.min(state.heroMaxMana, state.heroMana + manaGain);
   // Lifting a spell's seal turns the book straight to the page it opened —
   // finding the key and then having to go hunt for the page would be busywork.
   if (node.unlocks) state.activeSpell = node.unlocks;
@@ -1314,6 +1339,8 @@ const STAT_FMT = {
   falloffLightning: (v) => `+${treePct(v)} Sprungkraft`,
   castHaste:    (v) => `+${treePct(v)} Zaubertempo`,
   regen:        (v) => `+${treeNum(v)}/s LP`,
+  manaMax:      (v) => `+${Math.round(v)} max. Mana`,
+  manaRegen:    (v) => `+${treeNum(v)}/s Mana`,
   walkMult:     (v) => `+${treePct(v)} Tempo`,
   coinMult:     (v) => `+${treePct(v)} Gold`,
   shieldChance: (v) => `${treePct(v)} Schild-Chance`,

@@ -629,7 +629,10 @@ function renderCombatFull() {
     <div class="screen combat-screen" id="combat-root">
       <div class="scene-wrap"><canvas class="scene" id="scene"></canvas></div>
       <div class="hud-under">
-        <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
+        <div class="hud-bars">
+          <div class="hp-track hero"><div class="hp-fill" id="hero-hp-fill"></div></div>
+          <div class="mana-track" id="mana-track"><div class="mana-fill" id="hero-mana-fill"></div></div>
+        </div>
         <span class="hp-figures" id="hero-hp-text"></span>
       </div>
       <svg class="arena" viewBox="${ARENA_VIEWBOX}" preserveAspectRatio="xMidYMax meet">
@@ -652,14 +655,48 @@ function patchCombatContinuous(now) {
 
   root.classList.toggle("wrong-flash", now < state.wrongFlashUntil);
   root.classList.toggle("rune-flash", now < state.runeFlashUntil);
-  // The figures ride at the right-hand end of the bar rather than on a caption
-  // line of their own, and there is no "HELD" in front of them: the strip holds
-  // one bar, so naming it cost a whole row of a phone's height to say something
-  // already obvious. The row it saved goes to the rune circle.
+  // A finished shape waiting on the pool. The whole circle takes the state, not
+  // just the mana bar, because the question it has to answer is asked AT THE
+  // CIRCLE: the player has drawn three chords and nothing went off, and they
+  // need to see that the board is done and the wait is the staff's, not theirs.
+  root.classList.toggle("gathering", !!state.castHeldSince);
+  // The figures ride at the right-hand end of the bars rather than on a caption
+  // line of their own, and there is no "HELD" in front of them: naming a bar
+  // cost a whole row of a phone's height to say something already obvious. The
+  // row it saved goes to the rune circle. The strip carries two bars now — LP
+  // and mana — and still only these figures: the mana bar answers its own
+  // question by being divided (see below), so numbering it would buy nothing.
   const shield = Math.floor(state.heroShield || 0);
   document.getElementById("hero-hp-text").textContent =
     `${Math.ceil(state.heroHP)}/${state.heroMaxHP}` + (shield > 0 ? ` ⛨${shield}` : "");
   document.getElementById("hero-hp-fill").style.width = (100 * state.heroHP / state.heroMaxHP).toFixed(1) + "%";
+  // THE MANA STRIP, and why it is DIVIDED rather than numbered. What a player
+  // needs off this bar is never "how many mana" — it is "how many casts", and a
+  // segment is that question already answered: one segment is one cast of the
+  // page the book is open at. Turn to a dearer page and the segments widen, to a
+  // cheaper one and they narrow, because the divisions are drawn from the open
+  // page's own price. So it carries no figures at all, the way the HP bar
+  // carries no caption, and for the same reason — the row it would cost belongs
+  // to the rune circle (see the note above).
+  //
+  // Drawn as a repeating gradient off one custom property rather than as a row
+  // of elements: the segment width changes with the open page and with every
+  // Manakelch bought, and a bar that re-lays-out its own children mid-fight is
+  // a bar that flickers.
+  const manaTrack = document.getElementById("mana-track");
+  const manaFill = document.getElementById("hero-mana-fill");
+  if (manaTrack && manaFill) {
+    const cost = activeSpellMana();
+    const seg = cost > 0 ? 100 * cost / Math.max(1, state.heroMaxMana) : 0;
+    manaTrack.style.setProperty("--seg", seg > 0 ? seg.toFixed(3) + "%" : "100%");
+    manaFill.style.width = (100 * (state.heroMana || 0) / Math.max(1, state.heroMaxMana)).toFixed(1) + "%";
+    // Two states worth showing, and only two: the pool cannot pay for the open
+    // page (the strip dims), and a finished shape is standing by waiting for it
+    // (it pulses). The second is the one that has to read at a glance — it is
+    // the game saying "your work is done, this is on me now".
+    manaTrack.classList.toggle("short", !manaReady());
+    manaTrack.classList.toggle("gathering", !!state.castHeldSince);
+  }
   // NOTHING UNDER THE SCENE REPORTS ON THE HALL. The strip used to carry a wave
   // line (metres walked, head count, the front body's name and armour) over a bar
   // tracking whichever body happened to be frontmost; both are gone, and the hero
