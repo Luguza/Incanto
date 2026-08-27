@@ -32,8 +32,11 @@ sul sullo sulla sui sugli sulle col
 mio mia miei mie tuo tua tuoi tue
 `.trim().split(/\s+/);
 
-// Elidable words: what may sit in front of an apostrophe inside a token.
-export const ELIDABLE = ["l", "un", "all", "dell", "nell", "sull", "dall", "d", "c"];
+// Elidable words: what may sit in front of an apostrophe inside a token. `bell`
+// is there because bello elides in front of a vowel exactly as the article it
+// copies does (l'amico → un bell'amico) — the tail is still held to the
+// vocabulary, so this admits the apostrophe, not the word behind it.
+export const ELIDABLE = ["l", "un", "all", "dell", "nell", "sull", "dall", "d", "c", "bell"];
 
 // Verb forms the generator can't produce: irregular presents of pool verbs that
 // the conjugation drills don't carry, so nothing else in the codebase knows them.
