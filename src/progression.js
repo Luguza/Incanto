@@ -469,6 +469,10 @@ function startRun() {
                               // banked quiz multiplier) deliberately carries over
 
   state.heroHP = state.heroMaxHP;
+  // The pool is full at the mouth of the hall, so the first camp is met with a
+  // burst in hand rather than at the regen's own trickle.
+  state.heroMana = state.heroMaxMana;
+  state.castHeldSince = 0;    // no shape from the last run still waiting to go off
   state.wrongMatchCount = 0;
   state.runStartMs = performance.now();
   state.runActive = true;

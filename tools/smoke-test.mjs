@@ -1959,16 +1959,115 @@ try {
       // …and nothing anywhere on the screen still writes the hall's numbers out.
       leftovers: ["wave-label", "enemy-hp-fill", "enemy-gauges"]
         .filter((id) => document.getElementById(id)),
-      // The strip is one row, no taller than the bar plus its padding: the row
-      // it used to spend on a "HELD" caption is the rune circle's now.
+      // The strip is one row, no taller than its bars plus their padding: the
+      // row it used to spend on a "HELD" caption is the rune circle's now.
       height: strip.getBoundingClientRect().height,
+      // …and the second bar in it is the hero's MANA, divided into casts of the
+      // page the book is open at (see CONFIG.manaBase). One bar per hero
+      // resource is the budget; a THIRD would be a caption by another name.
+      manaBar: !!strip.querySelector(".mana-track #hero-mana-fill"),
+      manaSeg: strip.querySelector(".mana-track")
+        ? strip.querySelector(".mana-track").style.getPropertyValue("--seg") : "",
+      tracks: strip.querySelectorAll(".hp-track, .mana-track").length,
     };
   });
   check(hud.bodies > 5 && hud.hero && hud.bars === 1 && hud.heroBar && hud.leftovers.length === 0,
     `no enemy carries a health bar — the strip is the hero's alone with ${hud.bodies} bodies up` +
     (hud.leftovers.length ? " (found: " + hud.leftovers.join(", ") + ")" : ""));
-  check(hud.height <= 28,
-    `…and it is one row tall, figures beside the bar rather than over it (${Math.round(hud.height)}px)`);
+  check(hud.height <= 30,
+    `…and it is one row tall, figures beside the bars rather than over them (${Math.round(hud.height)}px)`);
+  // The mana bar's divisions are drawn from the open page's own price, so the
+  // segment width is a live figure rather than a constant — a bar that ruled
+  // fixed thirds would go on saying "three casts" after a Manakelch made it
+  // five, and after turning to a page that costs half as much.
+  const manaSegs = await page.evaluate(() => {
+    const seg = () => {
+      render(performance.now());
+      return parseFloat(document.querySelector(".mana-track").style.getPropertyValue("--seg"));
+    };
+    state.activeSpell = "fireball";
+    const cheap = seg();
+    state.mods.spellsUnlocked = Object.assign({}, state.mods.spellsUnlocked, { meteor: true });
+    state.activeSpell = "meteor";
+    const dear = seg();
+    state.activeSpell = "fireball";
+    const oldMax = state.heroMaxMana;
+    state.heroMaxMana *= 2;
+    const roomier = seg();
+    state.heroMaxMana = oldMax;
+    return { cheap, dear, roomier,
+      costs: { fireball: CONFIG.spells.fireball.mana, meteor: CONFIG.spells.meteor.mana } };
+  });
+  check(hud.manaBar && hud.tracks === 2,
+    "the strip carries exactly two bars — the hero's LP and his mana, nothing of the hall's");
+  check(manaSegs.dear > manaSegs.cheap + 0.5 && Math.abs(manaSegs.roomier - manaSegs.cheap / 2) < 0.01,
+    `a mana segment is one cast of the OPEN page: it widens on a dearer spell ` +
+    `(${manaSegs.cheap.toFixed(1)}% → ${manaSegs.dear.toFixed(1)}%) and narrows as the pool grows ` +
+    `(→ ${manaSegs.roomier.toFixed(1)}%)`);
+
+  // 8d. THE HELD CAST — the whole of the pacing fix, and the one behaviour that
+  //     has to be exactly right. A shape finished on an empty pool must not
+  //     fail, must not cost anything and must not throw the board away: it
+  //     hangs, and goes off by itself when the mana arrives. If it ever
+  //     RE-DEALT instead, solving a board a moment early would be work thrown
+  //     away — which is the very thing mana exists to stop (see
+  //     CONFIG.manaBase).
+  const manaHold = await page.evaluate(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const solve = () => {
+      const byPair = {};
+      for (const r of state.runes) (byPair[r.pairId] = byPair[r.pairId] || []).push(r.id);
+      for (const k in byPair) {
+        const [a, b] = byPair[k];
+        handleRuneClick(a);
+        handleRuneClick(b);
+      }
+    };
+    startRun();
+    state.heroMaxHP = state.heroHP = 100000;
+    state.mods.regen = 0;
+    state.mods.manaRegen = 0;
+    // The base trickle is stopped outright rather than merely outrun, so both
+    // halves of this test are exact: the pool cannot creep up to the price on
+    // its own while the shape hangs, and what the cast spends is measurable to
+    // the point rather than to within a frame of regen.
+    const baseFlow = CONFIG.manaRegenBase;
+    CONFIG.manaRegenBase = 0;
+    state.activeSpell = "fireball";
+    state.enemies = [];
+    spawnEnemy(performance.now(), 1, 9, CONFIG.enemyTypes[0].id);
+    const cost = CONFIG.spells.fireball.mana;
+    state.heroMana = 0;                 // dry — the base trickle is far too slow to cover a cast
+    solve();
+    await settle(120);
+    const during = {
+      chords: state.chords.length,
+      matched: state.runes.filter((r) => r.matchState === "matched").length,
+      castAt: state.castAt,
+      heldFor: state.castHeldSince ? Math.round(performance.now() - state.castHeldSince) : 0,
+      // …and the circle says so, so the player is not left wondering whether
+      // the tap registered.
+      gathering: document.getElementById("combat-root").classList.contains("gathering"),
+    };
+    state.heroMana = state.heroMaxMana;  // the pool catches up
+    await settle(120);
+    const after = { castAt: state.castAt, mana: Math.round(state.heroMana),
+                    held: state.castHeldSince, spent: state.heroMaxMana - Math.round(state.heroMana) };
+    await settle(900);                   // the flash finishes and the board re-deals
+    CONFIG.manaRegenBase = baseFlow;
+    return { during, after, cost, pairs: CONFIG.pairsPerLoadout, runes: CONFIG.runeCount,
+             refilled: state.chords.length === 0 && state.runes.length > 0 };
+  });
+  check(manaHold.during.heldFor >= 0 && manaHold.during.castAt === 0 &&
+    manaHold.during.chords === manaHold.pairs && manaHold.during.matched === manaHold.runes,
+    `a shape finished on an empty pool HANGS instead of firing — all ` +
+    `${manaHold.during.matched} runes still matched, nothing cast, nothing re-dealt`);
+  check(manaHold.during.gathering,
+    "…and the circle shows it gathering, so the wait reads as the staff's rather than a missed tap");
+  check(manaHold.after.castAt > 0 && !manaHold.after.held && manaHold.after.spent === manaHold.cost,
+    `…and the moment the mana is there it goes off by itself, for exactly the page's price ` +
+    `(${manaHold.after.spent} of ${manaHold.cost})`);
+  check(manaHold.refilled, "…after which the board re-deals as it always did");
 
   //     A spell takes time to cross the hall, and a body it has already killed
   //     must go on running until it ARRIVES — stopping dead and dissolving at the

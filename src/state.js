@@ -34,6 +34,17 @@ function freshState() {
     heroHP: CONFIG.heroBaseHP,
     heroDmg: CONFIG.heroBaseDmg,
     heroShield: 0,             // absorb pool granted by Ward nodes on some casts
+    // MANA — what a cast is paid for out of (see CONFIG.manaBase). A run
+    // resource, not a possession: it is filled to the brim at the mouth of the
+    // hall and refills on its own clock while the run is live, so nothing about
+    // it is persisted. `heroMaxMana` is derived from the tree exactly as
+    // heroMaxHP is (see recomputeMods).
+    heroMaxMana: CONFIG.manaBase,
+    heroMana: CONFIG.manaBase,
+    // A completed shape whose spell the pool cannot pay for yet. It is not a
+    // failure — the shape hangs lit and the loop releases it the moment the mana
+    // is there (see onShapeComplete + rafLoop). 0 = nothing waiting.
+    castHeldSince: 0,
     // A meal eaten at the bar between runs (see tavern.js). It cannot go into
     // heroShield directly — startRun clears that pool, so a shield taken in the
     // tavern would be wiped by the very walk into the hall it was meant for. It
@@ -47,6 +58,7 @@ function freshState() {
     mods: {
       flatDmg: 0, armor: 0, armorPen: 0,
       critChance: 0, critMult: 1.5, leech: 0, regen: 0, castHaste: 0,
+      manaMax: 0, manaRegen: 0,
       walkMult: 1, coinMult: 1, shieldChance: 0, shieldAmount: 0, shieldMax: 0,
       thorns: 0, spellFailProt: 0,
       spellsUnlocked: {}, spellPct: {}, spellParam: {},

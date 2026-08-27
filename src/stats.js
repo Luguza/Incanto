@@ -124,6 +124,11 @@ function svHeroTab() {
   // --- Angriff -------------------------------------------------------------
   const critAvg = 1 + m.critChance * (m.critMult - 1);
   const charge = castChargeMs();
+  // The mana figures are all read against the page the book is actually open
+  // at, since that is the only page whose price is being paid right now.
+  const castCost = activeSpellMana();
+  const castName = activeSpell().name;
+  const perCast = secondsPerCast();
   // What penetration is actually worth, shown against the one body in the hall
   // that wears armour at all (see CONFIG.enemyTypes — the brute).
   const brute = CONFIG.enemyTypes.find((t) => t.armor > 0);
@@ -208,6 +213,29 @@ function svHeroTab() {
       label: "Zaubertempo", value: svPlusPct(m.castHaste), color: TREE_THEMES.focus.color,
       ...svOf("castHaste", m.castHaste, (v) => svPlusPct(v),
         `Ladezeit ${svNum(CONFIG.castChargeMs)} ÷ ${svNum(1 + m.castHaste, 2)} = <b>${svNum(charge)}&nbsp;ms</b>`),
+    }),
+    // MANA — the three rows that say how OFTEN, where everything above says how
+    // hard. The last of them is the one that matters and the reason the other
+    // two are shown at all: seconds per cast is what a pool and a trickle
+    // actually add up to, and it is the number the player feels in the hall.
+    svRow({
+      label: "Manavorrat", value: svNum(state.heroMaxMana), color: TREE_THEMES.focus.color,
+      ...svOf("manaMax", m.manaMax || 0, (v) => svPlus(v, 0),
+        `Basis ${svNum(CONFIG.manaBase)} · reicht für ` +
+        `<b>${svNum(Math.floor(state.heroMaxMana / Math.max(1, castCost)))}</b> ` +
+        `${castName} hintereinander`),
+    }),
+    svRow({
+      label: "Manafluss", value: svNum(manaRegenPerSec(), 1) + " /s", color: TREE_THEMES.focus.color,
+      ...svOf("manaRegen", m.manaRegen || 0, (v) => svNum(v, 1) + " /s",
+        `Basis ${svNum(CONFIG.manaRegenBase)} — er läuft weiter, auch während du liest`),
+    }),
+    svRow({
+      label: "Takt", value: svNum(perCast, 1) + " s", tone: "gold", color: TREE_THEMES.focus.color,
+      note: `so oft geht ${castName} aus leerem Vorrat höchstens — er kostet ` +
+        `<b>${svNum(castCost)}</b> Mana. Schneller zu lösen bringt darüber hinaus nichts: ` +
+        `ein fertiges Zeichen wartet, bis der Vorrat es tragen kann. Diese ` +
+        `${svNum(perCast, 1)}&nbsp;s gehören dir und den Wörtern.`,
     }),
   ]));
 

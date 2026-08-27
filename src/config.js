@@ -839,6 +839,41 @@ const CONFIG = {
     // moment the spell it answered finishes.
     castFlashMs: 420,
   },
+  // ===========================================================================
+  // MANA — what a cast COSTS, and the reason the hall stopped being a race.
+  //
+  // The rune circle used to be the only thing between the hero and another
+  // spell: solve three pairs, cast, solve three more. Damage per second was
+  // therefore reading speed per second, and the hall was baked against a player
+  // who matched a whole board in about two seconds (see tools/attrition.mjs,
+  // TRACE_MS). That is a fine number for someone who already knows the word and
+  // a cruel one for someone who is here to LEARN it: every moment spent actually
+  // reading a rune was paid for in LP, so the game quietly taught the opposite
+  // of what it is for — glance, guess, and take the last pair by elimination
+  // because it is the fastest way through.
+  //
+  // Mana is the answer, and the whole of it: a cast costs from a pool that
+  // refills on ITS OWN CLOCK. Past the pool's rate, matching faster buys
+  // nothing at all — the spell simply waits — so the seconds between one cast
+  // and the next are the player's to spend on the words. Being quick still
+  // matters when the pool is full (a burst is three or four casts deep) and
+  // being slow still costs something once it runs dry, but the floor under
+  // "take your time" is now several seconds wide instead of zero.
+  //
+  // A HELD CAST is what makes that true rather than merely intended. Completing
+  // a shape on an empty pool does not fail and does not throw the board away:
+  // the shape hangs, lit, and goes off the instant the mana is there (see
+  // onShapeComplete). Nothing the player solved is ever wasted for being early
+  // — which is the whole difference between a rate limit and a punishment.
+  //
+  // THE TWO NUMBERS ARE SET AGAINST THE BESTIARY, not chosen for feel. They put
+  // the bare hero's Takt — seconds from one cast to the next on an empty pool —
+  // at 3,3 s, and a build at 90 % of `treeGold` at 1,4 s, which walks the same
+  // 82 camps the hall was balanced to before mana existed. Move either and
+  // re-read BOTH tools: mana is now the hero's rate of fire, so it moves
+  // `attrition.mjs` as directly as damage does.
+  manaBase: 90,          // the pool a hero carries before the tree adds to it — three Feuerbälle
+  manaRegenBase: 9,      // mana per second, always ticking (see rafLoop)
   spells: {
     // A Frostkegel leaves the hero's next spell "primed": it shatters frozen
     // bodies for primeMult damage and reaches every frozen skeleton, not just
@@ -859,11 +894,11 @@ const CONFIG = {
     // reaching into the neighbouring ones is what the Glutkern branch sells.
     // How far the blast can grow is now just how much Glutkern the tree holds
     // (see treeTotals.aoeFireball below — bought out, it reaches ~3,25 tiles).
-    fireball: { dmgMult: 1.0, radiusTiles: 1.3,
+    fireball: { dmgMult: 1.0, mana: 30, radiusTiles: 1.3,
                 laneRadius: 0.85, flightMs: 450, blastMs: 560 },
     // Blitzschlag — arcs from body to body, each hop weaker than the last. Far
     // more reach than Feuerball, paid for in falloff.
-    lightning: { dmgMult: 0.95, chain: 3, falloff: 0.72, hopMs: 85, holdMs: 260 },
+    lightning: { dmgMult: 0.95, mana: 34, chain: 3, falloff: 0.72, hopMs: 85, holdMs: 260 },
     // Frostkegel — a cone off the staff that shoves the front ranks back down
     // the hall and freezes them where they land. Barely damages; it buys time
     // and sets up the shatter (see primeWindowMs).
@@ -879,7 +914,7 @@ const CONFIG = {
     // that is all the Kegelweite the tree contains. The hall itself is 10 tiles
     // deep on a phone and nearly 20 on a desktop, so even then it is a
     // front-ranks spell rather than a screen clear.
-    frost: { dmgMult: 0.35, coneTiles: 4, pushTiles: 2.4, pushMs: 280, freezeMs: 2600,
+    frost: { dmgMult: 0.35, mana: 22, coneTiles: 4, pushTiles: 2.4, pushMs: 280, freezeMs: 2600,
              // Trimmed from 2.4 with the number rescale: the shatter multiplies a
              // crit on top of a fully-invested page, so it sets the game's single
              // largest number and is what the three-digit ceiling binds against.
@@ -894,15 +929,15 @@ const CONFIG = {
     // The padding is what keeps it a shower and not a volley of guided rocks:
     // rocks still stray past the edges of the pack, and a lone body does not
     // eat every one of them.
-    meteor: { dmgMult: 0.5, count: 4, radiusTiles: 1.7, laneRadius: 1.4,
+    meteor: { dmgMult: 0.5, mana: 42, count: 4, radiusTiles: 1.7, laneRadius: 1.4,
               padTiles: 2.2, padLanes: 1,
               spreadMs: 900, fallMs: 380, impactMs: 260 },
     // Bannschild — absorb, not damage. Its pool is derived from spell power the
     // same way damage is, and it stacks onto whatever Ward nodes already grant.
-    shield: { dmgMult: 1.6, capMult: 2.2, castMs: 700 },
+    shield: { dmgMult: 1.6, mana: 30, capMult: 2.2, castMs: 700 },
     // Heilwort — the same conversion, into HP. Part flat spell power, part a
     // slice of the pool, so it stays useful on both a small and a large hero.
-    heal: { dmgMult: 1.1, maxFrac: 0.16, castMs: 760 },
+    heal: { dmgMult: 1.1, mana: 36, maxFrac: 0.16, castMs: 760 },
   },
   runeCount: 6,
   pairsPerLoadout: 3,
@@ -1016,6 +1051,15 @@ const CONFIG = {
     leech: 0.4,
     regen: 45,            // LP/s — ~1,8 % of the endgame pool per second
     castHaste: 1.2,       // as a rate: 420 ms ÷ 2,2 ≈ 190 ms
+    // MANA — the hero's rate of fire (see manaBase above). These two are what a
+    // build buys when it buys "cast more often": the pool decides how long a
+    // burst can run ahead of the regen, the regen decides what the burst settles
+    // back to. Read them together with tools/attrition.mjs — at these totals a
+    // build at 90 % of the gold casts a Feuerball every 1,4 s against the bare
+    // hero's 3,3 s, and banks ten of them in the pool against his three.
+    manaMax: 300,         // the whole tree holds 300, so a full walk is a 390 pool —
+                          // thirteen Feuerbälle; a 90 % build carries 225 of it, 315
+    manaRegen: 16,        // /s — a 90 % build carries 13,2 of it, so 22/s against a base of 9
     walkMult: 1,          // pace 0,057 px/ms, still under the march's own 0,12
     coinMult: 2.5,
     shieldChance: 0.5,
